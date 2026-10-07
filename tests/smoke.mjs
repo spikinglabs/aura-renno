@@ -231,19 +231,20 @@ for (const theme of ['night', 'day']) {
   await page.addInitScript(() => { window.google = { accounts: { oauth2: { initTokenClient: o => ({ requestAccessToken: () => o.callback({ access_token: 't', expires_in: 3600 }) }) } } }; });
   const other = (id, t) => ({ id, child: 'kid-ex', type: 'note', t, note: 'From the other phone', updatedAt: t });
   // "future" stands for a part added by a later version of the app without a format change; it must be kept.
-  const drive = { file: { app: 'aura', v: 2, children: [], episodes: [], entries: [other('o1', 1000)], meds: [], measurements: [], growth: [], future: ['kept'] }, patches: 0, race: true, uploads: [], queries: [] };
+  const drive = { file: { app: 'aura', v: 2, children: [], episodes: [], entries: [other('o1', 1000)], meds: [], measurements: [], growth: [], future: ['kept'] }, patches: 0, race: true, uploads: [], queries: [], version: 1, downloads: 0 };
+  const setFile = f => { drive.file = f; drive.version++; }; // a change by someone else bumps Drive's version number
   await page.route('https://www.googleapis.com/**', async route => {
     const req = route.request(), u = new URL(req.url()), m = req.method();
     const json = b => route.fulfill({ status: 200, contentType: 'application/json', body: typeof b === 'string' ? b : JSON.stringify(b) });
     if (u.pathname.startsWith('/upload') && m === 'PATCH') {
-      drive.patches++; drive.file = JSON.parse(req.postData());
+      drive.patches++; drive.file = JSON.parse(req.postData()); const mine = String(++drive.version);
       // Another phone overwrites right after us with its own copy, which lacks our entries
-      if (drive.race) { drive.race = false; drive.file = { ...drive.file, entries: [other('o1', 1000), other('o2', 2000)] }; }
-      return json({});
+      if (drive.race) { drive.race = false; setFile({ ...drive.file, entries: [other('o1', 1000), other('o2', 2000)] }); }
+      return json({ version: mine });
     }
     if (u.pathname.startsWith('/upload') && m === 'POST') { drive.uploads.push(req.postData()); return json({ id: 'b' + drive.uploads.length }); }
-    if (u.pathname === '/drive/v3/files/f1' && u.searchParams.get('alt') === 'media') return json(drive.file);
-    if (u.pathname === '/drive/v3/files/f1') return json({ ownedByMe: true, parents: ['logdir'] });
+    if (u.pathname === '/drive/v3/files/f1' && u.searchParams.get('alt') === 'media') { drive.downloads++; return json(drive.file); }
+    if (u.pathname === '/drive/v3/files/f1') return json({ ownedByMe: true, parents: ['logdir'], version: String(drive.version) });
     if (u.pathname === '/drive/v3/files') drive.queries.push(u.searchParams.get('q') || '');
     if (u.pathname === '/drive/v3/files') return json({ files: (u.searchParams.get('q') || '').includes('in parents') ? [] : [{ id: 'folder' }] });
     return json({});
@@ -261,19 +262,29 @@ for (const theme of ['night', 'day']) {
   if (!drive.uploads.some(b => b.includes('aura-backup-'))) fail('sync: no backup saved before overwriting');
   if (!drive.queries.some(q => q.includes("name='backups'") && q.includes("'logdir' in parents"))) fail('sync: backups not kept next to the log (so a moved or renamed folder would lose them)');
   if (drive.file.future?.[0] !== 'kept') fail('sync: a part of the Drive file this version does not know was dropped');
+  // With nothing changed on either side, a sync only asks Drive for the version number and downloads nothing
+  let downloads = drive.downloads, patches = drive.patches;
+  const syncNow = async () => { await page.evaluate(() => { document.getElementById('toast').hidden = true; }); await page.click('[data-act="sync-tap"]'); await page.waitForSelector('#toast:not([hidden])'); };
+  await syncNow();
+  if (!(await page.locator('#toast').innerText()).startsWith('Synced')) fail('sync: no feedback after tapping sync');
+  if (drive.downloads !== downloads || drive.patches !== patches) fail('sync: an idle sync downloaded or wrote the file');
+  // A change by the other phone is picked up
+  setFile({ ...drive.file, entries: [...drive.file.entries, other('o3', 3000)] });
+  await syncNow();
+  if (!(await getState(page)).entries.some(e => e.id === 'o3')) fail('sync: change from the other phone not picked up');
   // A log saved by a newer version of the app is never overwritten by this one
-  drive.file = { ...drive.file, v: 99 }; let before = drive.patches;
+  setFile({ ...drive.file, v: 99 }); let before = drive.patches;
   await page.click('[data-act="sync-tap"]');
   await page.waitForSelector('.sync.err');
   if (drive.patches !== before || drive.file.v !== 99) fail('sync: a newer log in Drive was overwritten');
   // An older log in Drive is upgraded, after a copy of it as it was is kept as aura-log-before-v2.json
-  drive.file = { app: 'sick-day-log', v: 1, children: [], episodes: [], entries: [other('old1', 500)], meds: [], measurements: [] }; before = drive.uploads.length;
+  setFile({ app: 'sick-day-log', v: 1, children: [], episodes: [], entries: [other('old1', 500)], meds: [], measurements: [] }); before = drive.uploads.length;
   await page.click('[data-act="sync-tap"]');
   await page.waitForSelector('.sync.ok');
   if (!drive.uploads.slice(before).some(b => b.includes('aura-log-before-v2.json') && b.includes('sick-day-log'))) fail('sync: no copy kept before upgrading the Drive log');
   if (drive.file.v !== 2 || !drive.file.entries.some(e => e.id === 'old1')) fail('sync: older Drive log not upgraded');
   // A damaged Drive file is never overwritten
-  drive.file = 'not json'; before = drive.patches;
+  setFile('not json'); before = drive.patches;
   await page.click('[data-act="sync-tap"]');
   await page.waitForSelector('.sync.err');
   if (drive.patches !== before) fail('sync: damaged Drive file was overwritten');
