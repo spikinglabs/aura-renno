@@ -1,0 +1,975 @@
+<title>Aura</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600&family=Nunito:wght@400;600;700;800&display=swap">
+<style>
+/* Night light: dark-first warm brown with amber, a matching warm-cream day mode. One soft column, Today first, sick mode as a banner. */
+:root {
+  --bg: #1F1A17; --card: #2B2420; --card-2: #342B26; --ink: #F2E6D9; --muted: #AE9F92; --line: #3A322C;
+  --accent: #E3A56E; --accent-on: #2A1E15; --accent-soft: #4A3626; --accent-ink: #F2C79D;
+  --warm-soft: #4A3028; --alert: #FF9C80; --ok: #9BD3A8; --wait: #F0C877;
+  --c-feed: #5A4330; --c-sleep: #36394F; --c-diaper: #4A4630; --c-solids: #553A33; --c-temp: #5C3A30; --c-med: #45374F;
+  --c-symptom: #523543; --c-vomit: #3E4A33; --c-doctor: #33434D; --c-photo: #3D3A36; --c-note: #3B4438; --c-say: #4A3626;
+  --line-temp: #FF9C80; --mark-1: #C9B2F2; --mark-2: #8FC9E8; --mark-3: #F2A7C6; --mark-4: #E8C47A; --growth: #9BD3A8;
+  --f-head: "Lora", Georgia, serif; --f-body: "Nunito", "Segoe UI", system-ui, sans-serif;
+  --r: 18px;
+  color-scheme: dark;
+}
+:root[data-mode="day"] {
+  --bg: #F7F0E8; --card: #FFF9F2; --card-2: #F1E7DB; --ink: #3A2C22; --muted: #85715F; --line: #E8DCCD;
+  --accent: #B8692B; --accent-on: #FFF8F0; --accent-soft: #F5DFC7; --accent-ink: #8A4A18;
+  --warm-soft: #F4D9CD; --alert: #B5452C; --ok: #2F7A4C; --wait: #9A6406;
+  --c-feed: #F4DDC0; --c-sleep: #DCE0EE; --c-diaper: #ECE5C6; --c-solids: #F1D5C9; --c-temp: #F5CDBE; --c-med: #E5DCF2;
+  --c-symptom: #F2D6E1; --c-vomit: #DDE8CF; --c-doctor: #D8E5EC; --c-photo: #E7E1DA; --c-note: #DCE6D6; --c-say: #F5DFC7;
+  --line-temp: #C0502F; --mark-1: #7656B8; --mark-2: #2A7FA8; --mark-3: #B04479; --mark-4: #A0711A; --growth: #2F7A4C;
+  color-scheme: light;
+}
+* { box-sizing: border-box }
+html, body { background: var(--bg); color: var(--ink) }
+body { font-family: var(--f-body); font-size: 16px; line-height: 1.45; transition: background .4s }
+button, input, select, textarea { font: inherit; color: inherit }
+button { cursor: pointer }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px }
+h1, h2, h3 { font-family: var(--f-head); font-weight: 600; margin: 0; text-wrap: balance; letter-spacing: -0.005em }
+h1 { font-size: 1.6rem; line-height: 1.15 } h2 { font-size: 1.25rem } h3 { font-size: 1.04rem }
+.num { font-variant-numeric: tabular-nums }
+.muted { color: var(--muted) } .small { font-size: .86rem }
+input, select, textarea { background: var(--card-2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; width: 100%; min-width: 0 }
+textarea { resize: vertical }
+
+.wrap { max-width: 600px; margin: 0 auto; padding-inline: 16px; padding-block: 0 120px }
+.view { display: flex; flex-direction: column; gap: 16px; padding-top: 14px }
+.card { background: var(--card); border-radius: var(--r); padding: 14px 16px }
+.btn { border: 0; background: var(--card-2); border-radius: 999px; padding: 10px 18px; font-weight: 700 }
+.btn.primary { background: var(--accent); color: var(--accent-on) }
+.btn.ghost { background: transparent; padding-inline: 10px }
+.btn.danger { color: var(--alert) }
+.btn.sm { padding: 6px 12px; font-size: .86rem }
+.btn:disabled { opacity: .5 }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center }
+.between { justify-content: space-between }
+
+/* Header */
+.head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding-top: 18px }
+.head .hi { font-size: .84rem; color: var(--muted) }
+.avatar { width: 46px; height: 46px; border-radius: 50%; border: 0; background: var(--accent-soft); color: var(--accent-ink); font-weight: 800; font-size: 1.1rem; flex: none }
+.sync { font-size: .74rem; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; border: 0; background: none; padding: 0; white-space: nowrap }
+.sync::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--muted) }
+.sync.ok::before { background: var(--ok) } .sync.err::before { background: var(--alert) }
+
+.banner { background: var(--card-2); border-radius: var(--r); padding: 12px 14px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: .92rem }
+.banner p { margin: 0; flex: 1 1 220px }
+.sick { width: 100%; text-align: left; border: 0; background: var(--warm-soft); border-radius: var(--r); padding: 12px 14px; display: flex; justify-content: space-between; gap: 10px; align-items: center }
+.sick .pill { background: var(--card); border-radius: 999px; padding: 4px 12px; font-size: .8rem; font-weight: 700; white-space: nowrap }
+.sick small { display: block; color: var(--muted); font-size: .82rem }
+.alerts { border-radius: var(--r); padding: 12px 14px; background: var(--card); box-shadow: inset 0 0 0 1.5px var(--wait) }
+.alerts h3 { color: var(--wait); font-size: .98rem }
+.alerts ul { margin: 6px 0 0; padding-left: 20px } .alerts li { margin: 3px 0 }
+
+.sum { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px }
+.tile { background: var(--card); border-radius: 16px; padding: 10px 12px; min-width: 0 }
+.tile small { display: block; font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted) }
+.tile strong { display: block; font-size: 1.12rem; font-weight: 800; margin-top: 2px }
+.tile em { font-style: normal; font-size: .76rem; color: var(--muted); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.tile.hot strong { color: var(--alert) }
+.sum.two { grid-template-columns: repeat(2, minmax(0, 1fr)) }
+.wide-tile { grid-column: 1 / -1 }
+.dose-line { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-top: 1px solid var(--line); font-size: .92rem }
+.dose-line:first-of-type { border-top: 0 }
+.pill { font-size: .78rem; padding: 2px 9px; border-radius: 999px; background: var(--card-2); white-space: nowrap; align-self: center }
+.pill.ok { color: var(--ok) } .pill.wait { color: var(--wait) }
+
+.timer { background: var(--accent); color: var(--accent-on); border-radius: var(--r); padding: 12px 12px 12px 16px; display: flex; justify-content: space-between; align-items: center; gap: 10px }
+.timer strong { font-size: 1.3rem; font-weight: 800 }
+.timer .btn { background: var(--accent-on); color: var(--accent); padding: 8px 14px }
+
+.quick { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px }
+.qb { border: 0; background: var(--card); border-radius: 18px; padding: 12px 4px 10px; display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: .82rem; font-weight: 700 }
+.qb:active { transform: scale(.97) }
+.ic { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--c); flex: none }
+.ic svg { width: 19px; height: 19px; stroke: var(--ink); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round }
+.linkish { background: none; border: 0; color: var(--accent-ink); font-weight: 700; padding: 6px 0; text-align: left }
+
+/* Timeline */
+.day-h { display: flex; align-items: baseline; gap: 10px; padding: 10px 0 4px }
+.tl { list-style: none; margin: 0; padding: 0 }
+.tl li button { width: 100%; text-align: left; display: grid; grid-template-columns: auto 28px minmax(0, 1fr); gap: 10px; align-items: start; padding: 9px 0; background: none; border: 0; border-bottom: 1px solid var(--line) }
+.tl .time { font-size: .84rem; color: var(--muted); padding-top: 4px; white-space: nowrap; min-width: 42px }
+.tl .ic { width: 28px; height: 28px } .tl .ic svg { width: 15px; height: 15px }
+.tl .what { min-width: 0; padding-top: 3px }
+.tl .what .n { display: block; color: var(--muted); font-size: .88rem; overflow-wrap: anywhere; white-space: pre-wrap }
+.tl .what .d { display: block; font-size: .9rem; overflow-wrap: anywhere }
+.tl img { display: block; margin-top: 6px; max-width: 160px; border-radius: 10px }
+.empty { text-align: center; padding: 26px 16px; display: flex; flex-direction: column; gap: 12px; align-items: center }
+
+.t-feed { --c: var(--c-feed) } .t-sleep { --c: var(--c-sleep) } .t-diaper { --c: var(--c-diaper) } .t-solids, .t-food { --c: var(--c-solids) }
+.t-temp { --c: var(--c-temp) } .t-med { --c: var(--c-med) } .t-symptom { --c: var(--c-symptom) } .t-vomit { --c: var(--c-vomit) }
+.t-doctor { --c: var(--c-doctor) } .t-photo { --c: var(--c-photo) } .t-note { --c: var(--c-note) } .t-say { --c: var(--c-say) }
+.t-drink { --c: var(--c-feed) }
+
+/* Segmented */
+.seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: var(--card); border-radius: 999px; padding: 4px; gap: 4px }
+.seg button { border: 0; background: none; border-radius: 999px; padding: 8px 6px; font-weight: 700; font-size: .88rem; color: var(--muted) }
+.seg button.on { background: var(--accent-soft); color: var(--ink) }
+
+/* Chart + tables */
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: .84rem; color: var(--muted) }
+.legend span { display: inline-flex; gap: 6px; align-items: center }
+.legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; background: var(--c) }
+.facts { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px }
+.tbl-wrap { overflow-x: auto; background: var(--card); border-radius: var(--r) }
+table { border-collapse: collapse; width: 100%; font-size: .88rem; min-width: 540px }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top }
+th { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700 }
+tr:last-child td { border-bottom: 0 }
+.r { text-align: right } td.hot { color: var(--alert); font-weight: 700 }
+.narrative { white-space: pre-wrap; line-height: 1.55; overflow-wrap: anywhere }
+.disclaimer { font-size: .84rem; color: var(--muted) }
+.doc-said .item { border-left: 3px solid var(--accent); padding: 2px 0 2px 12px; margin-top: 10px }
+
+/* More */
+.set { display: flex; flex-direction: column; gap: 10px }
+.field { display: flex; flex-direction: column; gap: 5px }
+.field > span { font-size: .82rem; font-weight: 700; color: var(--muted) }
+.list-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line) }
+.list-row:first-of-type { border-top: 0 }
+.medrow input { width: 70px }
+.grow-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px }
+
+/* Tabs */
+.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--card); padding-bottom: env(safe-area-inset-bottom, 0px) }
+.tabs .in { max-width: 600px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr) }
+.tabs button { background: none; border: 0; padding: 8px 4px 14px; font-size: .8rem; font-weight: 800; color: var(--muted) }
+.tabs button::before { content: ""; display: block; width: 24px; height: 4px; border-radius: 4px; margin: 0 auto 6px; background: transparent }
+.tabs button[aria-selected="true"] { color: var(--ink) }
+.tabs button[aria-selected="true"]::before { background: var(--accent) }
+
+/* Sheet */
+.scrim { position: fixed; inset: 0; background: rgb(10 6 4 / .55); z-index: 20; display: flex; align-items: flex-end; justify-content: center }
+.scrim[hidden] { display: none }
+.sheet { background: var(--card); width: 100%; max-width: 600px; max-height: 92%; overflow-y: auto; border-radius: 26px 26px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 14px }
+.sheet .hd { display: flex; justify-content: space-between; align-items: center; gap: 10px }
+.chips { display: flex; flex-wrap: wrap; gap: 6px }
+.chips button { border: 0; background: var(--card-2); border-radius: 999px; padding: 9px 14px; font-size: .92rem }
+.chips button.on { background: var(--accent); color: var(--accent-on); font-weight: 800 }
+.chips input { width: 96px; border-radius: 999px; padding: 8px 12px }
+.temp-in { display: flex; align-items: center; gap: 10px }
+.temp-in button { width: 52px; height: 52px; border-radius: 50%; border: 0; background: var(--card-2); font-size: 1.5rem; font-weight: 800 }
+.temp-in input { flex: 1; text-align: center; font-size: 2.1rem; font-weight: 800; padding: 6px }
+.sheet-actions { display: flex; gap: 8px; justify-content: space-between; flex-wrap: wrap }
+.pick { width: 100%; text-align: left; padding: 12px 14px; border: 0; border-radius: 14px; background: var(--card-2) }
+.pick.on { box-shadow: inset 0 0 0 2px var(--accent) }
+.parsed { display: flex; flex-direction: column; gap: 6px }
+.parsed label { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-radius: 12px; background: var(--card-2) }
+.parsed input { width: auto }
+[hidden] { display: none !important }
+
+.toast { position: fixed; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-size: .92rem; z-index: 30; max-width: calc(100% - 32px) }
+@media (prefers-reduced-motion: reduce) { .qb:active { transform: none } body { transition: none } }
+</style>
+
+<div class="wrap" id="app">
+  <section class="view" id="view-today"></section>
+  <section class="view" id="view-sick" hidden></section>
+  <section class="view" id="view-growth" hidden></section>
+  <section class="view" id="view-more" hidden></section>
+</div>
+<nav class="tabs"><div class="in" role="tablist">
+  <button role="tab" data-tab="today" aria-selected="true">Today</button>
+  <button role="tab" data-tab="growth" aria-selected="false">Growth</button>
+  <button role="tab" data-tab="more" aria-selected="false">More</button>
+</div></nav>
+<div class="scrim" id="scrim" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(() => {
+'use strict';
+const SDK_URL = 'https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.131.0/+esm';
+const MODEL = 'claude-opus-5-5';
+const LS_KEY = 'aura.v2', LS_OLD = 'sickdaylog.v1';
+const DRIVE_FILE = 'aura-log.json', DRIVE_FOLDER = 'Aura';
+const FEVER_C = 38.0, EXAMPLE_V = 4;
+const H = 3600e3, DAY = 24 * H;
+const BREAST = 'Breast', BOTTLE = 'Bottle or cup';
+
+const $ = s => document.querySelector(s);
+const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmtTime = t => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const fmtDay = t => new Date(t).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+const fmtDT = t => fmtDay(t) + ' ' + fmtTime(t);
+const pad = n => String(n).padStart(2, '0');
+const toLocalInput = t => { const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const startOfDay = t => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
+function dur(ms) { const m = Math.max(0, Math.round(ms / 60000)); if (m < 60) return m + ' min'; const h = Math.floor(m / 60), r = m % 60; if (h < 24) return h + ' h' + (r ? ' ' + r + ' m' : ''); return Math.floor(h / 24) + ' d ' + (h % 24) + ' h'; }
+const ago = t => (Date.now() - t < 60000 ? 'just now' : dur(Date.now() - t) + ' ago');
+const clock = ms => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 3600)}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`; };
+
+/* ---------- Icons ---------- */
+const ICONS = {
+  feed: '<path d="M9 3h6M10 3v3l-2 3v10a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V9l-2-3V3"/><path d="M8 13h8"/>',
+  sleep: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
+  diaper: '<path d="M3 7h18v3a9 9 0 0 1-18 0z"/><path d="M8 7v2M16 7v2"/>',
+  solids: '<path d="M4 12h16a8 8 0 0 1-16 0z"/><path d="M12 4v4M9 6l1 2M15 6l-1 2"/>',
+  temp: '<path d="M14 14.8V5a2 2 0 0 0-4 0v9.8a4 4 0 1 0 4 0z"/>',
+  med: '<rect x="3" y="9" width="18" height="6" rx="3" transform="rotate(-45 12 12)"/><path d="M9.5 9.5l5 5"/>',
+  symptom: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
+  vomit: '<circle cx="12" cy="12" r="8"/><path d="M9 10h.01M15 10h.01M9 16c1.5-1 4.5-1 6 0"/>',
+  doctor: '<path d="M6 3v5a4 4 0 0 0 8 0V3"/><path d="M10 12v3a5 5 0 0 0 10 0v-2"/><circle cx="20" cy="11" r="2"/>',
+  photo: '<rect x="3" y="6" width="18" height="14" rx="3"/><circle cx="12" cy="13" r="3.5"/><path d="M9 6l1.5-2h3L15 6"/>',
+  note: '<path d="M5 4h10l4 4v12H5z"/><path d="M9 12h6M9 16h4"/>',
+  say: '<path d="M12 3a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+};
+ICONS.food = ICONS.solids; ICONS.drink = ICONS.feed;
+const icon = k => `<span class="ic t-${k}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[k] || ICONS.note}</svg></span>`;
+
+/* ---------- State ---------- */
+function emptyState() {
+  return { app: 'aura', v: 2, example: false, children: [], episodes: [], entries: [], measurements: [],
+    meds: [{ id: 'm1', name: 'Paracetamol (acetaminophen)', gapH: 4, updatedAt: 0 }, { id: 'm2', name: 'Ibuprofen', gapH: 6, updatedAt: 0 }],
+    settings: { unit: 'C', clientId: '', apiKey: '', theme: 'auto' }, child: null, drive: {} };
+}
+function readLS(k) { try { const r = localStorage.getItem(k); return r ? JSON.parse(r) : null; } catch { return null; } }
+function migrate(o) {
+  if (!o) return null;
+  if (o.v === 2) return o;
+  // v1 sick-day log: entries belonged to an illness; give each one its child.
+  const s = emptyState(); Object.assign(s, { children: o.children || [], episodes: o.episodes || [], measurements: o.measurements || [], meds: o.meds || s.meds, drive: {} });
+  s.settings = { ...s.settings, ...(o.settings || {}) };
+  const epChild = Object.fromEntries((o.episodes || []).map(e => [e.id, e.childId]));
+  s.entries = (o.entries || []).map(e => ({ ...e, child: e.child || epChild[e.ep] }));
+  s.child = s.children.find(c => !c.deleted)?.id || null;
+  return s;
+}
+let S = migrate(readLS(LS_KEY)), keepSettings = null;
+if (!S) { const old = readLS(LS_OLD); if (old && !old.example) S = migrate(old); else keepSettings = old?.settings || null; }
+if (!S || (S.example && S.exampleV !== EXAMPLE_V)) { const keep = S?.settings || keepSettings; S = exampleState(); if (keep) S.settings = { ...S.settings, ...keep }; try { localStorage.setItem(LS_KEY, JSON.stringify(S)); } catch {} }
+function persist() { try { localStorage.setItem(LS_KEY, JSON.stringify(S)); } catch { toast('Could not save on this device. Storage may be full.'); } }
+function commit() { persist(); render(); scheduleSync(); }
+const touch = o => (o.updatedAt = Date.now(), o);
+
+function exampleState() {
+  const s = emptyState(); s.example = true; s.exampleV = EXAMPLE_V;
+  const now = Date.now(), today = startOfDay(now);
+  const kid = { id: 'kid-ex', name: 'Mia', dob: toLocalInput(now - 2.3 * 365 * DAY).slice(0, 10), updatedAt: 0 };
+  s.children.push(kid); s.child = kid.id;
+  const add = (t, type, f) => { if (t <= now) s.entries.push({ id: uid(), child: kid.id, type, t, updatedAt: 0, ...f }); };
+  [[-330, 10.4, 80.5, 46.2], [-200, 11.3, 84, 46.9], [-75, 12.1, 87.5, 47.4], [-3, 12.4, null, null]].forEach(([d, w, h, hc]) =>
+    s.measurements.push({ id: uid(), childId: kid.id, t: now + d * DAY, weightKg: w, heightCm: h, headCm: hc, note: d === -3 ? 'Home scale, in pajamas' : 'Checkup', updatedAt: 0 }));
+  for (let d = 4; d >= 0; d--) {
+    const day = today - d * DAY, at = h => day + h * H, sick = d < 3;
+    add(at(6.8), 'feed', { kind: BOTTLE, what: 'Milk', ml: sick ? 150 : 200 });
+    add(at(7.2), 'diaper', { kind: 'Wet' });
+    add(at(8), 'solids', { food: 'Porridge with banana', amount: sick ? 'A little' : 'All of it' });
+    add(at(11.5), 'diaper', { kind: 'Both', stool: 'Soft' });
+    add(at(12.3), 'solids', { food: 'Pasta and peas', amount: sick ? 'A taste' : 'About half' });
+    if (at(14.8) <= now) add(at(13), 'sleep', { kind: 'Nap', end: at(sick ? 14.8 : 14.2), quality: 'Okay' });
+    add(at(15.5), 'feed', { kind: BOTTLE, what: 'Water', ml: 120 });
+    add(at(16), 'diaper', { kind: 'Wet' });
+    add(at(17.6), 'solids', { food: 'Rice, chicken, carrots', amount: sick ? 'A little' : 'About half' });
+    add(at(19.2), 'feed', { kind: BOTTLE, what: 'Milk', ml: 180 });
+    add(at(19.4), 'diaper', { kind: 'Wet' });
+    if (d > 0) add(at(19.75), 'sleep', { kind: 'Night sleep', end: at(30.6 - (sick ? 0.8 : 0)), quality: sick ? 'Restless' : 'Good' });
+  }
+  if (now - today > 19.75 * H) add(today + 19.75 * H, 'sleep', { kind: 'Night sleep', end: null });
+  else if (now - today > 13 * H && now - today < 14.8 * H) add(today + 13 * H, 'sleep', { kind: 'Nap', end: null });
+  const start = now - 2.6 * DAY;
+  s.episodes.push({ id: 'ep-ex', childId: kid.id, title: 'Fever and cough', start, end: null, updatedAt: 0 });
+  const at = h => start + h * H;
+  add(at(0), 'symptom', { symptoms: ['Irritable', 'Poor appetite'], severity: 'Mild', note: 'Came home from daycare tired' });
+  [[1, 38.4], [5.5, 39.1], [11, 38.9], [21, 39.6], [29, 38.7], [36, 39.2], [45, 38.3], [52, 38.6], [60, 37.8]].forEach(([h, c]) => add(at(h), 'temp', { tempC: c, method: 'Ear' }));
+  [[1.2, 'P'], [5.6, 'I'], [11.1, 'P'], [21.2, 'I'], [29.1, 'P'], [36.2, 'I'], [52.1, 'P']].forEach(([h, m]) => add(at(h), 'med', m === 'P' ? { name: 'Paracetamol (acetaminophen)', amount: 6, unit: 'ml' } : { name: 'Ibuprofen', amount: 6, unit: 'ml' }));
+  add(at(20), 'symptom', { symptoms: ['Cough', 'Runny nose'], severity: 'Moderate', note: 'Dry cough, worse lying down' });
+  add(at(22), 'vomit', { size: 'Small', note: 'After coughing fit' });
+  add(at(48), 'doctor', { note: 'Called Dr. Weber (family doctor). Thinks it is probably viral. Keep fluids up and let her rest; fever medicine only if she seems uncomfortable. Come in if the fever continues past day 3, or sooner if she stops drinking.' });
+  add(at(55), 'symptom', { symptoms: ['Cough', 'Ear pain'], severity: 'Moderate', note: 'Pulling at left ear' });
+  return s;
+}
+
+/* ---------- Entry types ---------- */
+const SYMPTOMS = ['Fever', 'Cough', 'Runny nose', 'Sore throat', 'Ear pain', 'Headache', 'Tummy ache', 'Rash', 'Diarrhea', 'Fast breathing', 'Wheezing', 'Red eyes', 'Very sleepy / floppy', 'Irritable', 'Poor appetite', 'Not drinking'];
+const TYPES = {
+  feed: { label: 'Feed', fields: [
+    { kind: 'chips', k: 'kind', label: 'How', opts: [BREAST, BOTTLE] },
+    { kind: 'chips', k: 'side', label: 'Side', opts: ['Left', 'Right', 'Both'], show: [BREAST] },
+    { kind: 'num', k: 'minutes', label: 'Minutes (or start the timer below)', show: [BREAST] },
+    { kind: 'chips', k: 'what', label: 'What', opts: ['Breast milk', 'Formula', 'Milk', 'Water', 'Rehydration', 'Juice'], show: [BOTTLE] },
+    { kind: 'chips', k: 'ml', label: 'How much (ml)', opts: ['30', '60', '90', '120', '150', '180', '210'], numeric: true, custom: true, show: [BOTTLE] }] },
+  sleep: { label: 'Sleep', fields: [
+    { kind: 'chips', k: 'kind', label: 'What', opts: ['Nap', 'Night sleep'] },
+    { kind: 'end', k: 'end', label: 'Woke up at (leave empty if still asleep)' },
+    { kind: 'chips', k: 'quality', label: 'Sleep was', opts: ['Restless', 'Okay', 'Good'] }], whenLabel: 'Fell asleep at' },
+  diaper: { label: 'Diaper', fields: [{ kind: 'chips', k: 'kind', label: 'What', opts: ['Wet', 'Poop', 'Both', 'Dry'] }, { kind: 'chips', k: 'stool', label: 'Poop looked', opts: ['Normal', 'Soft', 'Watery', 'Hard', 'Blood or mucus'] }] },
+  solids: { label: 'Solids', fields: [{ kind: 'text', k: 'food', label: 'What did they eat?' }, { kind: 'chips', k: 'amount', label: 'How much', opts: ['A taste', 'A little', 'About half', 'All of it'] }, { kind: 'chips', k: 'reaction', label: 'Liked it?', opts: ['Loved it', 'So-so', 'Refused'] }] },
+  temp: { label: 'Temp', long: 'Temperature', fields: [{ kind: 'temp', k: 'tempC' }, { kind: 'chips', k: 'method', label: 'How measured', opts: ['Ear', 'Forehead', 'Armpit', 'Mouth', 'Rectal'] }] },
+  med: { label: 'Medicine', fields: [{ kind: 'medname', k: 'name' }, { kind: 'num', k: 'amount', label: 'Amount', step: 0.5 }, { kind: 'chips', k: 'unit', label: 'Unit', opts: ['ml', 'mg', 'tablet', 'drops', 'puffs', 'sachet'] }] },
+  symptom: { label: 'Symptoms', fields: [{ kind: 'chips', k: 'symptoms', label: 'Pick all that apply', opts: SYMPTOMS, multi: true }, { kind: 'chips', k: 'severity', label: 'Overall', opts: ['Mild', 'Moderate', 'Severe'] }] },
+  vomit: { label: 'Vomit', fields: [{ kind: 'chips', k: 'size', label: 'How much', opts: ['Small', 'Medium', 'Large'] }] },
+  doctor: { label: 'Doctor', long: "Doctor's notes", fields: [] },
+  photo: { label: 'Photo', fields: [{ kind: 'photo', k: 'img' }] },
+  note: { label: 'Note', fields: [] },
+  // Older entry kinds from the sick-only version, still shown and editable
+  food: { label: 'Food', fields: [{ kind: 'chips', k: 'amount', label: 'Ate', opts: ['Nothing', 'A little', 'About half', 'Normal'] }], legacy: true },
+  drink: { label: 'Drink', fields: [{ kind: 'chips', k: 'what', label: 'What', opts: ['Water', 'Milk', 'Breastfeed', 'Formula', 'Rehydration', 'Juice', 'Other'] }, { kind: 'chips', k: 'ml', label: 'How much (ml)', opts: ['30', '60', '100', '150', '200', '250'], numeric: true, custom: true }], legacy: true },
+};
+const QUICK_DAY = ['feed', 'sleep', 'diaper', 'solids', 'temp', 'med', 'doctor', 'photo', 'note'];
+const QUICK_SICK = ['temp', 'med', 'symptom', 'feed', 'sleep', 'diaper', 'vomit', 'solids', 'doctor', 'photo', 'note'];
+const DOC_FIELDS = [['diagnosis', 'Thinks'], ['advice', 'Advice'], ['prescribed', 'Medicine'], ['followUp', 'Come back if']];
+const docText = d => [d.who && d.who + (d.how ? ' (' + d.how.toLowerCase() + ')' : ''), ...DOC_FIELDS.filter(([k]) => d[k]).map(([k, l]) => l + ': ' + d[k]), d.note].filter(Boolean).join('\n');
+
+const showT = c => S.settings.unit === 'F' ? (c * 9 / 5 + 32).toFixed(1) + '°F' : (+c).toFixed(1) + '°C';
+const tUnitToC = v => S.settings.unit === 'F' ? (v - 32) * 5 / 9 : v;
+const cToUnit = c => S.settings.unit === 'F' ? c * 9 / 5 + 32 : c;
+const lc = s => String(s || '').toLowerCase();
+function describe(e) {
+  switch (e.type) {
+    case 'feed': return e.kind === BREAST
+      ? `<b>Breastfeed</b>${e.side ? ' · ' + esc(lc(e.side)) : ''}${e.end === null ? ' · in progress' : e.minutes ? ' · <span class="num">' + esc(e.minutes) + ' min</span>' : ''}`
+      : `<b>${esc(e.what || 'Bottle')}</b>${e.ml ? ' <span class="num">' + esc(e.ml) + ' ml</span>' : ''}`;
+    case 'sleep': return `<b>${esc(e.kind || 'Sleep')}</b>${e.end === null ? ' · sleeping now' : e.end ? ' · <span class="num">' + dur(e.end - e.t) + '</span>, woke ' + fmtTime(e.end) : ''}${e.quality ? ' · ' + esc(lc(e.quality)) : ''}`;
+    case 'solids': return `<b>${esc(e.food || 'Solids')}</b>${e.amount ? ' · ' + esc(lc(e.amount)) : ''}${e.reaction ? ' · ' + esc(lc(e.reaction)) : ''}`;
+    case 'temp': return `<b class="num">${showT(e.tempC)}</b>${e.method ? ' · ' + esc(lc(e.method)) : ''}`;
+    case 'med': return `<b>${esc(e.name)}</b>${e.amount != null ? ' <span class="num">' + esc(e.amount) + '</span> ' + esc(e.unit || '') : ''}`;
+    case 'drink': return `<b>${esc(e.what || 'Drink')}</b>${e.ml ? ' <span class="num">' + esc(e.ml) + ' ml</span>' : ''}`;
+    case 'diaper': return `<b>${esc(e.kind || 'Diaper')}</b>${e.stool ? ' · ' + esc(lc(e.stool)) : ''}`;
+    case 'vomit': return `<b>Vomited</b>${e.size ? ' · ' + esc(lc(e.size)) : ''}`;
+    case 'symptom': return `<b>${esc((e.symptoms || []).join(', ') || 'Symptoms')}</b>${e.severity ? ' · ' + esc(lc(e.severity)) : ''}`;
+    case 'food': return `<b>Food</b>${e.amount ? ' · ' + esc(lc(e.amount)) : ''}`;
+    case 'doctor': return `<b>Doctor's notes</b>${DOC_FIELDS.filter(([k]) => e[k]).map(([k, l]) => `<span class="d"><span class="muted">${l}:</span> ${esc(e[k])}</span>`).join('')}`;
+    case 'photo': return `<b>Photo</b>`;
+    default: return `<b>Note</b>`;
+  }
+}
+const plain = e => describe(e).replace(/<span class="d">/g, '; ').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+
+/* ---------- Selectors ---------- */
+const live = a => a.filter(x => !x.deleted);
+const kids = () => live(S.children);
+const kid = () => kids().find(c => c.id === S.child) || kids()[0] || null;
+const kidEntries = (cid = kid()?.id) => live(S.entries).filter(e => e.child === cid).sort((a, b) => b.t - a.t);
+const activeEp = (cid = kid()?.id) => live(S.episodes).filter(e => e.childId === cid && !e.end).sort((a, b) => b.start - a.start)[0] || null;
+let viewEpId = null;
+const viewEp = () => live(S.episodes).find(e => e.id === viewEpId) || activeEp();
+const epEntries = ep => ep ? kidEntries(ep.childId).filter(e => e.t >= ep.start - 60e3 && e.t <= (ep.end || Infinity)) : [];
+const dayNo = (t, ep) => ep ? Math.round((startOfDay(t) - startOfDay(ep.start)) / DAY) + 1 : 1;
+const childOf = ep => ep && live(S.children).find(c => c.id === ep.childId);
+function ageText(c, at = Date.now()) {
+  if (!c?.dob) return ''; const d = new Date(c.dob), n = new Date(at);
+  let m = (n.getFullYear() - d.getFullYear()) * 12 + n.getMonth() - d.getMonth(); if (n.getDate() < d.getDate()) m--;
+  if (m < 3) return Math.max(0, Math.floor((at - d) / (7 * DAY))) + ' weeks'; if (m < 24) return m + ' months';
+  return Math.floor(m / 12) + ' years' + (m % 12 ? ' ' + (m % 12) + ' mo' : '');
+}
+const ageMonths = c => c?.dob ? (Date.now() - new Date(c.dob)) / (30.44 * DAY) : null;
+const medGap = name => (live(S.meds).find(m => lc(m.name) === lc(name)) || {}).gapH;
+const latestM = (childId, k) => S.measurements.filter(m => !m.deleted && m.childId === childId && m[k] != null).sort((a, b) => b.t - a.t)[0] || null;
+function weightOf(c) { const m = c && latestM(c.id, 'weightKg'); return m ? { v: m.weightKg, t: m.t } : c?.weightKg ? { v: c.weightKg, t: null } : null; }
+const fluidMl = e => (e.type === 'feed' && e.kind !== BREAST) || e.type === 'drink' ? (+e.ml || 0) : 0;
+const isWet = e => e.type === 'diaper' && (e.kind === 'Wet' || e.kind === 'Both');
+const running = () => kidEntries().filter(e => e.end === null && (e.type === 'sleep' || e.type === 'feed'));
+function sleepIn(es, from, to) { // ms of sleep overlapping [from, to)
+  return es.filter(e => e.type === 'sleep' && e.end !== undefined).reduce((s, e) => { const a = Math.max(e.t, from), b = Math.min(e.end ?? Date.now(), to); return s + Math.max(0, b - a); }, 0);
+}
+
+/* ---------- Alerts (reminders, never advice) ---------- */
+function alerts(es, ep) {
+  const out = [], now = Date.now(), c = childOf(ep);
+  const temps = es.filter(e => e.type === 'temp'), fevers = temps.filter(e => e.tempC >= FEVER_C);
+  if (fevers.length) {
+    const first = Math.min(...fevers.map(e => e.t)), last = Math.max(...fevers.map(e => e.t));
+    if (last - first >= 3 * DAY) out.push(`Fever has come and gone for more than 3 days (since ${fmtDay(first)}).`);
+    const m = ageMonths(c); if (m != null && m < 3) out.push('Babies under 3 months with a temperature of 38°C (100.4°F) or more should be seen by a doctor promptly.');
+  }
+  if (temps.some(e => e.tempC >= 40 && now - e.t < DAY)) out.push(`Temperature reached ${showT(40)} or higher in the last 24 hours.`);
+  if (!ep.end && es.some(e => e.type === 'diaper')) { const w = es.find(isWet), lastWet = w ? w.t : ep.start; if (now - lastWet > 8 * H) out.push(`No wet diaper or pee logged for ${dur(now - lastWet)}. Check whether one was missed.`); }
+  if (es.filter(e => e.type === 'vomit' && now - e.t < 6 * H).length >= 3) out.push('Vomited 3 or more times in the last 6 hours.');
+  const worrying = ['Fast breathing', 'Very sleepy / floppy', 'Not drinking', 'Wheezing'];
+  const seen = new Set(es.filter(e => e.type === 'symptom' && now - e.t < DAY).flatMap(e => e.symptoms || []).filter(s => worrying.includes(s)));
+  if (seen.size) out.push(`You noted: ${lc([...seen].join(', '))} in the last 24 hours.`);
+  return out;
+}
+
+/* ---------- Theme ---------- */
+function applyTheme() {
+  const t = S.settings.theme || 'auto', h = new Date().getHours();
+  const night = t === 'night' || (t === 'auto' && (h >= 19 || h < 7));
+  document.documentElement.dataset.mode = night ? 'night' : 'day';
+}
+
+/* ---------- Rendering ---------- */
+let tab = 'today', sickTab = 'overview', aiParsed = null, narrative = '', showDays = 3;
+function render() {
+  applyTheme();
+  document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === (tab === 'sick' ? 'today' : tab))));
+  for (const v of ['today', 'sick', 'growth', 'more']) $('#view-' + v).hidden = v !== tab;
+  ({ today: renderToday, sick: renderSick, growth: renderGrowth, more: renderMore })[tab]();
+}
+const exampleBanner = () => S.example ? `<div class="banner"><p>This is example data so you can see how it works. Nothing here is real.</p><button class="btn primary sm" data-act="clear-example">Start with my child</button></div>` : '';
+function greeting() { const h = new Date().getHours(); return h < 5 ? 'Late night' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; }
+function header(title, sub) {
+  const c = kid();
+  return `<div class="head"><div><div class="hi">${sub}</div><h1>${title}</h1></div>
+    <div class="row" style="flex-direction:column;align-items:flex-end;gap:6px"><button class="avatar" data-act="pick-kid" aria-label="Switch child">${c ? esc((c.name.trim()[0] || '?').toUpperCase()) : '+'}</button>${syncLabel()}</div></div>`;
+}
+
+function renderToday() {
+  const el = $('#view-today'), c = kid();
+  if (!c) { el.innerHTML = header('Welcome', greeting()) + exampleBanner() + `<div class="card empty"><h2>Who are we looking after?</h2><p class="muted">Add your child to start logging feeds, sleep, diapers and more. If they get sick, sick mode keeps everything the doctor will ask about in one place.</p><button class="btn primary" data-kid="new">Add your child</button></div>`; return; }
+  const es = kidEntries(), now = Date.now(), t0 = startOfDay(now), ep = activeEp();
+  const lastFeed = es.find(e => e.type === 'feed' || e.type === 'drink');
+  const todayEs = es.filter(e => e.t >= t0);
+  const sleepMs = sleepIn(es, t0, now + 1), naps = todayEs.filter(e => e.type === 'sleep' && e.kind === 'Nap').length;
+  const diapers = todayEs.filter(e => e.type === 'diaper'), wet = diapers.filter(isWet).length;
+  const run = running();
+  let sick = '';
+  if (ep) {
+    const eps = epEntries(ep), lt = eps.find(e => e.type === 'temp'), al = alerts(eps, ep);
+    sick = `<button class="sick" data-act="open-sick"><span><b>Sick mode</b> · day ${dayNo(now, ep)}${ep.title ? ' · ' + esc(ep.title) : ''}<small>${lt ? `Last ${showT(lt.tempC)} at ${fmtTime(lt.t)}` : 'No temperature logged yet'}${al.length ? ` · ${al.length} reminder${al.length > 1 ? 's' : ''}` : ''}</small></span><span class="pill">Chart and summary</span></button>`;
+  }
+  const quick = ep ? QUICK_SICK : QUICK_DAY;
+  el.innerHTML = header(`${esc(c.name)}'s day`, `${greeting()} · ${new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}`) + exampleBanner() + sick + `
+    <div class="sum">
+      <div class="tile"><small>Last feed</small><strong class="num">${lastFeed ? (now - lastFeed.t < 60000 ? 'now' : dur(now - lastFeed.t)) : '–'}</strong><em>${lastFeed ? esc(plain(lastFeed)) : 'none yet'}</em></div>
+      <div class="tile"><small>Sleep today</small><strong class="num">${sleepMs ? dur(sleepMs) : '–'}</strong><em>${naps} nap${naps === 1 ? '' : 's'}</em></div>
+      <div class="tile"><small>Diapers</small><strong class="num">${diapers.length}</strong><em>${wet} wet</em></div>
+    </div>
+    ${run.map(r => `<div class="timer"><span>${r.type === 'sleep' ? (r.kind === 'Nap' ? 'Napping' : 'Sleeping') : 'Breastfeeding' + (r.side ? ' · ' + esc(lc(r.side)) : '')} since ${fmtTime(r.t)}<br><strong class="num" data-since="${r.t}">${clock(now - r.t)}</strong></span><button class="btn" data-stop="${r.id}">${r.type === 'sleep' ? 'Woke up' : 'Done'}</button></div>`).join('')}
+    <div class="quick">${quick.map(k => `<button class="qb" data-add="${k}">${icon(k)}${TYPES[k].label}</button>`).join('')}<button class="qb" data-act="say">${icon('say')}Say it</button></div>
+    ${ep ? '' : `<button class="linkish" data-act="new-episode">${esc(c.name)} is sick? Start sick mode</button>`}
+    <div>${timelineHtml(es, showDays)}</div>`;
+}
+function timelineHtml(es, days) {
+  if (!es.length) return `<p class="muted">Nothing logged yet. Tap a button above to add the first entry.</p>`;
+  const cut = startOfDay(Date.now()) - (days - 1) * DAY, shown = es.filter(e => e.t >= cut), map = new Map();
+  shown.forEach(e => { const k = startOfDay(e.t); if (!map.has(k)) map.set(k, []); map.get(k).push(e); });
+  const label = d => d === startOfDay(Date.now()) ? 'Today' : d === startOfDay(Date.now() - DAY) ? 'Yesterday' : fmtDay(d);
+  return [...map].map(([d, list]) => `<div class="day-h"><h3>${label(d)}</h3><span class="muted small">${list.length} ${list.length === 1 ? 'entry' : 'entries'}</span></div>
+    <ul class="tl">${list.map(entryRow).join('')}</ul>`).join('') + (es.length > shown.length ? `<button class="btn sm" data-act="more-days" style="margin-top:12px">Show earlier days</button>` : '');
+}
+const entryRow = e => `<li><button data-edit="${e.id}"><span class="time num">${fmtTime(e.t)}</span>${icon(e.type)}<span class="what">${describe(e)}${e.note ? `<span class="n">${esc(e.note)}</span>` : ''}${e.img ? `<img src="${e.img}" alt="${esc(e.note || 'Photo')}">` : ''}</span></button></li>`;
+function tickTimers() { document.querySelectorAll('[data-since]').forEach(n => n.textContent = clock(Date.now() - +n.dataset.since)); }
+
+/* ---------- Sick view ---------- */
+function renderSick() {
+  const el = $('#view-sick'), ep = viewEp();
+  if (!ep) { tab = 'today'; return render(); }
+  const c = childOf(ep), es = epEntries(ep);
+  el.innerHTML = `<div class="head"><div><button class="linkish" data-tab="today">‹ Back to today</button><h1>${esc(ep.title || 'Illness')}</h1><div class="hi">${c ? esc(c.name) + ' · ' : ''}day ${dayNo(ep.end || Date.now(), ep)} · since ${fmtDay(ep.start)}${ep.end ? ' · better ' + fmtDay(ep.end) : ''}</div></div>${syncLabel()}</div>
+    ${exampleBanner()}
+    <div class="seg" role="tablist">${[['overview', 'Overview'], ['chart', 'Chart'], ['doctor', 'For the doctor']].map(([k, l]) => `<button data-sick="${k}" class="${sickTab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+    <div id="sickBody"></div>`;
+  ({ overview: sickOverview, chart: sickChart, doctor: sickDoctor })[sickTab](ep, es, $('#sickBody'));
+}
+function sickOverview(ep, es, el) {
+  const now = Date.now(), lastT = es.find(e => e.type === 'temp');
+  const fl24 = es.filter(e => now - e.t < DAY).reduce((s, e) => s + fluidMl(e), 0);
+  const wets = es.filter(isWet), wet24 = wets.filter(e => now - e.t < DAY).length;
+  const lastByMed = {}; es.filter(e => e.type === 'med').forEach(e => { const k = lc(e.name); if (!lastByMed[k]) lastByMed[k] = e; });
+  const doses = Object.values(lastByMed).map(e => { const gap = medGap(e.name), next = gap ? e.t + gap * H : null;
+    return `<div class="dose-line"><span><b>${esc(e.name)}</b> <span class="muted small">${ago(e.t)} · ${fmtTime(e.t)}</span></span>${next ? (next <= now ? `<span class="pill ok">${gap} h gap passed</span>` : `<span class="pill wait">${gap} h gap at ${fmtTime(next)}</span>`) : ''}</div>`; }).join('');
+  const al = alerts(es, ep);
+  el.innerHTML = `<div class="view" style="padding:0">
+    ${al.length ? `<div class="alerts"><h3>Worth a call to your doctor</h3><ul>${al.map(a => `<li>${esc(a)}</li>`).join('')}</ul><p class="small muted" style="margin:8px 0 0">These are reminders, not a diagnosis. If you are worried, call your doctor or emergency services.</p></div>` : ''}
+    <div class="sum two">
+      <div class="tile ${lastT && lastT.tempC >= FEVER_C ? 'hot' : ''}"><small>Last temperature</small><strong class="num">${lastT ? showT(lastT.tempC) : '–'}</strong><em>${lastT ? ago(lastT.t) : 'none logged'}</em></div>
+      <div class="tile"><small>Fluids, 24 h</small><strong class="num">${fl24 ? fl24 + ' ml' : '–'}</strong><em>bottle, cup and drinks</em></div>
+      <div class="tile"><small>Wet diapers, 24 h</small><strong class="num">${wet24}</strong><em>${wets.length ? 'last ' + ago(wets[0].t) : 'none logged'}</em></div>
+      <div class="tile"><small>Illness day</small><strong class="num">${dayNo(ep.end || now, ep)}</strong><em>since ${fmtDay(ep.start)}</em></div>
+      ${doses ? `<div class="tile wide-tile"><small>Last doses</small>${doses}</div>` : ''}
+    </div>
+    ${ep.end ? '' : `<div class="quick">${['temp', 'med', 'symptom'].map(k => `<button class="qb" data-add="${k}">${icon(k)}${TYPES[k].label}</button>`).join('')}</div>`}
+    <div><h3 style="margin-bottom:4px">During this illness</h3><ul class="tl">${es.filter(e => ['temp', 'med', 'symptom', 'vomit', 'doctor', 'note', 'photo'].includes(e.type)).map(entryRow).join('') || '<p class="muted">Nothing logged yet.</p>'}</ul>
+      <p class="small muted">Feeds, sleep and diapers from these days are in the daily log and in the doctor summary.</p></div>
+    <div class="row">${ep.end ? `<button class="btn" data-act="reopen-episode">This illness isn't over</button>` : `<button class="btn primary" data-act="end-episode">${esc(childOf(ep)?.name || 'They')} is better: end sick mode</button>`}<button class="btn ghost" data-act="edit-episode">Rename or change start</button></div>
+  </div>`;
+}
+function sickChart(ep, es, el) {
+  es = es.slice().reverse();
+  const temps = es.filter(e => e.type === 'temp'), meds = es.filter(e => e.type === 'med');
+  const t0 = startOfDay(ep.start), t1 = Math.max(ep.end || Date.now(), ...es.map(e => e.t), t0 + DAY);
+  const W = Math.max(300, Math.min(600, ($('#view-sick').clientWidth || 600) - 20)), Hh = 300, L = 40, R = 12, T = 14, medRows = [...new Set(meds.map(m => m.name))].slice(0, 4), B = 40 + medRows.length * 16;
+  const tv = temps.map(e => cToUnit(e.tempC));
+  const lo = Math.floor(Math.min(cToUnit(36), ...tv)), hi = Math.ceil(Math.max(cToUnit(40), ...tv));
+  const x = t => L + (t - t0) / (t1 - t0) * (W - L - R), y = v => T + (hi - v) / (hi - lo) * (Hh - T - B);
+  const step = S.settings.unit === 'F' ? 2 : 1; let g = '';
+  for (let v = lo; v <= hi; v += step) g += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end" font-size="11" fill="var(--muted)">${v}°</text>`;
+  for (let d = t0; d <= t1; d += DAY) g += `<line x1="${x(d)}" x2="${x(d)}" y1="${T}" y2="${Hh - B}" stroke="var(--line)" stroke-dasharray="3 3"/>` + (x(d) + 4 < W - 40 ? `<text x="${x(d) + 4}" y="${Hh - B + 14}" font-size="11" fill="var(--muted)">Day ${dayNo(d, ep)}</text>` : '');
+  const fy = y(cToUnit(FEVER_C));
+  g += `<line x1="${L}" x2="${W - R}" y1="${fy}" y2="${fy}" stroke="var(--line-temp)" stroke-dasharray="6 4" stroke-width="1.2" opacity=".8"/><text x="${L + 4}" y="${fy + 14}" font-size="11" fill="var(--line-temp)">fever ${showT(FEVER_C)}</text>`;
+  if (temps.length > 1) g += `<polyline fill="none" stroke="var(--line-temp)" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" points="${temps.map(e => x(e.t) + ',' + y(cToUnit(e.tempC))).join(' ')}"/>`;
+  g += temps.map(e => `<circle cx="${x(e.t)}" cy="${y(cToUnit(e.tempC))}" r="4.5" fill="${e.tempC >= FEVER_C ? 'var(--line-temp)' : 'var(--card)'}" stroke="var(--line-temp)" stroke-width="2"><title>${showT(e.tempC)} · ${fmtDT(e.t)}</title></circle>`).join('');
+  const mc = ['var(--mark-1)', 'var(--mark-2)', 'var(--mark-3)', 'var(--mark-4)'];
+  medRows.forEach((name, i) => { const ry = Hh - B + 28 + i * 16; g += meds.filter(m => m.name === name).map(m => `<path d="M${x(m.t)} ${ry - 6} l5 9 h-10 z" fill="${mc[i]}"><title>${esc(name)} ${m.amount ?? ''} ${m.unit ?? ''} · ${fmtDT(m.t)}</title></path>`).join(''); });
+  el.innerHTML = `<div class="view" style="padding:0"><p class="muted small" style="margin:0">${temps.length} temperature readings. Triangles show each dose.</p>
+    <div class="card" style="padding:10px"><svg viewBox="0 0 ${W} ${Hh}" role="img" aria-label="Temperature chart" style="display:block;width:100%;height:auto">${g}</svg></div>
+    <div class="legend"><span style="--c:var(--line-temp)"><i></i>Temperature</span>${medRows.map((n, i) => `<span style="--c:${mc[i]}"><i></i>${esc(n)}</span>`).join('')}</div></div>`;
+}
+function dailyRows(es, ep) {
+  const days = new Map(); es.slice().reverse().forEach(e => { const k = startOfDay(e.t); if (!days.has(k)) days.set(k, []); days.get(k).push(e); });
+  const seen = new Set();
+  return [...days].map(([d, list]) => {
+    const temps = list.filter(e => e.type === 'temp').map(e => e.tempC), meds = {};
+    list.filter(e => e.type === 'med').forEach(e => meds[e.name] = (meds[e.name] || 0) + 1);
+    const newSym = list.filter(e => e.type === 'symptom').flatMap(e => e.symptoms || []).filter(s => !seen.has(s) && seen.add(s));
+    const ate = list.filter(e => e.type === 'solids' || e.type === 'food').map(e => lc(e.amount)).filter(Boolean);
+    return { d, max: temps.length ? Math.max(...temps) : null, n: temps.length, meds: Object.entries(meds).map(([k, v]) => `${k} ×${v}`).join(', '),
+      ml: list.reduce((s, e) => s + fluidMl(e), 0), wet: list.filter(isWet).length,
+      stools: list.filter(e => e.type === 'diaper' && (e.kind === 'Poop' || e.kind === 'Both')).map(e => lc(e.stool) || 'stool').join(', '),
+      vomit: list.filter(e => e.type === 'vomit').length, ate: ate.join(', '), sleep: sleepIn(list, d, d + DAY), newSym: [...new Set(newSym)].join(', ') };
+  });
+}
+function summaryFacts(es, ep) {
+  const c = childOf(ep), temps = es.filter(e => e.type === 'temp'), fevers = temps.filter(e => e.tempC >= FEVER_C), f = [], wt = weightOf(c);
+  if (c) f.push(`${c.name}${c.dob ? ', ' + ageText(c) : ''}${wt ? `, ${wt.v} kg${wt.t ? ' (weighed ' + fmtDay(wt.t) + ')' : ''}` : ''}.`);
+  f.push(`Illness started ${fmtDT(ep.start)}; ${ep.end ? 'better ' + fmtDay(ep.end) : 'today is day ' + dayNo(Date.now(), ep)}.`);
+  if (fevers.length) { const mx = fevers.reduce((a, b) => (b.tempC > a.tempC ? b : a)); f.push(`Fever first recorded ${fmtDT(Math.min(...fevers.map(e => e.t)))}. Highest ${showT(mx.tempC)} on ${fmtDT(mx.t)}. Last fever reading ${ago(fevers[0].t)}.`); }
+  else if (temps.length) f.push(`No temperature at or above ${showT(FEVER_C)} recorded (${temps.length} readings).`);
+  if (temps.length) f.push(`Latest temperature ${showT(temps[0].tempC)} at ${fmtDT(temps[0].t)}${temps[0].method ? ' (' + lc(temps[0].method) + ')' : ''}.`);
+  const byName = {}; es.filter(e => e.type === 'med').forEach(m => (byName[m.name] = byName[m.name] || []).push(m));
+  for (const [n, list] of Object.entries(byName)) f.push(`${n}: ${list.length} doses, last ${list[0].amount ?? ''} ${list[0].unit ?? ''} at ${fmtDT(list[0].t)}.`.replace(/\s+/g, ' '));
+  const docs = es.filter(e => e.type === 'doctor');
+  if (docs.length) f.push(`Seen or called a doctor ${docs.length} time${docs.length > 1 ? 's' : ''}, last ${fmtDT(docs[0].t)}. See the doctor's notes below.`);
+  return f;
+}
+function summaryText(es, ep) {
+  const docs = es.filter(e => e.type === 'doctor').reverse();
+  return ['ILLNESS SUMMARY', ...summaryFacts(es, ep).map(s => '• ' + s), ...(docs.length ? ['', 'WHAT DOCTORS SAID', ...docs.map(d => `${fmtDT(d.t)}: ${docText(d).replace(/\n/g, '. ')}`)] : []), '', 'BY DAY',
+    ...dailyRows(es, ep).map(r => `Day ${dayNo(r.d, ep)} (${fmtDay(r.d)}): max temp ${r.max != null ? showT(r.max) : '–'}; meds ${r.meds || 'none'}; fluids ${r.ml || 0} ml; ate ${r.ate || '–'}; sleep ${r.sleep ? dur(r.sleep) : '–'}; wet ${r.wet}; stools ${r.stools || 'none'}; vomited ${r.vomit}×${r.newSym ? '; new: ' + r.newSym : ''}`)].join('\n');
+}
+function sickDoctor(ep, es, el) {
+  const rows = dailyRows(es, ep), photos = es.filter(e => e.type === 'photo' && e.img), docs = es.filter(e => e.type === 'doctor').reverse();
+  el.innerHTML = `<div class="view" style="padding:0">
+    <p class="muted small" style="margin:0">Show this screen, or copy it into a message.</p>
+    <div class="card"><ul class="facts">${summaryFacts(es, ep).map(f => `<li>${esc(f)}</li>`).join('')}</ul></div>
+    <div class="card doc-said"><div class="row between"><h3>What doctors said</h3><button class="btn sm" data-add="doctor">Add notes</button></div>
+      ${docs.length ? docs.map(d => `<div class="item"><b>${fmtDT(d.t)}</b> <span class="muted small">day ${dayNo(d.t, ep)}</span> <button class="btn ghost sm" data-edit="${d.id}">Edit</button><div class="narrative" style="margin-top:4px">${esc(docText(d))}</div></div>`).join('') : '<p class="muted small" style="margin:8px 0 0">After a visit or call, write down what the doctor said so you can check it later and tell the next doctor.</p>'}</div>
+    <div class="tbl-wrap"><table><thead><tr><th>Day</th><th class="r">Max temp</th><th>Medicines</th><th class="r">Fluids</th><th>Ate</th><th class="r">Sleep</th><th class="r">Wet</th><th>Stools</th><th class="r">Vomit</th><th>New symptoms</th></tr></thead><tbody>
+      ${rows.map(r => `<tr><td><b>Day ${dayNo(r.d, ep)}</b><br><span class="muted small">${fmtDay(r.d)}</span></td><td class="r num ${r.max >= FEVER_C ? 'hot' : ''}">${r.max != null ? showT(r.max) : '–'}<br><span class="muted small">${r.n} readings</span></td><td>${esc(r.meds || '–')}</td><td class="r num">${r.ml ? r.ml + ' ml' : '–'}</td><td>${esc(r.ate || '–')}</td><td class="r num">${r.sleep ? dur(r.sleep) : '–'}</td><td class="r num">${r.wet}</td><td>${esc(r.stools || '–')}</td><td class="r num">${r.vomit}</td><td>${esc(r.newSym || '–')}</td></tr>`).join('')}
+    </tbody></table></div>
+    ${photos.length ? `<div class="card"><h3>Photos</h3><div class="row" style="margin-top:8px">${photos.map(p => `<figure style="margin:0;max-width:140px"><img src="${p.img}" alt="" style="border-radius:10px;max-width:100%"><figcaption class="small muted">${fmtDT(p.t)}${p.note ? ' · ' + esc(p.note) : ''}</figcaption></figure>`).join('')}</div></div>` : ''}
+    <div class="row"><button class="btn primary" data-act="copy-summary">Copy summary</button><button class="btn" data-act="ai-summary">Write a handover with AI</button></div>
+    ${narrative ? `<div class="card"><h3>AI handover</h3><div class="narrative" style="margin-top:8px">${esc(narrative)}</div><p class="disclaimer" style="margin:10px 0 0">Written by AI from your log. Check it against the table above.</p></div>` : ''}
+    <p class="disclaimer">This log helps you remember and report what happened. It does not give medical advice. Call your doctor or emergency services if you are worried, especially with trouble breathing, a stiff neck, a rash that doesn't fade when pressed, unusual sleepiness, or signs of dehydration.</p></div>`;
+}
+
+/* ---------- Growth ---------- */
+const MEAS = [['weightKg', 'Weight', 'kg', 0.01], ['heightCm', 'Height', 'cm', 0.1], ['headCm', 'Head', 'cm', 0.1]];
+function lineChart(pts, unit) {
+  const W = Math.max(300, Math.min(600, ($('#view-growth').clientWidth || 600) - 32)), Hh = 170, L = 44, R = 14, T = 12, B = 26;
+  const xs = pts.map(p => p.t), ys = pts.map(p => p.v), t0 = Math.min(...xs), t1 = Math.max(...xs, t0 + DAY), span = Math.max(...ys) - Math.min(...ys) || 1;
+  const lo = Math.min(...ys) - span * 0.15, hi = Math.max(...ys) + span * 0.15;
+  const x = t => L + (t - t0) / (t1 - t0) * (W - L - R), y = v => T + (hi - v) / (hi - lo) * (Hh - T - B);
+  let g = '';
+  for (let i = 0; i <= 3; i++) { const v = lo + (hi - lo) * i / 3; g += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end" font-size="11" fill="var(--muted)">${v.toFixed(1)}</text>`; }
+  g += `<text x="${L}" y="${Hh - 6}" font-size="11" fill="var(--muted)">${fmtDay(t0)}</text><text x="${W - R}" y="${Hh - 6}" text-anchor="end" font-size="11" fill="var(--muted)">${fmtDay(t1)}</text>`;
+  g += `<polyline fill="none" stroke="var(--growth)" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" points="${pts.map(p => x(p.t) + ',' + y(p.v)).join(' ')}"/>`;
+  g += pts.map((p, i) => `<circle cx="${x(p.t)}" cy="${y(p.v)}" r="${i === pts.length - 1 ? 5 : 3.5}" fill="var(--growth)"><title>${p.v} ${unit} · ${fmtDay(p.t)}</title></circle>`).join('');
+  return `<svg viewBox="0 0 ${W} ${Hh}" role="img" aria-label="Chart in ${unit}" style="display:block;width:100%;height:auto">${g}</svg>`;
+}
+function renderGrowth() {
+  const el = $('#view-growth'), c = kid();
+  if (!c) { el.innerHTML = header('Growth', 'Weight, height and head size') + `<div class="card empty"><p class="muted">Add your child to start tracking growth.</p><button class="btn primary" data-kid="new">Add your child</button></div>`; return; }
+  const ms = S.measurements.filter(m => !m.deleted && m.childId === c.id).sort((a, b) => b.t - a.t);
+  const stats = MEAS.map(([k, l, u]) => { const list = ms.filter(m => m[k] != null), m = list[0], prev = list[1];
+    if (!m) return `<div class="tile"><small>${l}</small><strong>–</strong><em>not measured</em></div>`;
+    const d = prev ? m[k] - prev[k] : null;
+    return `<div class="tile"><small>${l}</small><strong class="num">${m[k]} ${u}</strong><em>${fmtDay(m.t)}${d != null ? ` · ${d >= 0 ? '+' : '−'}${+Math.abs(d).toFixed(u === 'kg' ? 2 : 1)}` : ''}</em></div>`; }).join('');
+  const charts = MEAS.slice(0, 2).map(([k, l, u]) => { const pts = ms.filter(m => m[k] != null).map(m => ({ t: m.t, v: m[k] })).reverse(); return pts.length > 1 ? `<div class="card"><h3>${l} (${u})</h3>${lineChart(pts, u)}</div>` : ''; }).join('');
+  el.innerHTML = header('Growth', `${esc(c.name)}${c.dob ? ' · ' + ageText(c) : ''}`) + exampleBanner() + `
+    <div><button class="btn primary" data-act="add-meas">Add measurement</button></div>
+    <div class="grow-stats">${stats}</div>${charts}
+    ${ms.length ? `<div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Age</th><th class="r">Weight</th><th class="r">Height</th><th class="r">Head</th><th>Note</th></tr></thead><tbody>
+      ${ms.map(m => `<tr data-meas="${m.id}" style="cursor:pointer"><td>${fmtDay(m.t)}</td><td>${c.dob ? ageText(c, m.t) : '–'}</td>${MEAS.map(([k, , u]) => `<td class="r num">${m[k] != null ? m[k] + ' ' + u : '–'}</td>`).join('')}<td>${esc(m.note || '')}</td></tr>`).join('')}
+    </tbody></table></div><p class="small muted" style="margin:0">Tap a row to edit it. The latest weight goes into the doctor summary.</p>` : '<p class="muted">No measurements yet. Add one from a checkup or your home scale.</p>'}`;
+}
+function measSheet(id) {
+  const c = kid(), m = id ? S.measurements.find(x => x.id === id) : {};
+  openSheet(`<div class="hd"><h2>${id ? 'Edit' : 'Add'} measurement</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+    <label class="field"><span>Date</span><input id="m_date" type="date" value="${toLocalInput(m.t || Date.now()).slice(0, 10)}"></label>
+    ${MEAS.map(([k, l, u, st]) => `<label class="field"><span>${l} (${u})</span><input id="m_${k}" type="number" inputmode="decimal" step="${st}" value="${esc(m[k] ?? '')}"></label>`).join('')}
+    <label class="field"><span>Note (optional)</span><input id="m_note" value="${esc(m.note || '')}" placeholder="e.g. 12-month checkup, clothes on"></label>
+    <div class="sheet-actions">${id ? '<button class="btn ghost danger" data-act="del-meas">Delete</button>' : '<span></span>'}<button class="btn primary" data-act="save-meas">Save</button></div>`, { meas: id || null, childId: c.id });
+}
+
+/* ---------- More ---------- */
+function renderMore() {
+  const st = S.settings, d = S.drive || {}, eps = live(S.episodes).sort((a, b) => b.start - a.start);
+  $('#view-more').innerHTML = header('More', 'Children, illnesses and settings') + `
+    <div class="card set"><h2>Children</h2>
+      ${kids().map(c => `<div class="list-row"><span><b>${esc(c.name)}</b> <span class="muted small">${c.dob ? ageText(c) : 'no birth date'}${weightOf(c) ? ' · ' + weightOf(c).v + ' kg' : ''}</span></span><button class="btn sm" data-kid="${c.id}">Edit</button></div>`).join('') || '<p class="muted" style="margin:0">No children added yet.</p>'}
+      <div><button class="btn sm" data-kid="new">Add a child</button></div></div>
+    <div class="card set"><h2>Illnesses</h2>
+      ${eps.map(e => `<div class="list-row"><span><b>${esc(e.title || 'Illness')}</b> <span class="muted small">${esc(childOf(e)?.name || '')} · ${fmtDay(e.start)}${e.end ? ' – ' + fmtDay(e.end) : ' · ongoing'}</span></span><button class="btn sm" data-ep="${e.id}">Open</button></div>`).join('') || '<p class="muted small" style="margin:0">Past illnesses show up here, with their chart and doctor summary.</p>'}</div>
+    <div class="card set"><h2>Look</h2>
+      <div class="chips">${[['auto', 'Dim at night (7 pm – 7 am)'], ['night', 'Always dim'], ['day', 'Always light']].map(([k, l]) => `<button data-theme-set="${k}" class="${(st.theme || 'auto') === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <div class="chips">${['C', 'F'].map(u => `<button data-unit="${u}" class="${st.unit === u ? 'on' : ''}">°${u}</button>`).join('')}</div></div>
+    <div class="card set"><h2>Medicines</h2>
+      <p class="small muted" style="margin:0">Minimum hours between doses, as on the package or from your doctor. The app only shows when that gap has passed. It never suggests a dose.</p>
+      ${live(S.meds).map(m => `<div class="list-row medrow"><span>${esc(m.name)}</span><span class="row"><input type="number" min="0" step="0.5" value="${m.gapH ?? ''}" data-gap="${m.id}" aria-label="Hours between doses for ${esc(m.name)}"> h <button class="btn ghost danger" data-delmed="${m.id}" aria-label="Remove">✕</button></span></div>`).join('')}
+      <div class="row"><input id="newMed" placeholder="Add a medicine" style="flex:1"><button class="btn sm" data-act="add-med">Add</button></div></div>
+    <div class="card set"><h2>Google Drive backup and sync</h2>
+      <p class="small muted" style="margin:0">Your log is saved as <span class="num">${DRIVE_FILE}</span> in an “${DRIVE_FOLDER}” folder in your own Drive. The app can only see files it created. There is no other server.</p>
+      <label class="field"><span>Google OAuth client ID (one-time setup, see README)</span><input id="clientId" value="${esc(st.clientId)}" placeholder="1234-abc.apps.googleusercontent.com" autocomplete="off"></label>
+      <div class="row"><button class="btn primary sm" data-act="drive-sync">${d.fileId ? 'Sync now' : 'Connect Google Drive'}</button>${d.fileId ? '<button class="btn ghost sm" data-act="drive-forget">Disconnect</button>' : ''}</div>
+      <p class="small muted" style="margin:0">${d.lastSync ? 'Last synced ' + ago(d.lastSync) : 'Not connected yet.'}${d.error ? ' Last error: ' + esc(d.error) : ''}</p></div>
+    <div class="card set"><h2>AI helper</h2>
+      <p class="small muted" style="margin:0" id="aiStatus">Checking…</p>
+      <label class="field"><span>Your Anthropic API key (stored only on this device)</span><input id="apiKey" type="password" value="${esc(st.apiKey)}" placeholder="sk-ant-…" autocomplete="off"></label>
+      <p class="small muted" style="margin:0">When you use an AI button, the text of your log is sent to Anthropic to be processed. Photos are never sent.</p></div>
+    <div class="card set"><h2>Your data</h2>
+      <div class="row"><button class="btn sm" data-act="export">Copy all data</button><button class="btn sm" data-act="import">Restore from copied data</button></div>
+      <textarea id="importBox" hidden placeholder="Paste data copied from Aura" style="min-height:90px"></textarea>
+      <div><button class="btn ghost danger sm" data-act="wipe">Delete everything on this device</button></div><div id="wipeConfirm"></div></div>`;
+  aiProvider().then(p => { const el = $('#aiStatus'); if (el) el.textContent = p === 'sample' ? 'AI is ready here using your Claude account. No key needed in this preview.' : p === 'key' ? `AI is ready using your API key (${MODEL}).` : 'AI is off. Add an API key to turn it on. Everything else works without it.'; });
+}
+
+/* ---------- Sheets ---------- */
+let sheetCtx = null;
+function openSheet(html, ctx) { sheetCtx = ctx || null; $('#sheet').innerHTML = html; $('#scrim').hidden = false; $('#sheet').scrollTop = 0; const f = $('#sheet').querySelector('[autofocus]'); if (f) setTimeout(() => f.focus(), 30); }
+function closeSheet() { $('#scrim').hidden = true; $('#sheet').innerHTML = ''; sheetCtx = null; }
+const chipsHtml = (f, val) => {
+  const vals = f.multi ? (val || []) : [val ?? ''], custom = f.custom && val != null && val !== '' && !f.opts.includes(String(val)) ? val : '';
+  return `<div class="chips" data-k="${f.k}" ${f.multi ? 'data-multi' : ''} ${f.numeric ? 'data-numeric' : ''}>${f.opts.map(o => `<button type="button" data-v="${esc(o)}" class="${vals.map(String).includes(o) ? 'on' : ''}">${esc(o)}</button>`).join('')}${f.custom ? `<input type="number" inputmode="decimal" data-custom placeholder="other" value="${esc(custom)}" aria-label="Other amount">` : ''}</div>`;
+};
+function entryForm(type, e) {
+  const T = TYPES[type], ent = e || {}, last = kidEntries().find(x => x.type === type);
+  const init = { ...ent };
+  if (!e && type === 'feed') { init.kind = last?.kind || BOTTLE; if (init.kind === BOTTLE) init.what = last?.what; }
+  if (!e && type === 'sleep') init.kind = new Date().getHours() >= 18 || new Date().getHours() < 6 ? 'Night sleep' : 'Nap';
+  if (!e && type === 'temp') init.method = last?.method;
+  if (!e && type === 'diaper') init.kind = 'Wet';
+  const parts = T.fields.map(f => {
+    const show = f.show ? `data-show="${esc(f.show.join('|'))}" ${f.show.includes(init.kind) ? '' : 'hidden'}` : '';
+    if (f.kind === 'temp') { const v = ent.tempC ?? last?.tempC ?? 38; return `<div class="temp-in"><button type="button" data-step="-0.1" aria-label="Lower">−</button><input id="f_temp" class="num" type="number" inputmode="decimal" step="0.1" value="${cToUnit(v).toFixed(1)}" aria-label="Temperature in °${S.settings.unit}"><button type="button" data-step="0.1" aria-label="Higher">+</button></div><div class="small muted" style="text-align:center">°${S.settings.unit}</div>`; }
+    if (f.kind === 'chips') return `<div class="field" ${show}><span>${f.label}</span>${chipsHtml(f, init[f.k])}</div>`;
+    if (f.kind === 'num') return `<label class="field" ${show}><span>${f.label}</span><input id="f_${f.k}" type="number" inputmode="decimal" step="${f.step || 1}" value="${esc(ent[f.k] ?? '')}"></label>`;
+    if (f.kind === 'text') return `<label class="field"><span>${f.label}</span><input id="f_${f.k}" value="${esc(ent[f.k] || '')}" ${!e ? 'autofocus' : ''}></label>`;
+    if (f.kind === 'end') return `<label class="field"><span>${f.label}</span><input id="f_end" type="datetime-local" value="${ent.end ? toLocalInput(ent.end) : ''}"></label>`;
+    if (f.kind === 'medname') { const names = [...new Set([...live(S.meds).map(m => m.name), ...live(S.entries).filter(x => x.type === 'med').map(x => x.name)])]; return `<div class="field"><span>Which medicine</span><div class="chips" data-k="name">${names.map(n => `<button type="button" data-v="${esc(n)}" class="${ent.name === n ? 'on' : ''}">${esc(n)}</button>`).join('')}</div><input id="f_medother" placeholder="Or type another name" value="${ent.name && !names.includes(ent.name) ? esc(ent.name) : ''}" style="margin-top:6px"></div>`; }
+    if (f.kind === 'photo') return `<label class="field"><span>Photo</span><input id="f_photo" type="file" accept="image/*" capture="environment"></label>${ent.img ? `<img src="${ent.img}" alt="" style="max-width:180px;border-radius:10px">` : ''}`;
+    return '';
+  }).join('');
+  const timerBtn = !e && (type === 'sleep' || type === 'feed') ? `<button class="btn primary" data-act="start-timer" ${type === 'feed' ? `data-show="${BREAST}" ${init.kind === BREAST ? '' : 'hidden'}` : ''}>${type === 'sleep' ? 'Asleep now: start timer' : 'Start breastfeeding timer'}</button>` : '';
+  const isDoc = type === 'doctor';
+  openSheet(`<div class="hd"><h2>${isDoc ? (e ? "Edit doctor's notes" : 'What did the doctor say?') : (e ? 'Edit ' : 'Log ') + lc(T.long || T.label)}</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+    ${parts}${timerBtn}
+    <label class="field"><span>${isDoc ? 'Notes' : 'Note (optional)'}</span><textarea id="f_note" style="min-height:${isDoc ? 200 : 64}px" placeholder="${type === 'note' ? 'What happened?' : isDoc ? 'Write it however you like: who you saw, what they think it is, what to do, medicine, when to come back…' : 'Anything else worth remembering'}" ${type === 'note' || isDoc ? 'autofocus' : ''}>${esc(isDoc && ent.id ? docText(ent) : ent.note || '')}</textarea></label>
+    <div class="field"><span>${T.whenLabel || 'When'}</span><div class="chips" id="whenChips">${[['Now', 0], ['15 min ago', 15], ['30 min ago', 30], ['1 h ago', 60], ['2 h ago', 120]].map(([l, m]) => `<button type="button" data-ago="${m}" class="${!e && m === 0 ? 'on' : ''}">${l}</button>`).join('')}</div><input id="f_when" type="datetime-local" value="${toLocalInput(ent.t || Date.now())}" style="margin-top:6px"></div>
+    <div class="sheet-actions">${e ? '<button class="btn ghost danger" data-act="delete-entry">Delete</button>' : '<span></span>'}<button class="btn primary" data-act="save-entry">Save</button></div>`, { type, id: e?.id });
+}
+function readChips(k) {
+  const box = $('#sheet').querySelector(`.chips[data-k="${k}"]`); if (!box) return undefined;
+  const on = [...box.querySelectorAll('button.on')].map(b => b.dataset.v);
+  if (box.hasAttribute('data-multi')) return on;
+  const custom = box.querySelector('[data-custom]'), v = custom && custom.value ? custom.value : (on[0] || '');
+  if (box.hasAttribute('data-numeric')) return v === '' ? null : +v;
+  return v;
+}
+async function collect(type, e) {
+  const T = TYPES[type], draft = {};
+  for (const f of T.fields) {
+    const hiddenField = f.show && !f.show.includes(readChips('kind'));
+    if (f.kind === 'temp') { const v = parseFloat($('#f_temp').value); if (isNaN(v)) throw 'Enter a temperature.'; draft.tempC = Math.round(tUnitToC(v) * 10) / 10; if (draft.tempC < 33 || draft.tempC > 44) throw 'That temperature looks off. Check the number and unit.'; }
+    else if (hiddenField) draft[f.k] = f.kind === 'num' || f.numeric ? null : '';
+    else if (f.kind === 'chips') draft[f.k] = readChips(f.k);
+    else if (f.kind === 'text') draft[f.k] = $('#f_' + f.k).value.trim();
+    else if (f.kind === 'num') { const v = $('#f_' + f.k).value; draft[f.k] = v === '' ? null : +v; }
+    else if (f.kind === 'end') { const v = $('#f_end').value; draft.end = v ? new Date(v).getTime() : (e && e.end === null ? null : undefined); }
+    else if (f.kind === 'medname') { draft.name = $('#f_medother').value.trim() || readChips('name'); if (!draft.name) throw 'Pick or type the medicine name.'; }
+    else if (f.kind === 'photo') { const file = $('#f_photo').files[0]; if (file) draft.img = await shrink(file); else if (!e?.img) throw 'Choose or take a photo.'; }
+  }
+  draft.note = $('#f_note').value.trim();
+  if (type === 'note' && !draft.note) throw 'Write a note first.';
+  if (type === 'doctor') { if (!draft.note) throw 'Write down what the doctor said first.'; for (const [k] of DOC_FIELDS) draft[k] = ''; draft.who = ''; draft.how = ''; }
+  if (type === 'solids' && !draft.food && !draft.amount) throw 'Write what they ate.';
+  const w = $('#f_when').value, now = Date.now(); draft.t = !w || w === toLocalInput(now) ? (e && toLocalInput(e.t) === w ? e.t : now) : new Date(w).getTime();
+  if (draft.t > Date.now() + 5 * 60e3) throw "That time is in the future.";
+  if (draft.end != null && draft.end <= draft.t) throw 'Wake-up time must be after the time they fell asleep.';
+  return draft;
+}
+async function saveEntry(timer) {
+  const { type, id } = sheetCtx;
+  let draft; try { draft = await collect(type, id && S.entries.find(x => x.id === id)); } catch (m) { return toast(typeof m === 'string' ? m : 'Could not save that.'); }
+  const e = id ? S.entries.find(x => x.id === id) : { id: uid(), child: kid().id, type };
+  Object.assign(e, draft);
+  if (draft.end === undefined) delete e.end;
+  if (timer) { e.end = null; if (type === 'feed') { e.kind = BREAST; e.minutes = null; } }
+  touch(e); if (!id) S.entries.push(e);
+  closeSheet(); commit(); toast(timer ? 'Timer started' : `${TYPES[type].long || TYPES[type].label} saved`);
+}
+function stopTimer(id) {
+  const e = S.entries.find(x => x.id === id); if (!e) return;
+  e.end = Date.now(); if (e.type === 'feed') e.minutes = Math.max(1, Math.round((e.end - e.t) / 60000)); touch(e); commit();
+  toast(e.type === 'sleep' ? `Slept ${dur(e.end - e.t)}` : `Fed for ${e.minutes} min`);
+}
+function shrink(file, max = 720) {
+  return new Promise((res, rej) => { const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => { const k = Math.min(1, max / Math.max(img.width, img.height)), c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url); res(c.toDataURL('image/jpeg', 0.7)); };
+    img.onerror = () => rej(new Error('Could not read that image')); img.src = url; });
+}
+function kidPicker() {
+  openSheet(`<div class="hd"><h2>Who are you logging for?</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+    ${kids().map(c => `<button class="pick ${c.id === kid()?.id ? 'on' : ''}" data-pickkid="${c.id}"><b>${esc(c.name)}</b><br><span class="small muted">${c.dob ? ageText(c) : ''}${activeEp(c.id) ? ' · sick mode on' : ''}</span></button>`).join('')}
+    <div class="sheet-actions"><span></span><button class="btn" data-kid="new">Add a child</button></div>`);
+}
+function kidSheet(id) {
+  const c = id === 'new' ? {} : S.children.find(k => k.id === id);
+  openSheet(`<div class="hd"><h2>${id === 'new' ? 'Add a child' : 'Edit ' + esc(c.name)}</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+    <label class="field"><span>Name</span><input id="k_name" value="${esc(c.name || '')}" autofocus></label>
+    <label class="field"><span>Birth date (for age and baby reminders)</span><input id="k_dob" type="date" value="${esc(c.dob || '')}"></label>
+    <p class="small muted" style="margin:0">Weight and height are tracked over time in the Growth tab.</p>
+    <div class="sheet-actions">${id !== 'new' ? '<button class="btn ghost danger" data-act="del-kid">Remove</button>' : '<span></span>'}<button class="btn primary" data-act="save-kid">Save</button></div>`, { kid: id });
+}
+function episodeSheet(ep) {
+  openSheet(`<div class="hd"><h2>${ep ? 'Edit illness' : `Start sick mode for ${esc(kid().name)}`}</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+    ${ep ? '' : '<p class="muted small" style="margin:0">Temperature, medicine and symptoms move to the top, and everything you log from now on also goes into the doctor summary.</p>'}
+    <label class="field"><span>Short name (optional)</span><input id="f_title" value="${esc(ep?.title || '')}" placeholder="e.g. Fever and cough"></label>
+    <label class="field"><span>When did it start?</span><input id="f_start" type="datetime-local" value="${toLocalInput(ep?.start || Date.now())}"></label>
+    <div class="sheet-actions">${ep ? '<button class="btn ghost danger" data-act="del-episode">Delete illness</button>' : '<span></span>'}<button class="btn primary" data-act="save-episode">${ep ? 'Save' : 'Start sick mode'}</button></div>`, { ep: ep?.id || null });
+}
+
+/* ---------- AI ---------- */
+let samplePromise = null;
+function getSample() { if (!samplePromise) samplePromise = (window.claude?.use ? window.claude.use('sample').catch(() => null) : Promise.resolve(null)); return samplePromise; }
+async function aiProvider() { if (S.settings.apiKey) return 'key'; return (await getSample()) ? 'sample' : null; }
+let sdkClient = null, sdkKey = null;
+async function apiCall(system, user, schema) {
+  if (!sdkClient || sdkKey !== S.settings.apiKey) { const { default: Anthropic } = await import(SDK_URL); sdkClient = new Anthropic({ apiKey: S.settings.apiKey, dangerouslyAllowBrowser: true }); sdkKey = S.settings.apiKey; }
+  const output_config = { effort: 'low' }; if (schema) output_config.format = { type: 'json_schema', schema };
+  const msg = await sdkClient.beta.messages.create({ model: MODEL, max_tokens: 16000, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default', output_config, system, messages: [{ role: 'user', content: user }] });
+  if (msg.stop_reason === 'refusal') throw new Error('The AI declined this request.');
+  const text = msg.content.filter(b => b.type === 'text').map(b => b.text).join('');
+  return schema ? JSON.parse(text) : text;
+}
+async function ai(system, user, schema) {
+  const p = await aiProvider(); if (!p) throw new Error('AI is off. Add an API key under More to use it.');
+  if (p === 'key') return apiCall(system, user, schema);
+  const sample = await getSample(), prompt = `${system}\n\n${user}`;
+  if (schema) return sample.json(prompt + `\n\nReply with only JSON matching this JSON Schema:\n${JSON.stringify(schema)}`, { modelTier: 'quick', cache: false });
+  return (await sample(prompt, { cache: false })).text;
+}
+const nul = t => ({ type: [t, 'null'] });
+const P_FIELDS = ['tempC', 'name', 'amount', 'unit', 'what', 'ml', 'side', 'minutes', 'kind', 'endTime', 'stool', 'size', 'food', 'severity', 'quality', 'note'];
+const PARSE_SCHEMA = { type: 'object', additionalProperties: false, required: ['entries'], properties: { entries: { type: 'array', items: { type: 'object', additionalProperties: false,
+  required: ['type', 'time', 'symptoms', ...P_FIELDS],
+  properties: { type: { type: 'string', enum: QUICK_SICK.filter(k => k !== 'photo') }, time: { type: 'string' }, symptoms: { type: 'array', items: { type: 'string' } },
+    ...Object.fromEntries(P_FIELDS.map(k => [k, nul(['tempC', 'amount', 'ml', 'minutes'].includes(k) ? 'number' : 'string')])) } } } } };
+function saySheet() {
+  openSheet(`<div class="hd"><h2>Say it in your own words</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+    <textarea id="aiText" style="min-height:110px" autofocus placeholder="e.g. 150 ml milk at 6, napped 1 to 2:30, wet diaper, 38.9 at 2am and gave 5 ml ibuprofen. Tip: use your keyboard's microphone key to dictate."></textarea>
+    <div class="row"><button class="btn primary" data-act="ai-parse">Turn into entries</button><button class="btn ghost" data-act="mic">Dictate</button></div>
+    <div id="aiOut">${aiParsed ? parsedHtml() : ''}</div>`);
+}
+async function aiParse() {
+  const text = $('#aiText').value.trim(); if (!text) return toast('Type or dictate what happened first.');
+  const out = $('#aiOut'); out.innerHTML = '<p class="muted small">Reading your note…</p>';
+  const opts = Object.fromEntries(Object.entries(TYPES).filter(([, t]) => !t.legacy).flatMap(([k, t]) => t.fields.filter(f => f.opts).map(f => [`${k}.${f.k}`, f.opts])));
+  const system = `You convert a tired parent's quick note about their child into structured log entries. Extract only what the note states; never invent values. One entry per event. Convert Fahrenheit to Celsius for tempC. Times: local time as YYYY-MM-DDTHH:MM. The current local time is ${toLocalInput(Date.now())}; resolve "2am", "an hour ago", "last night" relative to it, never in the future. If no time is given, use the current time. Types: feed (kind "${BREAST}" with side and minutes, or "${BOTTLE}" with what and ml), sleep (kind Nap or Night sleep, time = fell asleep, endTime = woke up or null, quality), diaper (kind, stool), solids (food, amount), temp (tempC; measuring method in kind), med (name, amount, unit), symptom (symptoms, severity), vomit (size), doctor (what a doctor, nurse or pharmacist said, in note, close to the parent's words), note (anything else). Prefer these option values where they fit: ${JSON.stringify(opts)}. Known medicine names: ${JSON.stringify(live(S.meds).map(m => m.name))}. Put extra detail in note. Unused fields are null; symptoms is [] when unused. Do not give medical advice.`;
+  try {
+    const r = await ai(system, `Parent's note:\n${text}`, PARSE_SCHEMA), now = Date.now(), ts = s => { const t = new Date(s).getTime(); return isNaN(t) ? now : Math.min(t, now); };
+    aiParsed = (r.entries || []).map(x => {
+      const e = { id: uid(), type: x.type, t: ts(x.time), note: x.note || '' };
+      if (x.type === 'feed') Object.assign(e, x.kind === BREAST || x.side || x.minutes ? { kind: BREAST, side: x.side || '', minutes: x.minutes } : { kind: BOTTLE, what: x.what || '', ml: x.ml });
+      if (x.type === 'sleep') { Object.assign(e, { kind: x.kind || 'Nap', quality: x.quality || '' }); if (x.endTime) e.end = ts(x.endTime); }
+      if (x.type === 'diaper') Object.assign(e, { kind: x.kind || 'Wet', stool: x.stool || '' });
+      if (x.type === 'solids') Object.assign(e, { food: x.food || '', amount: x.amount || '' });
+      if (x.type === 'temp') { e.tempC = x.tempC; if (x.kind) e.method = x.kind; }
+      if (x.type === 'med') Object.assign(e, { name: x.name || 'Medicine', amount: x.amount, unit: x.unit || '' });
+      if (x.type === 'symptom') Object.assign(e, { symptoms: x.symptoms || [], severity: x.severity || '' });
+      if (x.type === 'vomit') e.size = x.size || '';
+      if (e.end != null && e.end <= e.t) delete e.end;
+      return e;
+    }).filter(e => e.type !== 'temp' || (e.tempC > 30 && e.tempC < 45));
+    if (!aiParsed.length) { aiParsed = null; out.innerHTML = '<p class="muted small">I couldn\'t find anything to log in that. Try adding a number or a time.</p>'; return; }
+    out.innerHTML = parsedHtml();
+  } catch (err) { out.innerHTML = `<p class="small" style="color:var(--alert)">${esc(aiError(err))}</p>`; }
+}
+const parsedHtml = () => `<div class="parsed"><p class="small muted" style="margin:0">Check these before adding:</p>${aiParsed.map((e, i) => `<label><input type="checkbox" checked data-pi="${i}">${icon(e.type)}<span><span class="num muted small">${fmtDT(e.t)}</span><br>${describe(e)}${e.note ? `<span class="small muted"> · ${esc(e.note)}</span>` : ''}</span></label>`).join('')}
+  <div class="row"><button class="btn primary" data-act="ai-add">Add selected</button><button class="btn ghost" data-act="ai-discard">Discard</button></div></div>`;
+function aiError(err) {
+  const m = String(err?.message || err?.code || err);
+  if (err?.code === 'not_granted') return 'AI access was not allowed for this page.';
+  if (/401|authentication|invalid x-api-key/i.test(m)) return 'The API key was rejected. Check it under More.';
+  if (/Failed to fetch|import|NetworkError/i.test(m)) return 'Could not reach the AI service. Check your connection.';
+  return 'AI request failed: ' + m;
+}
+async function aiSummary() {
+  const ep = viewEp(), es = epEntries(ep).slice().reverse(), c = childOf(ep), wt = weightOf(c);
+  const log = es.map(e => `${toLocalInput(e.t).replace('T', ' ')} (day ${dayNo(e.t, ep)}) ${TYPES[e.type]?.long || TYPES[e.type]?.label || e.type}: ${plain(e)}${e.note ? ' | note: ' + e.note : ''}`).join('\n');
+  const system = `You help a parent hand over an accurate account of their child's illness to a doctor. Write from the log only; never add facts, diagnoses, or treatment or dose suggestions. Format: a 2-sentence overview, then 5 to 9 short bullet lines in time order covering the fever pattern, medicines with times and spacing, feeding, fluids and wet diapers, sleep, vomiting and stools, how symptoms changed, and what any doctor already said, ending with what changed most recently. Then "Questions you may want to ask:" with 3 brief questions. Plain text, no markdown headings. Match the language of the parent's notes.`;
+  const user = `Child: ${c ? `${c.name}${c.dob ? ', age ' + ageText(c) : ''}${wt ? ', ' + wt.v + ' kg' : ''}` : 'unknown'}. Illness started ${toLocalInput(ep.start).replace('T', ' ')}. Now: ${toLocalInput(Date.now()).replace('T', ' ')}. Temperatures in Celsius.\n\nLog:\n${log}`;
+  narrative = 'Writing…'; render();
+  try { narrative = (await ai(system, user)).trim(); } catch (err) { narrative = ''; toast(aiError(err)); }
+  render();
+}
+function dictate() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return toast("Voice input isn't available here. Use your keyboard's microphone key instead.");
+  const r = new SR(); r.lang = navigator.language || 'en-US';
+  r.onresult = ev => { const box = $('#aiText'); box.value = (box.value ? box.value + ' ' : '') + ev.results[0][0].transcript; };
+  r.onerror = () => toast("Voice input isn't available here. Use your keyboard's microphone key instead.");
+  try { r.start(); toast('Listening…'); } catch { toast("Voice input isn't available here."); }
+}
+
+/* ---------- Google Drive sync ---------- */
+let gTok = null, syncTimer = null, syncing = false, syncMsg = '';
+function loadGis() {
+  return new Promise((res, rej) => { if (window.google?.accounts?.oauth2) return res();
+    const s = document.createElement('script'); s.src = 'https://accounts.google.com/gsi/client'; s.async = true;
+    s.onload = () => res(); s.onerror = () => rej(new Error('Google sign-in could not load here. Use the installed version of the app.')); document.head.appendChild(s); });
+}
+async function token(interactive) {
+  if (gTok && gTok.exp > Date.now() + 60e3) return gTok.v; if (!interactive) return null;
+  if (!S.settings.clientId) throw new Error('Add your Google OAuth client ID first.');
+  await loadGis();
+  return new Promise((res, rej) => {
+    const tc = google.accounts.oauth2.initTokenClient({ client_id: S.settings.clientId, scope: 'https://www.googleapis.com/auth/drive.file',
+      callback: r => { if (r.error) return rej(new Error(r.error)); gTok = { v: r.access_token, exp: Date.now() + r.expires_in * 1000 }; res(gTok.v); },
+      error_callback: e => rej(new Error(e?.type === 'popup_closed' ? 'Sign-in window was closed.' : 'Sign-in failed.')) });
+    tc.requestAccessToken({ prompt: S.drive?.fileId ? '' : 'consent' });
+  });
+}
+async function gapi(tok, url, opts = {}) { const r = await fetch(url, { ...opts, headers: { Authorization: 'Bearer ' + tok, ...(opts.headers || {}) } }); if (!r.ok) throw new Error(`Drive error ${r.status}`); return r; }
+const DRIVE = 'https://www.googleapis.com/drive/v3/files', UP = 'https://www.googleapis.com/upload/drive/v3/files';
+const SYNCED = ['children', 'episodes', 'entries', 'meds', 'measurements'];
+const shareable = () => ({ app: 'aura', v: 2, savedAt: Date.now(), ...Object.fromEntries(SYNCED.map(k => [k, S[k]])) });
+async function findOrCreateFile(tok) {
+  const q = s => encodeURIComponent(s);
+  let r = await (await gapi(tok, `${DRIVE}?q=${q(`name='${DRIVE_FILE}' and trashed=false`)}&fields=files(id)`)).json();
+  if (r.files?.length) return r.files[0].id;
+  r = await (await gapi(tok, `${DRIVE}?q=${q(`name='${DRIVE_FOLDER}' and mimeType='application/vnd.google-apps.folder' and trashed=false`)}&fields=files(id)`)).json();
+  let folder = r.files?.[0]?.id;
+  if (!folder) folder = (await (await gapi(tok, DRIVE, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: DRIVE_FOLDER, mimeType: 'application/vnd.google-apps.folder' }) })).json()).id;
+  const b = 'aura' + uid(), body = `--${b}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify({ name: DRIVE_FILE, parents: [folder], mimeType: 'application/json' })}\r\n--${b}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(shareable())}\r\n--${b}--`;
+  return (await (await gapi(tok, `${UP}?uploadType=multipart&fields=id`, { method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + b }, body })).json()).id;
+}
+function mergeList(a = [], b = []) { const m = new Map(a.map(x => [x.id, x])); for (const x of b) { const y = m.get(x.id); if (!y || (x.updatedAt || 0) > (y.updatedAt || 0)) m.set(x.id, x); } return [...m.values()]; }
+async function sync(interactive) {
+  if (syncing || S.example) return; syncing = true; syncMsg = 'Syncing…'; render();
+  try {
+    const tok = await token(interactive); if (!tok) return;
+    const id = S.drive?.fileId || await findOrCreateFile(tok);
+    const remote = await (await gapi(tok, `${DRIVE}/${id}?alt=media`)).json();
+    const r2 = remote.v === 2 ? remote : migrate(remote) || {};
+    for (const k of SYNCED) S[k] = mergeList(S[k], r2[k]);
+    await gapi(tok, `${UP}/${id}?uploadType=media`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(shareable()) });
+    S.drive = { fileId: id, lastSync: Date.now(), error: '' }; persist();
+  } catch (e) { S.drive = { ...(S.drive || {}), error: e.message }; persist(); if (interactive) toast(e.message); }
+  finally { syncing = false; syncMsg = ''; render(); }
+}
+function scheduleSync() { if (!S.drive?.fileId || S.example) return; clearTimeout(syncTimer); syncTimer = setTimeout(() => sync(false), 1500); }
+function syncLabel() {
+  const d = S.drive || {};
+  const txt = syncMsg || (d.error ? 'Sync failed' : d.fileId ? (gTok && gTok.exp > Date.now() ? 'Saved to Drive' : 'Tap to sync') : 'On this phone');
+  return `<button class="sync ${d.error ? 'err' : d.lastSync ? 'ok' : ''}" data-act="sync-tap">${txt}</button>`;
+}
+
+/* ---------- Events ---------- */
+let toastT;
+function toast(m) { const t = $('#toast'); t.textContent = m; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => (t.hidden = true), 2600); }
+async function copyText(text) { try { await navigator.clipboard.writeText(text); toast('Copied'); } catch { openSheet(`<div class="hd"><h2>Copy this</h2><button class="btn ghost" data-act="close">✕</button></div><textarea style="min-height:260px" readonly>${esc(text)}</textarea>`); $('#sheet textarea').select(); } }
+function syncShow() { const v = readChips('kind'); $('#sheet').querySelectorAll('[data-show]').forEach(n => n.hidden = !n.dataset.show.split('|').includes(v)); }
+
+document.addEventListener('click', async ev => {
+  const tr = ev.target.closest('tr[data-meas]'); if (tr) return measSheet(tr.dataset.meas);
+  const b = ev.target.closest('button'); if (!b) return;
+  if (b.dataset.tab) { tab = b.dataset.tab; showDays = 3; render(); window.scrollTo(0, 0); return; }
+  if (b.closest('.chips')) {
+    const box = b.closest('.chips');
+    if (box.id === 'whenChips') { box.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); $('#f_when').value = toLocalInput(Date.now() - (+b.dataset.ago) * 60000); return; }
+    if (b.dataset.unit) { S.settings.unit = b.dataset.unit; return commit(); }
+    if (b.dataset.themeSet) { S.settings.theme = b.dataset.themeSet; return commit(); }
+    if (box.hasAttribute('data-multi')) b.classList.toggle('on');
+    else { const was = b.classList.contains('on'); box.querySelectorAll('button').forEach(x => x.classList.remove('on')); if (!was || box.dataset.k === 'kind') b.classList.add('on'); const c = box.querySelector('[data-custom]'); if (c) c.value = ''; }
+    if (box.dataset.k === 'kind') syncShow();
+    if (box.dataset.k === 'name' && sheetCtx?.type === 'med' && b.classList.contains('on')) {
+      $('#f_medother').value = '';
+      const last = live(S.entries).filter(e => e.type === 'med' && e.name === b.dataset.v).sort((x, y) => y.t - x.t)[0];
+      if (last && !sheetCtx.id) { $('#f_amount').value = last.amount ?? ''; const ub = $('#sheet').querySelector(`.chips[data-k="unit"] [data-v="${last.unit}"]`); if (ub) { ub.parentNode.querySelectorAll('button').forEach(x => x.classList.remove('on')); ub.classList.add('on'); } }
+    }
+    return;
+  }
+  if (b.dataset.step) { const i = $('#f_temp'); i.value = (parseFloat(i.value || 0) + parseFloat(b.dataset.step)).toFixed(1); return; }
+  if (b.dataset.add) return kid() ? entryForm(b.dataset.add) : kidSheet('new');
+  if (b.dataset.edit) { const e = S.entries.find(x => x.id === b.dataset.edit); return entryForm(e.type, e); }
+  if (b.dataset.stop) return stopTimer(b.dataset.stop);
+  if (b.dataset.sick) { sickTab = b.dataset.sick; return render(); }
+  if (b.dataset.ep) { const e = S.episodes.find(x => x.id === b.dataset.ep); S.child = e.childId; viewEpId = e.id; sickTab = 'overview'; narrative = ''; tab = 'sick'; persist(); render(); return window.scrollTo(0, 0); }
+  if (b.dataset.pickkid) { S.child = b.dataset.pickkid; closeSheet(); return commit(); }
+  if (b.dataset.kid) return kidSheet(b.dataset.kid);
+  if (b.dataset.delmed) { const m = S.meds.find(x => x.id === b.dataset.delmed); m.deleted = true; touch(m); return commit(); }
+  switch (b.dataset.act) {
+    case 'close': return closeSheet();
+    case 'pick-kid': return kids().length ? kidPicker() : kidSheet('new');
+    case 'sync-tap': if (S.drive?.fileId) return sync(true); tab = 'more'; render(); return window.scrollTo(0, 0);
+    case 'say': aiParsed = null; return saySheet();
+    case 'save-entry': return saveEntry(false);
+    case 'start-timer': return saveEntry(true);
+    case 'delete-entry': { const e = S.entries.find(x => x.id === sheetCtx.id); e.deleted = true; touch(e); closeSheet(); commit(); return toast('Deleted'); }
+    case 'more-days': showDays += 7; return render();
+    case 'open-sick': viewEpId = activeEp()?.id; sickTab = 'overview'; narrative = ''; tab = 'sick'; render(); return window.scrollTo(0, 0);
+    case 'new-episode': return episodeSheet(null);
+    case 'edit-episode': return episodeSheet(viewEp());
+    case 'save-episode': {
+      const start = new Date($('#f_start').value).getTime() || Date.now(), title = $('#f_title').value.trim();
+      if (sheetCtx.ep) { const e = S.episodes.find(x => x.id === sheetCtx.ep); Object.assign(e, { title, start }); touch(e); closeSheet(); return commit(); }
+      const e = touch({ id: uid(), childId: kid().id, title, start, end: null }); S.episodes.push(e);
+      viewEpId = e.id; closeSheet(); tab = 'today'; commit(); return toast('Sick mode is on. Temperature and medicine are at the top.');
+    }
+    case 'del-episode': { const e = S.episodes.find(x => x.id === sheetCtx.ep); e.deleted = true; touch(e); closeSheet(); tab = 'today'; commit(); return toast('Illness deleted. Its entries stay in the daily log.'); }
+    case 'end-episode': { const e = viewEp(); e.end = Date.now(); touch(e); tab = 'today'; commit(); return toast('Glad to hear it. Sick mode is off.'); }
+    case 'reopen-episode': { const e = viewEp(); e.end = null; touch(e); return commit(); }
+    case 'clear-example': { const st = S.settings; S = emptyState(); S.settings = { ...S.settings, ...st }; narrative = ''; aiParsed = null; tab = 'today'; commit(); return kidSheet('new'); }
+    case 'save-kid': {
+      const name = $('#k_name').value.trim(); if (!name) return toast('Enter a name.');
+      const c = sheetCtx.kid === 'new' ? { id: uid() } : S.children.find(k => k.id === sheetCtx.kid);
+      Object.assign(c, { name, dob: $('#k_dob').value }); touch(c);
+      if (sheetCtx.kid === 'new') { S.children.push(c); S.child = c.id; } closeSheet(); return commit();
+    }
+    case 'del-kid': { const c = S.children.find(k => k.id === sheetCtx.kid); c.deleted = true; touch(c); if (S.child === c.id) S.child = kids()[0]?.id || null; closeSheet(); return commit(); }
+    case 'add-meas': return measSheet();
+    case 'save-meas': {
+      const vals = Object.fromEntries(MEAS.map(([k]) => { const v = $('#m_' + k).value; return [k, v === '' ? null : +v]; }));
+      if (MEAS.every(([k]) => vals[k] == null)) return toast('Enter at least one measurement.');
+      const day = $('#m_date').value, t = day ? new Date(day + 'T12:00').getTime() : Date.now();
+      const m = sheetCtx.meas ? S.measurements.find(x => x.id === sheetCtx.meas) : { id: uid(), childId: sheetCtx.childId };
+      Object.assign(m, vals, { t, note: $('#m_note').value.trim() }); touch(m);
+      if (!sheetCtx.meas) S.measurements.push(m); closeSheet(); commit(); return toast('Measurement saved');
+    }
+    case 'del-meas': { const m = S.measurements.find(x => x.id === sheetCtx.meas); m.deleted = true; touch(m); closeSheet(); commit(); return toast('Deleted'); }
+    case 'add-med': { const n = $('#newMed').value.trim(); if (!n) return; S.meds.push(touch({ id: uid(), name: n, gapH: null })); return commit(); }
+    case 'ai-parse': b.disabled = true; await aiParse(); b.disabled = false; return;
+    case 'ai-add': { const keep = [...document.querySelectorAll('[data-pi]')].filter(x => x.checked).map(x => aiParsed[+x.dataset.pi]);
+      keep.forEach(e => { e.child = kid().id; S.entries.push(touch(e)); }); aiParsed = null; closeSheet(); commit(); return toast(`Added ${keep.length} ${keep.length === 1 ? 'entry' : 'entries'}`); }
+    case 'ai-discard': aiParsed = null; $('#aiOut').innerHTML = ''; return;
+    case 'mic': return dictate();
+    case 'ai-summary': return aiSummary();
+    case 'copy-summary': { const ep = viewEp(); return copyText(summaryText(epEntries(ep), ep) + (narrative && narrative !== 'Writing…' ? '\n\nAI HANDOVER\n' + narrative : '')); }
+    case 'export': return copyText(JSON.stringify(shareable()));
+    case 'import': { const box = $('#importBox'); if (box.hidden) { box.hidden = false; box.focus(); return toast('Paste your data, then tap Restore again.'); }
+      try { let d = JSON.parse(box.value); if (d.app !== 'aura' && d.app !== 'sick-day-log') throw 0; d = d.v === 2 ? d : migrate(d);
+        if (S.example) { const st = S.settings; S = emptyState(); S.settings = st; }
+        for (const k of SYNCED) S[k] = mergeList(S[k], d[k]); S.child = S.child || kids()[0]?.id || null; commit(); toast('Data restored'); }
+      catch { toast("That doesn't look like Aura data."); } return; }
+    case 'wipe': $('#wipeConfirm').innerHTML = `<div class="banner"><p>This deletes everything on this device. A copy in Google Drive is not deleted.</p><button class="btn danger sm" data-act="wipe-yes">Delete everything</button></div>`; return;
+    case 'wipe-yes': S = emptyState(); narrative = ''; tab = 'today'; commit(); return toast('Deleted from this device');
+    case 'drive-sync': S.settings.clientId = $('#clientId').value.trim(); persist(); return sync(true);
+    case 'drive-forget': S.drive = {}; gTok = null; return commit();
+  }
+});
+document.addEventListener('change', ev => {
+  const t = ev.target;
+  if (t.dataset.gap) { const m = S.meds.find(x => x.id === t.dataset.gap); m.gapH = t.value === '' ? null : +t.value; touch(m); persist(); scheduleSync(); }
+  if (t.id === 'apiKey') { S.settings.apiKey = t.value.trim(); persist(); renderMore(); }
+  if (t.id === 'clientId') { S.settings.clientId = t.value.trim(); persist(); }
+});
+document.addEventListener('input', ev => { if (ev.target.matches('[data-custom]') && ev.target.value) ev.target.closest('.chips').querySelectorAll('button').forEach(x => x.classList.remove('on')); });
+$('#scrim').addEventListener('click', ev => { if (ev.target.id === 'scrim') closeSheet(); });
+document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && !$('#scrim').hidden) closeSheet(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden && $('#scrim').hidden) { render(); scheduleSync(); } });
+setInterval(tickTimers, 1000);
+setInterval(() => { if (!document.hidden && $('#scrim').hidden && tab !== 'more') render(); else applyTheme(); }, 60e3);
+if ('serviceWorker' in navigator && location.protocol === 'https:' && !window.claude) navigator.serviceWorker.register('sw.js').catch(() => {});
+render();
+})();
+</script>

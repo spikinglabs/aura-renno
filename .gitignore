@@ -1,0 +1,4 @@
+# Built by build.sh from src/app.html
+app/index.html
+node_modules/
+test-results/
