@@ -155,9 +155,10 @@ for (const theme of ['night', 'day']) {
   if (/data:audio|photos\.example/.test(sent)) fail('recording sent to the AI');
   if ((await page.locator('details pre.sent').count()) !== 1) fail('no way to see what was sent');
 
-  // Say it can be saved as a plain note
+  // Say it floats above the tab bar on Today (not on More) and can be saved as a plain note
   await page.click('.tabs [data-tab="today"]');
-  await page.click('[data-act="say"]');
+  if (!(await page.locator('#fab').isVisible())) fail('Say it button not shown on Today');
+  await page.click('#fab');
   await page.fill('#aiText', 'Grandma visited');
   await page.click('[data-act="say-note"]');
   if (!(await page.locator('.tl li').first().innerText()).includes('Grandma visited')) fail('say it note not saved');
@@ -165,6 +166,7 @@ for (const theme of ['night', 'day']) {
   // Backup file round trip: download, delete everything, restore
   await page.click('.tabs [data-tab="more"]');
   if (await overflow()) fail('More scrolls sideways');
+  if (await page.locator('#fab').isVisible()) fail('Say it button shown on More');
   const [dl] = await Promise.all([page.waitForEvent('download'), page.click('[data-act="download"]')]);
   const file = await dl.path();
   await page.click('[data-act="wipe"]');

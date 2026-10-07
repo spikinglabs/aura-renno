@@ -37,7 +37,11 @@ h1 { font-size: 1.6rem; line-height: 1.15 } h2 { font-size: 1.25rem } h3 { font-
 input, select, textarea { background: var(--card-2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; width: 100%; min-width: 0 }
 textarea { resize: vertical }
 
-.wrap { max-width: 600px; margin: 0 auto; padding-inline: 16px; padding-block: 0 120px }
+.wrap { max-width: 600px; margin: 0 auto; padding-inline: 16px; padding-block: 0 150px }
+/* "Say it" floats above the tab bar on Today and Growth: the one place to log anything by talking or typing */
+.fab { position: fixed; z-index: 5; right: max(16px, calc(50% - 284px)); bottom: calc(76px + env(safe-area-inset-bottom, 0px)); display: flex; align-items: center; gap: 8px;
+  border: 0; border-radius: 999px; padding: 14px 22px 14px 18px; background: var(--accent); color: var(--accent-on); font: inherit; font-weight: 800; font-size: 1.05rem; box-shadow: 0 6px 20px rgba(0,0,0,.35) }
+.fab svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round }
 .view { display: flex; flex-direction: column; gap: 16px; padding-top: 14px }
 .card { background: var(--card); border-radius: var(--r); padding: 14px 16px }
 .btn { border: 0; background: var(--card-2); border-radius: 999px; padding: 10px 18px; font-weight: 700 }
@@ -220,6 +224,7 @@ tr:last-child td { border-bottom: 0 }
   <button role="tab" data-tab="more" aria-selected="false">More</button>
 </div></nav>
 <div class="scrim" id="scrim" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
+<button class="fab" id="fab" data-act="say" hidden aria-label="Say it: log anything by talking or typing"><svg viewBox="0 0 24 24" aria-hidden="true"></svg>Say it</button>
 <div class="toast" id="toast" hidden></div>
 
 <script>
@@ -539,6 +544,7 @@ function render() {
   applyTheme();
   document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === (tab === 'sick' ? 'today' : tab))));
   for (const v of ['today', 'sick', 'growth', 'more']) $('#view-' + v).hidden = v !== tab;
+  $('#fab').hidden = tab === 'more' || !kid();
   ({ today: renderToday, sick: renderSick, growth: renderGrowth, more: renderMore })[tab]();
 }
 const exampleBanner = () => S.example ? `<div class="banner"><p>This is example data so you can see how it works. Nothing here is real.</p><button class="btn primary sm" data-act="clear-example">Start with my child</button></div>` : '';
@@ -585,12 +591,12 @@ function renderToday() {
     ${tiles.length && !sickView ? `<div class="sum n${tiles.length}">${tiles.join('')}</div>` : ''}
     ${run.map(r => `<div class="timer"><span>${r.type === 'sleep' ? (r.kind === 'Nap' ? 'Napping' : 'Sleeping') : 'Breastfeeding' + (r.side ? ' · ' + esc(lc(r.side)) : '')} since ${fmtTime(r.t)}<br><strong class="num" data-since="${r.t}">${clock(now - r.t)}</strong></span><button class="btn" data-stop="${r.id}">${r.type === 'sleep' ? 'Woke up' : 'Done'}</button></div>`).join('')}
     <div class="row between"><h3>Log</h3><button class="btn sm" data-act="track-sheet">What to track</button></div>
-    <div class="quick">${quick.map(k => `<button class="qb" data-add="${k}">${icon(k)}${TYPES[k].label}</button>`).join('')}<button class="qb" data-act="say">${icon('say')}Say it</button></div>
+    <div class="quick">${quick.map(k => `<button class="qb" data-add="${k}">${icon(k)}${TYPES[k].label}</button>`).join('')}</div>
     ${ep ? '' : `<button class="linkish" data-act="new-episode">${esc(c.name)} is sick? Start sick mode</button>`}
     <div>${timelineHtml(es.filter(e => shownType(e.type)), showDays)}</div>`;
 }
 function timelineHtml(es, days) {
-  if (!es.length) return `<p class="muted">Nothing logged yet. Tap a button above to add the first entry.</p>`;
+  if (!es.length) return `<p class="muted">Nothing logged yet. Tap a button above, or Say it, to add the first entry.</p>`;
   const cut = startOfDay(Date.now()) - (days - 1) * DAY, shown = es.filter(e => e.t >= cut), map = new Map();
   shown.forEach(e => { const k = startOfDay(e.t); if (!map.has(k)) map.set(k, []); map.get(k).push(e); });
   const label = d => d === startOfDay(Date.now()) ? 'Today' : d === startOfDay(Date.now() - DAY) ? 'Yesterday' : fmtDay(d);
@@ -1022,13 +1028,14 @@ const PARSE_SCHEMA = { type: 'object', additionalProperties: false, required: ['
   required: ['type', 'time', 'symptoms', ...P_FIELDS],
   properties: { type: { type: 'string', enum: QUICK_SICK.filter(k => k !== 'photo' && k !== 'sound') }, time: { type: 'string' }, symptoms: { type: 'array', items: { type: 'string' } },
     ...Object.fromEntries(P_FIELDS.map(k => [k, nul(['tempC', 'amount', 'ml', 'minutes'].includes(k) ? 'number' : 'string')])) } } } } };
-async function saySheet() {
+async function saySheet(listen) {
   const hasAi = !!(await aiProvider());
   openSheet(`<div class="hd"><h2>Say it in your own words</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
     <span class="dict"><textarea id="aiText" style="min-height:110px" autofocus placeholder="e.g. 150 ml milk at 6, napped 1 to 2:30, wet diaper, 38.9 at 2am and gave 5 ml ibuprofen.${SR ? ' Tap the microphone to dictate.' : " Tip: use your keyboard's microphone key to dictate."}"></textarea>${micBtn('aiText')}</span>
     <div class="row"><button class="btn primary" data-act="ai-parse" ${hasAi ? '' : 'hidden'}>Turn into entries</button><button class="btn ${hasAi ? 'ghost' : 'primary'}" data-act="say-note">Save as a note</button></div>
     ${hasAi ? '' : '<p class="small muted" style="margin:0">Turn on the AI helper under More to have this sorted into feeds, sleep, temperatures and so on.</p>'}
     <div id="aiOut">${aiParsed ? parsedHtml() : ''}</div>`);
+  if (listen && SR && !aiParsed) { const b = $('#sheet [data-mic="aiText"]'); if (b) dictate('aiText', b); }
 }
 async function aiParse() {
   const text = $('#aiText').value.trim(); if (!text) return toast('Type or dictate what happened first.');
@@ -1427,7 +1434,7 @@ document.addEventListener('click', async ev => {
     case 'track-reset': { const c = S.children.find(k => k.id === sheetCtx.trackKid); delete c.track; touch(c); commit(); return trackSheet(c.id); }
     case 'pick-kid': return kids().length ? kidPicker() : kidSheet('new');
     case 'sync-tap': if (S.drive?.fileId) return sync(true); tab = 'more'; render(); return window.scrollTo(0, 0);
-    case 'say': aiParsed = null; return saySheet();
+    case 'say': aiParsed = null; return saySheet(true); // starts listening right away; tap the microphone to stop
     case 'save-entry': return saveEntry(false);
     case 'start-timer': return saveEntry(true);
     case 'delete-entry': { const e = S.entries.find(x => x.id === sheetCtx.id); e.deleted = true; touch(e); closeSheet(); commit(); return toast('Deleted'); }
@@ -1523,6 +1530,7 @@ document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && !$('#scr
 document.addEventListener('visibilitychange', () => { if (S && !document.hidden && $('#scrim').hidden) { render(); scheduleSync(); } });
 if ('serviceWorker' in navigator && location.protocol === 'https:' && !window.claude) navigator.serviceWorker.register('sw.js').catch(() => {});
 load().then(() => {
+  $('#fab svg').innerHTML = ICONS.say;
   render();
   if (!S.example) { keepStorage(); localSnapshot(); }
   setInterval(tickTimers, 1000);
