@@ -2,15 +2,20 @@
 import { chromium } from 'playwright';
 
 const url = new URL('../app/index.html', import.meta.url).href;
-const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
+const browser = await chromium.launch({ ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}), args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] });
 const errors = [];
 const fail = m => { errors.push(m); };
+// The app keeps its log in IndexedDB ('aura' database, 'kv' store, key 'state').
+const IDB = `const idb = mode => new Promise((res, rej) => { const r = indexedDB.open('aura', 1); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });`;
+const getState = page => page.evaluate(`(async () => { ${IDB} const d = await idb(); return await new Promise(res => { const q = d.transaction('kv').objectStore('kv').get('state'); q.onsuccess = () => { d.close(); res(q.result); }; }); })()`);
+const setState = (page, s) => page.evaluate(`(async () => { ${IDB} const d = await idb(); await new Promise(res => { const tx = d.transaction('kv', 'readwrite'); tx.objectStore('kv').put(${JSON.stringify(s)}, 'state'); tx.oncomplete = res; }); d.close(); })()`);
 
 for (const theme of ['night', 'day']) {
   const page = await browser.newPage({ viewport: { width: 375, height: 800 } });
   page.on('pageerror', e => fail(`${theme}: ${e.message}`));
   await page.goto(url);
-  await page.evaluate(t => { const s = JSON.parse(localStorage.getItem('aura.v2')); s.settings.theme = t; localStorage.setItem('aura.v2', JSON.stringify(s)); }, theme);
+  await page.waitForSelector('h1');
+  { const s = await getState(page); s.settings.theme = theme; await setState(page, s); }
   await page.reload();
   const overflow = () => page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
   if ((await page.evaluate(() => document.documentElement.dataset.mode)) !== theme) fail(`${theme}: theme not applied`);
@@ -74,7 +79,7 @@ for (const theme of ['night', 'day']) {
     await page.click('[data-act="save-entry"]');
     const row = await page.locator('.tl li').first().innerText();
     if (!row.includes('Coughing at night, ear pain')) fail('symptom text missing from timeline');
-    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('aura.v2')).entries.filter(e => e.type === 'symptom').sort((a, b) => b.updatedAt - a.updatedAt)[0]);
+    const saved = (await getState(page)).entries.filter(e => e.type === 'symptom').sort((a, b) => b.updatedAt - a.updatedAt)[0];
     if (!saved.symptoms.includes('Ear pain')) fail('tag not kept for the doctor summary');
   }
 
@@ -110,11 +115,177 @@ for (const theme of ['night', 'day']) {
   await page.close();
 }
 
+// Sound recordings, saying it without AI, backups, and what the AI is sent
+{
+  const page = await browser.newPage({ viewport: { width: 375, height: 800 } });
+  page.on('pageerror', e => fail(`extras: ${e.message}`));
+  // A stand-in for the claude.ai AI that records the prompt and answers with the placeholder.
+  await page.addInitScript(() => { window.__sent = []; const sample = async p => { window.__sent.push(p); return { text: '[CHILD] has had a fever for three days.' }; }; sample.json = async p => { window.__sent.push(p); return { entries: [] }; }; window.claude = { use: async () => sample }; });
+  await page.goto(url);
+  await page.waitForSelector('h1');
+  const overflow = () => page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
+
+  // Record a short sound in sick mode; it plays back in the timeline and in the doctor view
+  await page.click('.quick [data-add="sound"]');
+  await page.click('[data-act="rec"]');
+  await page.waitForTimeout(1500);
+  await page.click('[data-act="rec"]');
+  await page.waitForSelector('#recOut audio');
+  await page.fill('#f_note', 'Whistling when breathing in');
+  await page.click('[data-act="save-entry"]');
+  if ((await page.locator('.tl .media audio').count()) < 1) fail('sound recording not in the timeline');
+  if (await overflow()) fail('timeline with a recording scrolls sideways');
+  // A link instead of a recording, and links that are not web addresses are refused
+  await page.click('.quick [data-add="sound"]');
+  await page.fill('#f_link', 'javascript:alert(1)');
+  await page.click('[data-act="save-entry"]');
+  if (!(await page.isVisible('#f_link'))) fail('unsafe link was accepted');
+  await page.fill('#f_link', 'https://photos.example.com/v/123');
+  await page.click('[data-act="save-entry"]');
+  if ((await page.locator('.tl .media a[href="https://photos.example.com/v/123"]').count()) !== 1) fail('recording link missing');
+  await page.click('[data-act="open-sick"]');
+  await page.click('[data-sick="doctor"]');
+  if ((await page.locator('.rec-item audio').count()) !== 1) fail('recording missing from the doctor view');
+
+  // The AI handover is sent without the child's name, and the name comes back on the phone
+  await page.click('[data-act="ai-summary"]');
+  await page.waitForSelector('.narrative >> text=Mia has had a fever');
+  const sent = await page.evaluate(() => window.__sent.join('\n'));
+  if (/Mia/.test(sent) || !sent.includes('[CHILD]')) fail('child name was sent to the AI');
+  if (/data:audio|photos\.example/.test(sent)) fail('recording sent to the AI');
+  if ((await page.locator('details pre.sent').count()) !== 1) fail('no way to see what was sent');
+
+  // Say it can be saved as a plain note
+  await page.click('.tabs [data-tab="today"]');
+  await page.click('[data-act="say"]');
+  await page.fill('#aiText', 'Grandma visited');
+  await page.click('[data-act="say-note"]');
+  if (!(await page.locator('.tl li').first().innerText()).includes('Grandma visited')) fail('say it note not saved');
+
+  // Backup file round trip: download, delete everything, restore
+  await page.click('.tabs [data-tab="more"]');
+  if (await overflow()) fail('More scrolls sideways');
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('[data-act="download"]')]);
+  const file = await dl.path();
+  await page.click('[data-act="wipe"]');
+  await page.click('[data-act="wipe-yes"]');
+  await page.click('.tabs [data-tab="more"]');
+  await page.setInputFiles('#restoreFile', file);
+  await page.waitForTimeout(300);
+  const st = await getState(page);
+  if (!st.entries.some(e => e.note === 'Grandma visited') || !st.children.some(c => c.name === 'Mia')) fail('backup file did not restore');
+  await page.close();
+}
+
+// Backups are required: a new log asks for one and Today keeps reminding until a copy exists off the phone
+{
+  const page = await browser.newPage({ viewport: { width: 375, height: 800 } });
+  page.on('pageerror', e => fail(`backup: ${e.message}`));
+  await page.goto(url);
+  await page.waitForSelector('h1');
+  if ((await page.locator('.backup-due').count()) !== 0) fail('backup: reminder shown for example data');
+  await page.click('[data-act="clear-example"]');
+  await page.fill('#k_name', 'Ada');
+  await page.click('[data-act="save-kid"]');
+  if ((await page.locator('[data-act="backup-file"]').count()) !== 1) fail('backup: no backup choice after adding the first child');
+  await page.click('[data-act="close"]');
+  if ((await page.locator('.backup-due').count()) !== 1) fail('backup: no reminder on Today before the first backup');
+  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail('backup: reminder scrolls sideways');
+  await page.click('[data-act="backup-now"]');
+  await Promise.all([page.waitForEvent('download'), page.click('[data-act="backup-file"]')]);
+  if ((await page.locator('.backup-due').count()) !== 0) fail('backup: reminder still shown after saving a backup');
+  await page.close();
+}
+
+// AI through any OpenAI-style service the parent chooses, still without names
+{
+  const page = await browser.newPage({ viewport: { width: 375, height: 800 } });
+  page.on('pageerror', e => fail(`ai service: ${e.message}`));
+  let body = null, auth = null;
+  await page.route('https://ai.example.com/v1/chat/completions', async route => {
+    body = route.request().postDataJSON(); auth = route.request().headers().authorization;
+    await route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ choices: [{ message: { content: '[CHILD] is on day 3.' } }] }) });
+  });
+  await page.goto(url);
+  await page.waitForSelector('h1');
+  await page.click('.tabs [data-tab="more"]');
+  await page.click('[data-aikind="openai"]');
+  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail('ai service: More scrolls sideways');
+  await page.fill('#aiBase', 'https://ai.example.com/v1'); await page.press('#aiBase', 'Tab');
+  await page.fill('#aiModel', 'test-model'); await page.press('#aiModel', 'Tab');
+  await page.fill('#apiKey', 'k123'); await page.press('#apiKey', 'Tab');
+  await page.click('.tabs [data-tab="today"]');
+  await page.click('[data-act="open-sick"]');
+  await page.click('[data-sick="doctor"]');
+  await page.click('[data-act="ai-summary"]');
+  await page.waitForSelector('.narrative >> text=Mia is on day 3');
+  if (!body || body.model !== 'test-model' || auth !== 'Bearer k123') fail('ai service: request not sent to the chosen service');
+  if (JSON.stringify(body).includes('Mia')) fail('ai service: child name was sent');
+  await page.close();
+}
+
+// Drive sync against a fake Drive: a second phone saving at the same moment, and a damaged Drive file
+{
+  const page = await browser.newPage({ viewport: { width: 375, height: 800 } });
+  page.on('pageerror', e => fail(`sync: ${e.message}`));
+  await page.addInitScript(() => { window.google = { accounts: { oauth2: { initTokenClient: o => ({ requestAccessToken: () => o.callback({ access_token: 't', expires_in: 3600 }) }) } } }; });
+  const other = (id, t) => ({ id, child: 'kid-ex', type: 'note', t, note: 'From the other phone', updatedAt: t });
+  const drive = { file: { app: 'aura', v: 2, children: [], episodes: [], entries: [other('o1', 1000)], meds: [], measurements: [], growth: [] }, patches: 0, race: true, uploads: [] };
+  await page.route('https://www.googleapis.com/**', async route => {
+    const req = route.request(), u = new URL(req.url()), m = req.method();
+    const json = b => route.fulfill({ status: 200, contentType: 'application/json', body: typeof b === 'string' ? b : JSON.stringify(b) });
+    if (u.pathname.startsWith('/upload') && m === 'PATCH') {
+      drive.patches++; drive.file = JSON.parse(req.postData());
+      // Another phone overwrites right after us with its own copy, which lacks our entries
+      if (drive.race) { drive.race = false; drive.file = { ...drive.file, entries: [other('o1', 1000), other('o2', 2000)] }; }
+      return json({});
+    }
+    if (u.pathname.startsWith('/upload') && m === 'POST') { drive.uploads.push(req.postData()); return json({ id: 'b' + drive.uploads.length }); }
+    if (u.pathname === '/drive/v3/files/f1' && u.searchParams.get('alt') === 'media') return json(drive.file);
+    if (u.pathname === '/drive/v3/files/f1') return json({ ownedByMe: true });
+    if (u.pathname === '/drive/v3/files') return json({ files: (u.searchParams.get('q') || '').includes('in parents') ? [] : [{ id: 'folder' }] });
+    return json({});
+  });
+  await page.goto(url);
+  await page.waitForSelector('h1');
+  const st = await getState(page); st.example = false; st.settings.clientId = 'x-y.apps.googleusercontent.com'; st.drive = { fileId: 'f1' };
+  await setState(page, st); await page.reload(); await page.waitForSelector('h1');
+  await page.click('[data-act="sync-tap"]');
+  await page.waitForSelector('.sync.ok');
+  const mine = (await getState(page)).entries;
+  if (!['o1', 'o2'].every(id => mine.some(e => e.id === id))) fail('sync: entry from the other phone not merged');
+  if (!mine.every(e => drive.file.entries.some(x => x.id === e.id))) fail('sync: our entries lost after the other phone wrote');
+  if (drive.patches !== 2) fail(`sync: expected a second write after the clash, got ${drive.patches}`);
+  if (!drive.uploads.some(b => b.includes('aura-backup-'))) fail('sync: no backup saved before overwriting');
+  // A damaged Drive file is never overwritten
+  drive.file = 'not json'; const before = drive.patches;
+  await page.click('[data-act="sync-tap"]');
+  await page.waitForSelector('.sync.err');
+  if (drive.patches !== before) fail('sync: damaged Drive file was overwritten');
+  await page.close();
+}
+
+// A stored log with missing parts still opens, and nothing is lost on the next save
+{
+  const page = await browser.newPage({ viewport: { width: 375, height: 800 } });
+  page.on('pageerror', e => fail(`robust: ${e.message}`));
+  await page.goto(url);
+  await page.waitForSelector('h1');
+  const st = await getState(page); const n = st.entries.length; delete st.growth; delete st.measurements; st.settings = null;
+  await setState(page, st); await page.reload(); await page.waitForSelector('h1');
+  await page.click('[data-add="note"]'); await page.fill('#f_note', 'Still works'); await page.click('[data-act="save-entry"]');
+  const after = await getState(page);
+  if (after.entries.length !== n + 1 || !Array.isArray(after.growth)) fail('robust: log with missing parts not repaired');
+  await page.close();
+}
+
 // Data from the earlier Sick Day Log is migrated
 {
   const page = await browser.newPage({ viewport: { width: 375, height: 800 } });
   page.on('pageerror', e => fail(`migration: ${e.message}`));
   await page.goto(url);
+  await page.waitForSelector('h1');
+  await page.evaluate(() => new Promise(res => { const r = indexedDB.deleteDatabase('aura'); r.onsuccess = r.onerror = r.onblocked = res; }));
   await page.evaluate(() => { localStorage.clear(); localStorage.setItem('sickdaylog.v1', JSON.stringify({ app: 'sick-day-log', v: 1, example: false,
     children: [{ id: 'c1', name: 'Leo', dob: '2025-01-01' }], episodes: [{ id: 'e1', childId: 'c1', start: Date.now() - 864e5, end: null }],
     entries: [{ id: 'x1', ep: 'e1', type: 'temp', t: Date.now() - 36e5, tempC: 38.8 }], meds: [], measurements: [], settings: { unit: 'C' } })); });

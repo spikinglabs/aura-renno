@@ -9,7 +9,7 @@
   --accent: #E3A56E; --accent-on: #2A1E15; --accent-soft: #4A3626; --accent-ink: #F2C79D;
   --warm-soft: #4A3028; --alert: #FF9C80; --ok: #9BD3A8; --wait: #F0C877;
   --c-feed: #5A4330; --c-sleep: #36394F; --c-diaper: #4A4630; --c-solids: #553A33; --c-temp: #5C3A30; --c-med: #45374F;
-  --c-symptom: #523543; --c-vomit: #3E4A33; --c-doctor: #33434D; --c-photo: #3D3A36; --c-note: #3B4438; --c-say: #4A3626;
+  --c-symptom: #523543; --c-vomit: #3E4A33; --c-doctor: #33434D; --c-photo: #3D3A36; --c-note: #3B4438; --c-say: #4A3626; --c-sound: #3A4550;
   --line-temp: #FF9C80; --mark-1: #C9B2F2; --mark-2: #8FC9E8; --mark-3: #F2A7C6; --mark-4: #E8C47A; --growth: #9BD3A8;
   --f-head: "Lora", Georgia, serif; --f-body: "Nunito", "Segoe UI", system-ui, sans-serif;
   --r: 18px;
@@ -20,7 +20,7 @@
   --accent: #B8692B; --accent-on: #FFF8F0; --accent-soft: #F5DFC7; --accent-ink: #8A4A18;
   --warm-soft: #F4D9CD; --alert: #B5452C; --ok: #2F7A4C; --wait: #9A6406;
   --c-feed: #F4DDC0; --c-sleep: #DCE0EE; --c-diaper: #ECE5C6; --c-solids: #F1D5C9; --c-temp: #F5CDBE; --c-med: #E5DCF2;
-  --c-symptom: #F2D6E1; --c-vomit: #DDE8CF; --c-doctor: #D8E5EC; --c-photo: #E7E1DA; --c-note: #DCE6D6; --c-say: #F5DFC7;
+  --c-symptom: #F2D6E1; --c-vomit: #DDE8CF; --c-doctor: #D8E5EC; --c-photo: #E7E1DA; --c-note: #DCE6D6; --c-say: #F5DFC7; --c-sound: #D9E3EA;
   --line-temp: #C0502F; --mark-1: #7656B8; --mark-2: #2A7FA8; --mark-3: #B04479; --mark-4: #A0711A; --growth: #2F7A4C;
   color-scheme: light;
 }
@@ -64,6 +64,7 @@ textarea { resize: vertical }
 .sick-card { background: var(--warm-soft); border-radius: var(--r); padding: 14px; display: flex; flex-direction: column; gap: 8px }
 .btn.end { background: var(--card); box-shadow: inset 0 0 0 1.5px var(--accent) }
 .sick small { display: block; color: var(--muted); font-size: .82rem }
+.backup-due { box-shadow: inset 0 0 0 1.5px var(--wait) }
 .alerts { border-radius: var(--r); padding: 12px 14px; background: var(--card); box-shadow: inset 0 0 0 1.5px var(--wait) }
 .alerts h3 { color: var(--wait); font-size: .98rem }
 .alerts ul { margin: 6px 0 0; padding-left: 20px } .alerts li { margin: 3px 0 }
@@ -114,7 +115,16 @@ textarea { resize: vertical }
 .t-feed { --c: var(--c-feed) } .t-sleep { --c: var(--c-sleep) } .t-diaper { --c: var(--c-diaper) } .t-solids, .t-food { --c: var(--c-solids) }
 .t-temp { --c: var(--c-temp) } .t-med { --c: var(--c-med) } .t-symptom { --c: var(--c-symptom) } .t-vomit { --c: var(--c-vomit) }
 .t-doctor { --c: var(--c-doctor) } .t-photo { --c: var(--c-photo) } .t-note { --c: var(--c-note) } .t-say { --c: var(--c-say) }
-.t-drink { --c: var(--c-feed) }
+.t-drink { --c: var(--c-feed) } .t-sound { --c: var(--c-sound) }
+.tl .by { color: var(--muted); font-size: .84rem }
+.tl li:has(.media) > button { border-bottom: 0 }
+.media { display: flex; flex-direction: column; gap: 6px; padding: 0 0 10px 80px; border-bottom: 1px solid var(--line); margin-top: -1px }
+.media audio { width: 100%; max-width: 320px; height: 40px }
+.media a { color: var(--accent-ink); font-weight: 700; font-size: .9rem }
+.rec-item { padding: 10px 0 0; border-top: 1px solid var(--line); margin-top: 10px } .rec-item .media { padding: 6px 0 0; border: 0 }
+.rec { display: flex; gap: 12px; align-items: center; flex-wrap: wrap }
+.rec .btn.on { background: var(--alert); color: var(--bg) }
+#recOut audio { width: 100% }
 
 /* Segmented */
 .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: var(--card); border-radius: 999px; padding: 4px; gap: 4px }
@@ -186,6 +196,12 @@ tr:last-child td { border-bottom: 0 }
 .parsed { display: flex; flex-direction: column; gap: 6px }
 .parsed label { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-radius: 12px; background: var(--card-2) }
 .parsed input { width: auto }
+.dict { position: relative; display: block }
+.dict textarea { padding-right: 52px }
+.mic { position: absolute; right: 6px; bottom: 8px; width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--card); display: grid; place-items: center; padding: 0 }
+.mic svg { width: 20px; height: 20px; stroke: var(--ink); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round }
+.mic.on { background: var(--alert) } .mic.on svg { stroke: var(--bg) }
+.sent { white-space: pre-wrap; font-size: .8rem; background: var(--card-2); border-radius: 12px; padding: 10px; overflow-wrap: anywhere; max-height: 50vh; overflow-y: auto; margin: 0 }
 [hidden] { display: none !important }
 
 .toast { position: fixed; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-size: .92rem; z-index: 30; max-width: calc(100% - 32px) }
@@ -211,7 +227,7 @@ tr:last-child td { border-bottom: 0 }
 'use strict';
 const SDK_URL = 'https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.131.0/+esm';
 const MODEL = 'claude-opus-5-5';
-const LS_KEY = 'aura.v2', LS_OLD = 'sickdaylog.v1';
+const LS_KEY = 'aura.v2', LS_OLD = 'sickdaylog.v1', DB_NAME = 'aura';
 const DRIVE_FILE = 'aura-log.json', DRIVE_FOLDER = 'Aura';
 const FEVER_C = 38.0, EXAMPLE_V = 5;
 const H = 3600e3, DAY = 24 * H;
@@ -258,6 +274,7 @@ const ICONS = {
   photo: '<rect x="3" y="6" width="18" height="14" rx="3"/><circle cx="12" cy="13" r="3.5"/><path d="M9 6l1.5-2h3L15 6"/>',
   note: '<path d="M5 4h10l4 4v12H5z"/><path d="M9 12h6M9 16h4"/>',
   say: '<path d="M12 3a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+  sound: '<path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/>',
 };
 ICONS.food = ICONS.solids; ICONS.drink = ICONS.feed;
 const icon = k => `<span class="ic t-${k}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[k] || ICONS.note}</svg></span>`;
@@ -266,7 +283,7 @@ const icon = k => `<span class="ic t-${k}"><svg viewBox="0 0 24 24" aria-hidden=
 function emptyState() {
   return { app: 'aura', v: 2, example: false, children: [], episodes: [], entries: [], measurements: [], growth: [],
     meds: [{ id: 'm1', name: 'Paracetamol (acetaminophen)', gapH: 4, updatedAt: 0 }, { id: 'm2', name: 'Ibuprofen', gapH: 6, updatedAt: 0 }],
-    settings: { unit: 'C', clientId: '', apiKey: '', theme: 'auto' }, child: null, drive: {} };
+    settings: { unit: 'C', clientId: '', pickerKey: '', apiKey: '', aiKind: 'anthropic', aiBase: '', aiModel: '', theme: 'auto', me: '' }, child: null, drive: {} };
 }
 function readLS(k) { try { const r = localStorage.getItem(k); return r ? JSON.parse(r) : null; } catch { return null; } }
 function migrate(o) {
@@ -280,12 +297,40 @@ function migrate(o) {
   s.child = s.children.find(c => !c.deleted)?.id || null;
   return s;
 }
-let S = migrate(readLS(LS_KEY)), keepSettings = null;
-if (!S) { const old = readLS(LS_OLD); if (old && !old.example) S = migrate(old); else keepSettings = old?.settings || null; }
-if (!S || (S.example && S.exampleV !== EXAMPLE_V)) { const keep = S?.settings || keepSettings; S = exampleState(); if (keep) S.settings = { ...S.settings, ...keep }; try { localStorage.setItem(LS_KEY, JSON.stringify(S)); } catch {} }
-S.growth = S.growth || [];
-function persist() { try { localStorage.setItem(LS_KEY, JSON.stringify(S)); } catch { toast('Could not save on this device. Storage may be full.'); } }
-function commit() { persist(); render(); scheduleSync(); }
+// The log lives in IndexedDB (room for photos and sound clips); localStorage is only read to move older data over.
+let S = null, db = null;
+function openDb() {
+  return new Promise((res, rej) => { const r = indexedDB.open(DB_NAME, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('kv');
+    r.onsuccess = () => { const d = r.result; d.onversionchange = () => d.close(); res(d); }; r.onerror = () => rej(r.error); });
+}
+const dbGet = k => new Promise((res, rej) => { const q = db.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => res(q.result ?? null); q.onerror = () => rej(q.error); });
+async function load() {
+  let o = null;
+  try { db = await openDb(); o = await dbGet('state'); } catch { db = null; }
+  S = migrate(o || readLS(LS_KEY)); let keepSettings = null;
+  if (!S) { const old = readLS(LS_OLD); if (old && !old.example) S = migrate(old); else keepSettings = old?.settings || null; }
+  if (!S || (S.example && S.exampleV !== EXAMPLE_V)) { const keep = S?.settings || keepSettings; S = exampleState(); if (keep) S.settings = { ...S.settings, ...keep }; }
+  for (const k of SYNCED) if (!Array.isArray(S[k])) S[k] = []; S.settings = { ...emptyState().settings, ...S.settings };
+  persist(); // The old localStorage copy is left in place, so going back to an earlier version of the app still finds the data.
+}
+// Each save replaces the one record in a single IndexedDB transaction, so a crash leaves the previous version whole.
+// Guard against bugs: never save a log that is malformed or has fewer items than the last save (deletions are markers,
+// so the count only drops when the parent deletes everything or leaves the example data).
+let savedCount = null, savedExample = false, allowShrink = false;
+const itemCount = st => SYNCED.reduce((n, k) => n + st[k].length, 0);
+const wellFormed = st => !!st && typeof st === 'object' && !!st.settings && SYNCED.every(k => Array.isArray(st[k]) && st[k].every(x => x && x.id != null));
+function persist() {
+  const fail = () => toast('Could not save on this device. Storage may be full.');
+  if (!wellFormed(S)) { toast('Something went wrong, so this change was not saved. Your saved log is unchanged.'); return; }
+  const n = itemCount(S);
+  if (savedCount != null && n < savedCount && !savedExample && !allowShrink) { toast('Something went wrong, so this change was not saved. Your saved log is unchanged.'); return; }
+  allowShrink = false;
+  const done = () => { savedCount = n; savedExample = !!S.example; };
+  if (!db) { try { localStorage.setItem(LS_KEY, JSON.stringify(S)); done(); } catch { fail(); } return; }
+  try { const tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').put(S, 'state'); tx.oncomplete = done; tx.onerror = fail; } catch { fail(); }
+}
+function commit() { S.changedAt = Date.now(); persist(); render(); scheduleSync(); }
 const touch = o => (o.updatedAt = Date.now(), o);
 
 function exampleState() {
@@ -352,13 +397,14 @@ const TYPES = {
   vomit: { label: 'Vomit', fields: [{ kind: 'chips', k: 'size', label: 'How much', opts: ['Small', 'Medium', 'Large'] }] },
   doctor: { label: 'Doctor', long: "Doctor's notes", fields: [] },
   photo: { label: 'Photo', fields: [{ kind: 'photo', k: 'img' }] },
+  sound: { label: 'Sound', long: 'Sound recording', fields: [{ kind: 'sound', k: 'audio' }] },
   note: { label: 'Note', fields: [] },
   // Older entry kinds from the sick-only version, still shown and editable
   food: { label: 'Food', fields: [{ kind: 'chips', k: 'amount', label: 'Ate', opts: ['Nothing', 'A little', 'About half', 'Normal'] }], legacy: true },
   drink: { label: 'Drink', fields: [{ kind: 'chips', k: 'what', label: 'What', opts: ['Water', 'Milk', 'Breastfeed', 'Formula', 'Rehydration', 'Juice', 'Other'] }, { kind: 'chips', k: 'ml', label: 'How much (ml)', opts: ['30', '60', '100', '150', '200', '250'], numeric: true, custom: true }], legacy: true },
 };
 const QUICK_DAY = ['feed', 'sleep', 'diaper', 'solids', 'temp', 'med', 'doctor', 'photo', 'note'];
-const QUICK_SICK = ['temp', 'med', 'symptom', 'feed', 'sleep', 'diaper', 'vomit', 'solids', 'doctor', 'photo', 'note'];
+const QUICK_SICK = ['temp', 'med', 'symptom', 'feed', 'sleep', 'diaper', 'vomit', 'sound', 'solids', 'doctor', 'photo', 'note'];
 // What each child's daily log tracks. Until a parent customizes it, the set follows the child's age.
 const TRACKERS = [
   ['feed', 'Feeds', 'Breast, bottle or cup, with a breastfeeding timer'],
@@ -405,6 +451,7 @@ function describe(e) {
     case 'food': return `<b>Food</b>${e.amount ? ' · ' + esc(lc(e.amount)) : ''}`;
     case 'doctor': return `<b>Doctor's notes</b>${DOC_FIELDS.filter(([k]) => e[k]).map(([k, l]) => `<span class="d"><span class="muted">${l}:</span> ${esc(e[k])}</span>`).join('')}`;
     case 'photo': return `<b>Photo</b>`;
+    case 'sound': return `<b>Sound recording</b>${e.audio && e.secs ? ' · <span class="num">' + esc(e.secs) + ' s</span>' : ''}${!e.audio && e.link ? ' · link' : ''}`;
     default: return `<b>Note</b>`;
   }
 }
@@ -502,7 +549,7 @@ function renderToday() {
       : '');
 
   }
-  const quick = sickView ? ['temp', 'med', 'symptom', ...['feed', 'sleep', 'diaper'].filter(k => tracks(k)), 'vomit', ...['solids', 'doctor', 'photo', 'note'].filter(k => tracks(k))]
+  const quick = sickView ? ['temp', 'med', 'symptom', ...['feed', 'sleep', 'diaper'].filter(k => tracks(k)), 'vomit', 'sound', ...['solids', 'doctor', 'photo', 'note'].filter(k => tracks(k))]
     : QUICK_DAY.filter(k => tracks(k));
   const lastMeal = es.find(e => e.type === 'solids' || e.type === 'food');
   const since = e => now - e.t < 60000 ? 'now' : dur(now - e.t);
@@ -511,7 +558,7 @@ function renderToday() {
     tracks('sleep') && `<div class="tile"><small>Sleep today</small><strong class="num">${sleepMs ? dur(sleepMs) : '–'}</strong><em>${naps} nap${naps === 1 ? '' : 's'}</em></div>`,
     tracks('diaper') && `<div class="tile"><small>Diapers</small><strong class="num">${diapers.length}</strong><em>${wet} wet</em></div>`,
     tracks('solids') && `<div class="tile"><small>Last meal</small><strong class="num">${lastMeal ? since(lastMeal) : '–'}</strong><em>${lastMeal ? esc(lastMeal.food || plain(lastMeal)) : 'none yet'}</em></div>`].filter(Boolean);
-  el.innerHTML = header(`${esc(c.name)}'s day`, `${greeting()} · ${new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}`) + exampleBanner() + sick + `
+  el.innerHTML = header(`${esc(c.name)}'s day`, `${greeting()} · ${new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}`) + exampleBanner() + backupBanner() + sick + `
     ${tiles.length && !sickView ? `<div class="sum n${tiles.length}">${tiles.join('')}</div>` : ''}
     ${run.map(r => `<div class="timer"><span>${r.type === 'sleep' ? (r.kind === 'Nap' ? 'Napping' : 'Sleeping') : 'Breastfeeding' + (r.side ? ' · ' + esc(lc(r.side)) : '')} since ${fmtTime(r.t)}<br><strong class="num" data-since="${r.t}">${clock(now - r.t)}</strong></span><button class="btn" data-stop="${r.id}">${r.type === 'sleep' ? 'Woke up' : 'Done'}</button></div>`).join('')}
     <div class="row between"><h3>Log</h3><button class="btn sm" data-act="track-sheet">What to track</button></div>
@@ -527,7 +574,9 @@ function timelineHtml(es, days) {
   return [...map].map(([d, list]) => `<div class="day-h"><h3>${label(d)}</h3><span class="muted small">${list.length} ${list.length === 1 ? 'entry' : 'entries'}</span></div>
     <ul class="tl">${list.map(entryRow).join('')}</ul>`).join('') + (es.length > shown.length ? `<button class="btn sm" data-act="more-days" style="margin-top:12px">Show earlier days</button>` : '');
 }
-const entryRow = e => `<li><button data-edit="${e.id}"><span class="time num">${fmtTime(e.t)}</span>${icon(e.type)}<span class="what">${describe(e)}${e.note ? `<span class="n">${esc(e.note)}</span>` : ''}${e.img ? `<img src="${e.img}" alt="${esc(e.note || 'Photo')}">` : ''}</span></button></li>`;
+const safeLink = u => /^https?:\/\//i.test(u || '') ? u : '';
+const mediaHtml = e => e.audio || safeLink(e.link) ? `<div class="media">${e.audio ? `<audio controls preload="none" src="${esc(e.audio)}"></audio>` : ''}${safeLink(e.link) ? `<a href="${esc(e.link)}" target="_blank" rel="noopener noreferrer">Open the linked recording</a>` : ''}</div>` : '';
+const entryRow = e => `<li><button data-edit="${e.id}"><span class="time num">${fmtTime(e.t)}</span>${icon(e.type)}<span class="what">${describe(e)}${e.by ? `<span class="by"> · ${esc(e.by)}</span>` : ''}${e.note ? `<span class="n">${esc(e.note)}</span>` : ''}${e.img ? `<img src="${e.img}" alt="${esc(e.note || 'Photo')}">` : ''}</span></button>${mediaHtml(e)}</li>`;
 function tickTimers() { document.querySelectorAll('[data-since]').forEach(n => n.textContent = clock(Date.now() - +n.dataset.since)); }
 
 /* ---------- Sick view ---------- */
@@ -559,7 +608,7 @@ function sickOverview(ep, es, el) {
       ${doses ? `<div class="tile wide-tile"><small>Last doses</small>${doses}</div>` : ''}
     </div>
     ${ep.end ? '' : `<div class="quick">${['temp', 'med', 'symptom'].map(k => `<button class="qb" data-add="${k}">${icon(k)}${TYPES[k].label}</button>`).join('')}</div>`}
-    <div><h3 style="margin-bottom:4px">During this illness</h3><ul class="tl">${es.filter(e => ['temp', 'med', 'symptom', 'vomit', 'doctor', 'note', 'photo'].includes(e.type)).map(entryRow).join('') || '<p class="muted">Nothing logged yet.</p>'}</ul>
+    <div><h3 style="margin-bottom:4px">During this illness</h3><ul class="tl">${es.filter(e => ['temp', 'med', 'symptom', 'vomit', 'doctor', 'note', 'photo', 'sound'].includes(e.type)).map(entryRow).join('') || '<p class="muted">Nothing logged yet.</p>'}</ul>
       <p class="small muted">Feeds, sleep and diapers from these days are in the daily log and in the doctor summary.</p></div>
     <div class="row">${ep.end ? `<button class="btn" data-act="reopen-episode">This illness isn't over</button>` : `<button class="btn primary" data-act="end-ask">${esc(childOf(ep)?.name || 'They')} is better: end sick mode</button>`}<button class="btn ghost" data-act="edit-episode">Rename or change start</button></div>
   </div>`;
@@ -627,7 +676,7 @@ function summaryText(es, ep) {
     ...(rows => { const cols = dayCols(rows, ep); return rows.map(r => `Day ${dayNo(r.d, ep)} (${fmtDay(r.d)}): max temp ${r.max != null ? showT(r.max) : '–'}; meds ${r.meds || 'none'}; ${cols.map(c => c[4](r) + '; ').join('')}vomited ${r.vomit}×${r.newSym ? '; new: ' + r.newSym : ''}`); })(dailyRows(es, ep))].join('\n');
 }
 function sickDoctor(ep, es, el) {
-  const rows = dailyRows(es, ep), cols = dayCols(rows, ep), photos = es.filter(e => e.type === 'photo' && e.img), docs = es.filter(e => e.type === 'doctor').reverse();
+  const rows = dailyRows(es, ep), cols = dayCols(rows, ep), photos = es.filter(e => e.type === 'photo' && e.img), sounds = es.filter(e => e.type === 'sound').reverse(), docs = es.filter(e => e.type === 'doctor').reverse();
   el.innerHTML = `<div class="view" style="padding:0">
     <p class="muted small" style="margin:0">Show this screen, or copy it into a message.</p>
     <div class="card"><ul class="facts">${summaryFacts(es, ep).map(f => `<li>${esc(f)}</li>`).join('')}</ul></div>
@@ -637,8 +686,9 @@ function sickDoctor(ep, es, el) {
       ${rows.map(r => `<tr><td><b>Day ${dayNo(r.d, ep)}</b><br><span class="muted small">${fmtDay(r.d)}</span></td><td class="r num ${r.max >= FEVER_C ? 'hot' : ''}">${r.max != null ? showT(r.max) : '–'}<br><span class="muted small">${r.n} readings</span></td><td>${esc(r.meds || '–')}</td>${cols.map(c => `<td class="${c[1]}">${c[2](r)}</td>`).join('')}<td class="r num">${r.vomit}</td><td>${esc(r.newSym || '–')}</td></tr>`).join('')}
     </tbody></table></div>
     ${photos.length ? `<div class="card"><h3>Photos</h3><div class="row" style="margin-top:8px">${photos.map(p => `<figure style="margin:0;max-width:140px"><img src="${p.img}" alt="" style="border-radius:10px;max-width:100%"><figcaption class="small muted">${fmtDT(p.t)}${p.note ? ' · ' + esc(p.note) : ''}</figcaption></figure>`).join('')}</div></div>` : ''}
+    ${sounds.length ? `<div class="card"><h3>Sound recordings</h3>${sounds.map(r => `<div class="rec-item"><b>${fmtDT(r.t)}</b> <span class="muted small">day ${dayNo(r.t, ep)}</span>${r.note ? `<div class="small">${esc(r.note)}</div>` : ''}${mediaHtml(r)}</div>`).join('')}</div>` : ''}
     <div class="row"><button class="btn primary" data-act="copy-summary">Copy summary</button><button class="btn" data-act="ai-summary">Write a handover with AI</button></div>
-    ${narrative ? `<div class="card"><h3>AI handover</h3><div class="narrative" style="margin-top:8px">${esc(narrative)}</div><p class="disclaimer" style="margin:10px 0 0">Written by AI from your log. Check it against the table above.</p></div>` : ''}
+    ${narrative ? `<div class="card"><h3>AI handover</h3><div class="narrative" style="margin-top:8px">${esc(narrative)}</div><p class="disclaimer" style="margin:10px 0 0">Written by AI from your log. Check it against the table above.</p>${narrative !== 'Writing…' ? sentHtml() : ''}</div>` : ''}
     <p class="disclaimer">This log helps you remember and report what happened. It does not give medical advice. Call your doctor or emergency services if you are worried, especially with trouble breathing, a stiff neck, a rash that doesn't fade when pressed, unusual sleepiness, or signs of dehydration.</p></div>`;
 }
 
@@ -734,25 +784,38 @@ function renderMore() {
       ${live(S.meds).map(m => `<div class="list-row medrow"><span>${esc(m.name)}</span><span class="row"><input type="number" min="0" step="0.5" value="${m.gapH ?? ''}" data-gap="${m.id}" aria-label="Hours between doses for ${esc(m.name)}"> h <button class="btn ghost danger" data-delmed="${m.id}" aria-label="Remove">✕</button></span></div>`).join('')}
       <div class="row"><input id="newMed" placeholder="Add a medicine" style="flex:1"><button class="btn sm" data-act="add-med">Add</button></div></div>
     <div class="card set"><h2>Google Drive backup and sync</h2>
-      <p class="small muted" style="margin:0">Your log is saved as <span class="num">${DRIVE_FILE}</span> in an “${DRIVE_FOLDER}” folder in your own Drive. The app can only see files it created. There is no other server.</p>
+      <p class="small muted" style="margin:0">Optional. Your log is saved as <span class="num">${DRIVE_FILE}</span> in an “${DRIVE_FOLDER}” folder in your own Drive, with a backup copy saved before each change (hourly for two days, then daily for ${KEEP_DAYS} days). The app can only see files it created or that you picked. There is no other server.</p>
       <label class="field"><span>Google OAuth client ID (one-time setup, see README)</span><input id="clientId" value="${esc(st.clientId)}" placeholder="1234-abc.apps.googleusercontent.com" autocomplete="off"></label>
-      <div class="row"><button class="btn primary sm" data-act="drive-sync">${d.fileId ? 'Sync now' : 'Connect Google Drive'}</button>${d.fileId ? '<button class="btn ghost sm" data-act="drive-forget">Disconnect</button>' : ''}</div>
-      <p class="small muted" style="margin:0">${d.lastSync ? 'Last synced ' + ago(d.lastSync) : 'Not connected yet.'}${d.error ? ' Last error: ' + esc(d.error) : ''}</p></div>
+      <div class="row"><button class="btn primary sm" data-act="drive-sync">${d.fileId ? 'Sync now' : 'Connect Google Drive'}</button>${d.fileId ? '<button class="btn sm" data-act="drive-backups">Restore from a Drive backup</button><button class="btn ghost sm" data-act="drive-forget">Disconnect</button>' : '<button class="btn sm" data-act="join">Join a shared log</button>'}</div>
+      <p class="small muted" style="margin:0">${d.lastSync ? 'Last synced ' + ago(d.lastSync) : 'Not connected yet.'}${d.owner ? ' Shared with you by ' + esc(d.owner) + '.' : ''}${d.error ? ' Last error: ' + esc(d.error) : ''}</p></div>
+    <div class="card set"><h2>Share with a partner</h2>
+      <p class="small muted" style="margin:0">Both of you can log on your own phones. ${d.fileId ? 'Google Drive gives your partner access to this one file, using their Google account. You can remove them at any time.' : 'Connect Google Drive first, or join a log someone shared with you.'}</p>
+      <label class="field"><span>Your name on entries you log (stays on this phone)</span><input id="meName" value="${esc(st.me)}" placeholder="e.g. Anna" autocomplete="off"></label>
+      ${d.fileId && d.mine !== false ? `<div id="people" class="small muted">${d.people ? '' : 'Checking who has access…'}</div>
+      <div class="row"><input id="shareEmail" type="email" inputmode="email" placeholder="Partner's Google email" style="flex:1" autocomplete="off"><button class="btn sm" data-act="share">Share</button></div>` : ''}</div>
     <div class="card set"><h2>AI helper</h2>
       <p class="small muted" style="margin:0" id="aiStatus">Checking…</p>
-      <label class="field"><span>Your Anthropic API key (stored only on this device)</span><input id="apiKey" type="password" value="${esc(st.apiKey)}" placeholder="sk-ant-…" autocomplete="off"></label>
-      <p class="small muted" style="margin:0">When you use an AI button, the text of your log is sent to Anthropic to be processed. Photos are never sent.</p></div>
+      <div class="field"><span>Which AI service</span><div class="chips">${[['anthropic', 'Anthropic (Claude)'], ['openai', 'Another service or your own']].map(([k, l]) => `<button data-aikind="${k}" class="${st.aiKind === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>
+      ${st.aiKind === 'openai' ? `<p class="small muted" style="margin:0">Any service that speaks the common OpenAI-style chat API: OpenAI, Google Gemini, Mistral, OpenRouter, or a model running with Ollama or LM Studio on the computer you are using Aura on (then nothing leaves that computer).</p>
+      <div class="chips">${AI_PRESETS.map(([l, u]) => `<button data-aibase="${esc(u)}" class="${st.aiBase === u ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <label class="field"><span>Address (base URL)</span><input id="aiBase" value="${esc(st.aiBase)}" placeholder="https://api.example.com/v1" autocomplete="off" inputmode="url"></label>
+      <label class="field"><span>Model name, as the service spells it</span><input id="aiModel" value="${esc(st.aiModel)}" placeholder="e.g. the model id from your service's docs" autocomplete="off"></label>` : `<label class="field"><span>Model (optional)</span><input id="aiModel" value="${esc(st.aiModel)}" placeholder="${MODEL}" autocomplete="off"></label>`}
+      <label class="field"><span>API key${st.aiKind === 'openai' ? ' (leave empty for Ollama or LM Studio)' : ''}, stored only on this phone, never synced</span><input id="apiKey" type="password" value="${esc(st.apiKey)}" placeholder="${st.aiKind === 'openai' ? 'key' : 'sk-ant-…'}" autocomplete="off"></label>
+      <p class="small muted" style="margin:0">AI is used only when you tap an AI button. Then the text needed for that task goes from your phone straight to the service you chose, with names replaced by placeholders and age instead of birth date. Photos, sounds, links and Drive details are never sent. Each answer has a “See exactly what was sent” link. AI never gives doses or diagnoses.</p></div>
     <div class="card set"><h2>Your data</h2>
-      <div class="row"><button class="btn sm" data-act="export">Copy all data</button><button class="btn sm" data-act="import">Restore from copied data</button></div>
+      <p class="small muted" style="margin:0" id="storeInfo">Saved on this phone.</p>
+      <div class="row"><button class="btn sm" data-act="download">Save a backup file</button><button class="btn sm" data-act="restore-file">Restore from a backup file</button><button class="btn sm" data-act="local-snaps">Restore a daily copy on this phone</button><input id="restoreFile" type="file" accept="application/json,.json" hidden></div>
+      <div class="row"><button class="btn ghost sm" data-act="export">Copy all data</button><button class="btn ghost sm" data-act="import">Restore from copied data</button></div>
       <textarea id="importBox" hidden placeholder="Paste data copied from Aura" style="min-height:90px"></textarea>
-      <div><button class="btn ghost danger sm" data-act="wipe">Delete everything on this device</button></div><div id="wipeConfirm"></div></div>`;
-  aiProvider().then(p => { const el = $('#aiStatus'); if (el) el.textContent = p === 'sample' ? 'AI is ready here using your Claude account. No key needed in this preview.' : p === 'key' ? `AI is ready using your API key (${MODEL}).` : 'AI is off. Add an API key to turn it on. Everything else works without it.'; });
+      <div><button class="btn ghost danger sm" data-act="wipe">Delete everything on this phone</button></div><div id="wipeConfirm"></div></div>`;
+  storageInfo(); if (d.fileId && d.mine !== false) peopleList();
+  aiProvider().then(p => { const el = $('#aiStatus'); if (el) el.textContent = p === 'sample' ? 'AI is ready here using your Claude account. No key needed in this preview.' : p === 'key' ? `AI is ready: ${aiName()}.` : 'AI is off. Choose a service and add its key to turn it on. Everything else works without it.'; });
 }
 
 /* ---------- Sheets ---------- */
 let sheetCtx = null;
-function openSheet(html, ctx) { sheetCtx = ctx || null; $('#sheet').innerHTML = html; $('#scrim').hidden = false; $('#sheet').scrollTop = 0; const f = $('#sheet').querySelector('[autofocus]'); if (f) setTimeout(() => f.focus(), 30); }
-function closeSheet() { $('#scrim').hidden = true; $('#sheet').innerHTML = ''; sheetCtx = null; }
+function openSheet(html, ctx) { stopRec(true); stopDictation(); sheetCtx = ctx || null; $('#sheet').innerHTML = html; $('#scrim').hidden = false; $('#sheet').scrollTop = 0; const f = $('#sheet').querySelector('[autofocus]'); if (f) setTimeout(() => f.focus(), 30); }
+function closeSheet() { stopRec(true); stopDictation(); $('#scrim').hidden = true; $('#sheet').innerHTML = ''; sheetCtx = null; }
 const chipsHtml = (f, val) => {
   const vals = f.multi ? (val || []) : [val ?? ''], custom = f.custom && val != null && val !== '' && !f.opts.includes(String(val)) ? val : '';
   return `<div class="chips" data-k="${f.k}" ${f.multi ? 'data-multi' : ''} ${f.numeric ? 'data-numeric' : ''}>${f.opts.map(o => `<button type="button" data-v="${esc(o)}" class="${vals.map(String).includes(o) ? 'on' : ''}">${esc(o)}</button>`).join('')}${f.custom ? `<input type="number" inputmode="decimal" data-custom placeholder="other" value="${esc(custom)}" aria-label="Other amount">` : ''}</div>`;
@@ -773,8 +836,12 @@ function entryForm(type, e) {
     if (f.kind === 'end') return `<label class="field"><span>${f.label}</span><input id="f_end" type="datetime-local" value="${ent.end ? toLocalInput(ent.end) : ''}"></label>`;
     if (f.kind === 'medname') { const names = [...new Set([...live(S.meds).map(m => m.name), ...live(S.entries).filter(x => x.type === 'med').map(x => x.name)])]; return `<div class="field"><span>Which medicine</span><div class="chips" data-k="name">${names.map(n => `<button type="button" data-v="${esc(n)}" class="${ent.name === n ? 'on' : ''}">${esc(n)}</button>`).join('')}</div><input id="f_medother" placeholder="Or type another name" value="${ent.name && !names.includes(ent.name) ? esc(ent.name) : ''}" style="margin-top:6px"></div>`; }
     if (f.kind === 'symtext') { const text = ent.free ? ent.note || '' : [(ent.symptoms || []).join(', '), ent.note].filter(Boolean).join('. ');
-      return `<label class="field"><span>What's going on?</span><textarea id="f_symtext" style="min-height:90px" autofocus placeholder="In your own words, e.g. coughing at night, pulling at her left ear, not hungry">${esc(text)}</textarea></label>
+      return `<label class="field"><span>What's going on?</span><span class="dict"><textarea id="f_symtext" style="min-height:90px" autofocus placeholder="In your own words, e.g. coughing at night, pulling at her left ear, not hungry">${esc(text)}</textarea>${micBtn('f_symtext')}</span></label>
         <div class="field"><span>Or tap to add</span><div class="chips" id="symTags">${SYMPTOMS.map(t => `<button type="button" data-tag="${esc(t)}" class="${hasTag(text, t) ? 'on' : ''}">${esc(t)}</button>`).join('')}</div></div>`; }
+    if (f.kind === 'sound') return `<div class="field"><span>Record up to ${REC_MAX} seconds. Hold the phone close, for example near the mouth and chest while breathing or coughing.</span>
+        <div class="rec"><button type="button" class="btn primary" data-act="rec">${ent.audio ? 'Record again' : 'Record'}</button><span id="recTime" class="num muted">${ent.secs ? ent.secs + ' s' : ''}</span></div>
+        <div id="recOut">${ent.audio ? `<audio controls src="${esc(ent.audio)}"></audio>` : ''}</div></div>
+      <label class="field"><span>Or paste a link to a video or recording kept elsewhere (optional)</span><input id="f_link" type="url" inputmode="url" placeholder="https://…" value="${esc(ent.link || '')}"></label>`;
     if (f.kind === 'photo') return `<label class="field"><span>Photo</span><input id="f_photo" type="file" accept="image/*" capture="environment"></label>${ent.img ? `<img src="${ent.img}" alt="" style="max-width:180px;border-radius:10px">` : ''}`;
     return '';
   }).join('');
@@ -782,7 +849,7 @@ function entryForm(type, e) {
   const isDoc = type === 'doctor';
   openSheet(`<div class="hd"><h2>${isDoc ? (e ? "Edit doctor's notes" : 'What did the doctor say?') : (e ? 'Edit ' : 'Log ') + lc(T.long || T.label)}</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
     ${parts}${timerBtn}
-    ${type === 'symptom' ? '' : `<label class="field"><span>${isDoc ? 'Notes' : 'Note (optional)'}</span><textarea id="f_note" style="min-height:${isDoc ? 200 : 64}px" placeholder="${type === 'note' ? 'What happened?' : isDoc ? 'Write it however you like: who you saw, what they think it is, what to do, medicine, when to come back…' : 'Anything else worth remembering'}" ${type === 'note' || isDoc ? 'autofocus' : ''}>${esc(isDoc && ent.id ? docText(ent) : ent.note || '')}</textarea></label>`}
+    ${type === 'symptom' ? '' : `<label class="field"><span>${isDoc ? 'Notes' : 'Note (optional)'}</span><span class="dict"><textarea id="f_note" style="min-height:${isDoc ? 200 : 64}px" placeholder="${type === 'note' ? 'What happened?' : isDoc ? 'Write it however you like: who you saw, what they think it is, what to do, medicine, when to come back…' : type === 'sound' ? 'What were you hearing? e.g. whistling when breathing in' : 'Anything else worth remembering'}" ${type === 'note' || isDoc ? 'autofocus' : ''}>${esc(isDoc && ent.id ? docText(ent) : ent.note || '')}</textarea>${micBtn('f_note')}</span></label>`}
     <div class="field"><span>${T.whenLabel || 'When'}</span><div class="chips" id="whenChips">${[['Now', 0], ['15 min ago', 15], ['30 min ago', 30], ['1 h ago', 60], ['2 h ago', 120]].map(([l, m]) => `<button type="button" data-ago="${m}" class="${!e && m === 0 ? 'on' : ''}">${l}</button>`).join('')}</div><input id="f_when" type="datetime-local" value="${toLocalInput(ent.t || Date.now())}" style="margin-top:6px"></div>
     <div class="sheet-actions">${e ? '<button class="btn ghost danger" data-act="delete-entry">Delete</button>' : '<span></span>'}<button class="btn primary" data-act="save-entry">Save</button></div>`, { type, id: e?.id });
 }
@@ -806,6 +873,8 @@ async function collect(type, e) {
     else if (f.kind === 'end') { const v = $('#f_end').value; draft.end = v ? new Date(v).getTime() : (e && e.end === null ? null : undefined); }
     else if (f.kind === 'medname') { draft.name = $('#f_medother').value.trim() || readChips('name'); if (!draft.name) throw 'Pick or type the medicine name.'; }
     else if (f.kind === 'symtext') { const t = $('#f_symtext').value.trim(); if (!t) throw "Write what's going on, or tap a symptom."; Object.assign(draft, { note: t, symptoms: tagsIn(t), free: true }); }
+    else if (f.kind === 'sound') { draft.link = $('#f_link').value.trim(); if (draft.link && !safeLink(draft.link)) throw 'The link should start with https://';
+      if (recorder?.data) { draft.audio = recorder.data; draft.secs = recorder.secs; } else if (recorder?.mr) throw 'Stop the recording first.'; else if (!e?.audio && !draft.link) throw 'Record a sound or paste a link.'; }
     else if (f.kind === 'photo') { const file = $('#f_photo').files[0]; if (file) draft.img = await shrink(file); else if (!e?.img) throw 'Choose or take a photo.'; }
   }
   if (type !== 'symptom') draft.note = $('#f_note').value.trim();
@@ -820,7 +889,7 @@ async function collect(type, e) {
 async function saveEntry(timer) {
   const { type, id } = sheetCtx;
   let draft; try { draft = await collect(type, id && S.entries.find(x => x.id === id)); } catch (m) { return toast(typeof m === 'string' ? m : 'Could not save that.'); }
-  const e = id ? S.entries.find(x => x.id === id) : { id: uid(), child: kid().id, type };
+  const e = id ? S.entries.find(x => x.id === id) : { id: uid(), child: kid().id, type, ...(S.settings.me ? { by: S.settings.me } : {}) };
   Object.assign(e, draft);
   if (draft.end === undefined) delete e.end;
   if (timer) { e.end = null; if (type === 'feed') { e.kind = BREAST; e.minutes = null; } }
@@ -870,33 +939,72 @@ function episodeSheet(ep) {
 /* ---------- AI ---------- */
 let samplePromise = null;
 function getSample() { if (!samplePromise) samplePromise = (window.claude?.use ? window.claude.use('sample').catch(() => null) : Promise.resolve(null)); return samplePromise; }
-async function aiProvider() { if (S.settings.apiKey) return 'key'; return (await getSample()) ? 'sample' : null; }
+// The AI can be Anthropic or any OpenAI-style chat service, including a model running on the parent's own computer.
+const AI_PRESETS = [['OpenAI', 'https://api.openai.com/v1'], ['Gemini', 'https://generativelanguage.googleapis.com/v1beta/openai'], ['Mistral', 'https://api.mistral.ai/v1'], ['OpenRouter', 'https://openrouter.ai/api/v1'], ['Ollama (this computer)', 'http://localhost:11434/v1'], ['LM Studio (this computer)', 'http://localhost:1234/v1']];
+const okBase = u => /^https:\/\/[^\s/]+/i.test(u) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(u);
+const aiName = () => { const st = S.settings; if (st.aiKind !== 'openai') return 'Anthropic, ' + (st.aiModel || MODEL); let h = st.aiBase; try { h = new URL(st.aiBase).host; } catch {} return st.aiModel + ' at ' + h; };
+async function aiProvider() {
+  const st = S.settings;
+  if (st.aiKind === 'openai' ? okBase(st.aiBase) && st.aiModel : st.apiKey) return 'key';
+  return (await getSample()) ? 'sample' : null;
+}
+async function openaiCall(system, user, schema) {
+  const st = S.settings, url = st.aiBase.replace(/\/+$/, '') + '/chat/completions';
+  const messages = [{ role: 'system', content: system + (schema ? `\n\nReply with only JSON matching this JSON Schema:\n${JSON.stringify(schema)}` : '') }, { role: 'user', content: user }];
+  const post = body => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(st.apiKey ? { Authorization: 'Bearer ' + st.apiKey } : {}) }, body: JSON.stringify(body) });
+  const base = { model: st.aiModel, messages };
+  let r = await post(schema ? { ...base, response_format: { type: 'json_schema', json_schema: { name: 'entries', schema, strict: true } } } : base);
+  if (schema && r.status === 400) r = await post({ ...base, response_format: { type: 'json_object' } });
+  if (schema && r.status === 400) r = await post(base);
+  if (!r.ok) throw new Error(`${r.status} ${(await r.text().catch(() => '')).slice(0, 160)}`);
+  const text = (await r.json()).choices?.[0]?.message?.content || '';
+  if (!schema) return text;
+  const m = text.match(/\{[\s\S]*\}/); if (!m) throw new Error('The AI did not answer in the expected format.');
+  return JSON.parse(m[0]);
+}
 let sdkClient = null, sdkKey = null;
 async function apiCall(system, user, schema) {
+  if (S.settings.aiKind === 'openai') return openaiCall(system, user, schema);
   if (!sdkClient || sdkKey !== S.settings.apiKey) { const { default: Anthropic } = await import(SDK_URL); sdkClient = new Anthropic({ apiKey: S.settings.apiKey, dangerouslyAllowBrowser: true }); sdkKey = S.settings.apiKey; }
   const output_config = { effort: 'low' }; if (schema) output_config.format = { type: 'json_schema', schema };
-  const msg = await sdkClient.beta.messages.create({ model: MODEL, max_tokens: 16000, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default', output_config, system, messages: [{ role: 'user', content: user }] });
+  const msg = await sdkClient.beta.messages.create({ model: S.settings.aiModel || MODEL, max_tokens: 16000, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default', output_config, system, messages: [{ role: 'user', content: user }] });
   if (msg.stop_reason === 'refusal') throw new Error('The AI declined this request.');
   const text = msg.content.filter(b => b.type === 'text').map(b => b.text).join('');
   return schema ? JSON.parse(text) : text;
 }
-async function ai(system, user, schema) {
-  const p = await aiProvider(); if (!p) throw new Error('AI is off. Add an API key under More to use it.');
-  if (p === 'key') return apiCall(system, user, schema);
-  const sample = await getSample(), prompt = `${system}\n\n${user}`;
-  if (schema) return sample.json(prompt + `\n\nReply with only JSON matching this JSON Schema:\n${JSON.stringify(schema)}`, { modelTier: 'quick', cache: false });
-  return (await sample(prompt, { cache: false })).text;
+// Privacy: names become placeholders before anything is sent and are put back on the phone. Photos, sounds, links and birth dates are never part of a prompt.
+let lastSent = null;
+function nameMap(cid) {
+  const cs = kids().slice().sort((a, b) => (b.id === cid) - (a.id === cid)), map = cs.map((c, i) => [c.name.trim(), i ? `[CHILD ${i + 1}]` : '[CHILD]']);
+  [...new Set([S.settings.me, ...live(S.entries).map(e => e.by)].filter(Boolean))].forEach((n, i) => map.push([n.trim(), `[PARENT ${i + 1}]`]));
+  return map.filter(([n]) => n.length > 1).sort((a, b) => b[0].length - a[0].length);
+}
+const redact = (t, map) => map.reduce((s, [n, p]) => s.replace(new RegExp(`(^|[^\\p{L}])${reEsc(n)}(?=$|[^\\p{L}])`, 'giu'), `$1${p}`), String(t));
+const unredact = (t, map) => map.reduce((s, [n, p]) => s.split(p).join(n), String(t));
+const deepMap = (v, f) => typeof v === 'string' ? f(v) : Array.isArray(v) ? v.map(x => deepMap(x, f)) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, deepMap(x, f)])) : v;
+const sentHtml = () => lastSent ? `<details class="small"><summary class="muted">See exactly what was sent</summary><pre class="sent">${esc(lastSent.system + '\n\n' + lastSent.user)}</pre></details>` : '';
+async function ai(system, user, schema, cid = kid()?.id) {
+  const p = await aiProvider(); if (!p) throw new Error('AI is off. Choose a service under More to use it.');
+  const map = nameMap(cid), sys = system + ' Names are replaced by placeholders such as [CHILD]; keep each placeholder exactly as written.', u = redact(user, map);
+  lastSent = { system: sys, user: u, via: p };
+  let r;
+  if (p === 'key') r = await apiCall(sys, u, schema);
+  else { const sample = await getSample(), prompt = `${sys}\n\n${u}`;
+    r = schema ? await sample.json(prompt + `\n\nReply with only JSON matching this JSON Schema:\n${JSON.stringify(schema)}`, { modelTier: 'quick', cache: false }) : (await sample(prompt, { cache: false })).text; }
+  return deepMap(r, t => unredact(t, map));
 }
 const nul = t => ({ type: [t, 'null'] });
 const P_FIELDS = ['tempC', 'name', 'amount', 'unit', 'what', 'ml', 'side', 'minutes', 'kind', 'endTime', 'stool', 'size', 'food', 'severity', 'quality', 'note'];
 const PARSE_SCHEMA = { type: 'object', additionalProperties: false, required: ['entries'], properties: { entries: { type: 'array', items: { type: 'object', additionalProperties: false,
   required: ['type', 'time', 'symptoms', ...P_FIELDS],
-  properties: { type: { type: 'string', enum: QUICK_SICK.filter(k => k !== 'photo') }, time: { type: 'string' }, symptoms: { type: 'array', items: { type: 'string' } },
+  properties: { type: { type: 'string', enum: QUICK_SICK.filter(k => k !== 'photo' && k !== 'sound') }, time: { type: 'string' }, symptoms: { type: 'array', items: { type: 'string' } },
     ...Object.fromEntries(P_FIELDS.map(k => [k, nul(['tempC', 'amount', 'ml', 'minutes'].includes(k) ? 'number' : 'string')])) } } } } };
-function saySheet() {
+async function saySheet() {
+  const hasAi = !!(await aiProvider());
   openSheet(`<div class="hd"><h2>Say it in your own words</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
-    <textarea id="aiText" style="min-height:110px" autofocus placeholder="e.g. 150 ml milk at 6, napped 1 to 2:30, wet diaper, 38.9 at 2am and gave 5 ml ibuprofen. Tip: use your keyboard's microphone key to dictate."></textarea>
-    <div class="row"><button class="btn primary" data-act="ai-parse">Turn into entries</button><button class="btn ghost" data-act="mic">Dictate</button></div>
+    <span class="dict"><textarea id="aiText" style="min-height:110px" autofocus placeholder="e.g. 150 ml milk at 6, napped 1 to 2:30, wet diaper, 38.9 at 2am and gave 5 ml ibuprofen.${SR ? ' Tap the microphone to dictate.' : " Tip: use your keyboard's microphone key to dictate."}"></textarea>${micBtn('aiText')}</span>
+    <div class="row"><button class="btn primary" data-act="ai-parse" ${hasAi ? '' : 'hidden'}>Turn into entries</button><button class="btn ${hasAi ? 'ghost' : 'primary'}" data-act="say-note">Save as a note</button></div>
+    ${hasAi ? '' : '<p class="small muted" style="margin:0">Turn on the AI helper under More to have this sorted into feeds, sleep, temperatures and so on.</p>'}
     <div id="aiOut">${aiParsed ? parsedHtml() : ''}</div>`);
 }
 async function aiParse() {
@@ -924,11 +1032,12 @@ async function aiParse() {
   } catch (err) { out.innerHTML = `<p class="small" style="color:var(--alert)">${esc(aiError(err))}</p>`; }
 }
 const parsedHtml = () => `<div class="parsed"><p class="small muted" style="margin:0">Check these before adding:</p>${aiParsed.map((e, i) => `<label><input type="checkbox" checked data-pi="${i}">${icon(e.type)}<span><span class="num muted small">${fmtDT(e.t)}</span><br>${describe(e)}${e.note ? `<span class="small muted"> · ${esc(e.note)}</span>` : ''}</span></label>`).join('')}
-  <div class="row"><button class="btn primary" data-act="ai-add">Add selected</button><button class="btn ghost" data-act="ai-discard">Discard</button></div></div>`;
+  <div class="row"><button class="btn primary" data-act="ai-add">Add selected</button><button class="btn ghost" data-act="ai-discard">Discard</button></div>${sentHtml()}</div>`;
 function aiError(err) {
   const m = String(err?.message || err?.code || err);
   if (err?.code === 'not_granted') return 'AI access was not allowed for this page.';
   if (/401|authentication|invalid x-api-key/i.test(m)) return 'The API key was rejected. Check it under More.';
+  if (/^404/.test(m)) return 'The AI service did not find that model or address. Check them under More.';
   if (/Failed to fetch|import|NetworkError/i.test(m)) return 'Could not reach the AI service. Check your connection.';
   return 'AI request failed: ' + m;
 }
@@ -938,16 +1047,54 @@ async function aiSummary() {
   const system = `You help a parent hand over an accurate account of their child's illness to a doctor. Write from the log only; never add facts, diagnoses, or treatment or dose suggestions. Format: a 2-sentence overview, then 5 to 9 short bullet lines in time order covering the fever pattern, medicines with times and spacing, feeding, fluids and wet diapers, sleep, vomiting and stools, how symptoms changed, and what any doctor already said, ending with what changed most recently. Then "Questions you may want to ask:" with 3 brief questions. Plain text, no markdown headings. Match the language of the parent's notes.`;
   const user = `Child: ${c ? `${c.name}${c.dob ? ', age ' + ageText(c) : ''}${wt ? ', ' + wt.v + ' kg' : ''}` : 'unknown'}. Illness started ${toLocalInput(ep.start).replace('T', ' ')}. Now: ${toLocalInput(Date.now()).replace('T', ' ')}. Temperatures in Celsius.\n\nLog:\n${log}`;
   narrative = 'Writing…'; render();
-  try { narrative = (await ai(system, user)).trim(); } catch (err) { narrative = ''; toast(aiError(err)); }
+  try { narrative = (await ai(system, user, null, ep.childId)).trim(); } catch (err) { narrative = ''; toast(aiError(err)); }
   render();
 }
-function dictate() {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) return toast("Voice input isn't available here. Use your keyboard's microphone key instead.");
-  const r = new SR(); r.lang = navigator.language || 'en-US';
-  r.onresult = ev => { const box = $('#aiText'); box.value = (box.value ? box.value + ' ' : '') + ev.results[0][0].transcript; };
-  r.onerror = () => toast("Voice input isn't available here. Use your keyboard's microphone key instead.");
-  try { r.start(); toast('Listening…'); } catch { toast("Voice input isn't available here."); }
+/* ---------- Voice: dictation into any text box, and sound recordings ---------- */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const micBtn = id => SR ? `<button type="button" class="mic" data-mic="${id}" aria-label="Dictate"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS.say}</svg></button>` : '';
+let dictation = null;
+function stopDictation() { if (!dictation) return; const d = dictation; dictation = null; d.btn?.classList.remove('on'); try { d.r.stop(); } catch {} }
+function dictate(id, btn) {
+  if (dictation) { const same = dictation.id === id; stopDictation(); if (same) return; }
+  const box = document.getElementById(id); if (!box || !SR) return;
+  const r = new SR(), base = box.value.replace(/\s+$/, ''); r.lang = navigator.language || 'en-US'; r.continuous = true; r.interimResults = true;
+  let done = '';
+  r.onresult = ev => { let live = ''; for (let i = ev.resultIndex; i < ev.results.length; i++) { const t = ev.results[i][0].transcript; if (ev.results[i].isFinal) done += t; else live += t; }
+    box.value = [base, (done + live).trim()].filter(Boolean).join(base && /[.!?]$/.test(base) ? ' ' : base ? ', ' : ''); box.dispatchEvent(new Event('input', { bubbles: true })); };
+  r.onerror = ev => { if (ev.error === 'not-allowed') toast('Microphone access was not allowed.'); else if (ev.error !== 'no-speech' && ev.error !== 'aborted') toast("Dictation stopped. Your keyboard's microphone key works too."); };
+  r.onend = () => { if (dictation?.r === r) { dictation = null; btn.classList.remove('on'); } };
+  try { r.start(); dictation = { r, id, btn }; btn.classList.add('on'); } catch { toast("Dictation isn't available here. Use your keyboard's microphone key instead."); }
+}
+// Short clips of coughing or breathing for the doctor. Noise suppression is off so breathing sounds are kept.
+const REC_MAX = 30;
+let recorder = null;
+function stopRec(discard) {
+  if (!recorder) return; const r = recorder; clearInterval(r.timer);
+  if (discard) { recorder = null; if (r.mr?.state === 'recording') { r.mr.onstop = null; r.mr.stop(); } r.stream?.getTracks().forEach(t => t.stop()); return; }
+  if (r.mr?.state === 'recording') r.mr.stop();
+}
+async function startRec(btn) {
+  if (recorder?.mr) return stopRec(false);
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) return toast("Recording isn't available in this browser. You can paste a link instead.");
+  let stream; try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } }); }
+  catch { return toast('Microphone access was not allowed.'); }
+  const type = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/ogg;codecs=opus'].find(t => MediaRecorder.isTypeSupported?.(t));
+  const mr = new MediaRecorder(stream, { ...(type ? { mimeType: type } : {}), audioBitsPerSecond: 32000 }), chunks = [], t0 = Date.now();
+  recorder = { mr, stream, t0 };
+  mr.ondataavailable = ev => ev.data.size && chunks.push(ev.data);
+  mr.onstop = () => {
+    stream.getTracks().forEach(t => t.stop());
+    const secs = Math.max(1, Math.round((Date.now() - t0) / 1000)), blob = new Blob(chunks, { type: mr.mimeType || type || 'audio/webm' }), fr = new FileReader();
+    fr.onload = () => { if (recorder?.mr !== mr) return; recorder = { data: fr.result, secs };
+      const out = $('#recOut'); if (out) out.innerHTML = `<audio controls src="${esc(fr.result)}"></audio>`;
+      const tm = $('#recTime'); if (tm) tm.textContent = secs + ' s recorded';
+      btn.classList.remove('on'); btn.textContent = 'Record again'; };
+    fr.readAsDataURL(blob);
+  };
+  mr.start(); btn.classList.add('on'); btn.textContent = 'Stop';
+  const tick = () => { const s = Math.floor((Date.now() - t0) / 1000), tm = $('#recTime'); if (tm) tm.textContent = `Recording 0:${pad(s)} of 0:${REC_MAX}`; if (s >= REC_MAX) stopRec(false); };
+  tick(); recorder.timer = setInterval(tick, 250);
 }
 
 /* ---------- Google Drive sync ---------- */
@@ -972,29 +1119,190 @@ async function gapi(tok, url, opts = {}) { const r = await fetch(url, { ...opts,
 const DRIVE = 'https://www.googleapis.com/drive/v3/files', UP = 'https://www.googleapis.com/upload/drive/v3/files';
 const SYNCED = ['children', 'episodes', 'entries', 'meds', 'measurements', 'growth'];
 const shareable = () => ({ app: 'aura', v: 2, savedAt: Date.now(), ...Object.fromEntries(SYNCED.map(k => [k, S[k]])) });
-async function findOrCreateFile(tok) {
-  const q = s => encodeURIComponent(s);
-  let r = await (await gapi(tok, `${DRIVE}?q=${q(`name='${DRIVE_FILE}' and trashed=false`)}&fields=files(id)`)).json();
+const enc = encodeURIComponent, JSON_H = { 'Content-Type': 'application/json' }, FOLDER_T = 'application/vnd.google-apps.folder';
+async function folderId(tok, name, parent) {
+  const r = await (await gapi(tok, `${DRIVE}?q=${enc(`name='${name}' and mimeType='${FOLDER_T}' and trashed=false${parent ? ` and '${parent}' in parents` : ''}`)}&fields=files(id)`)).json();
   if (r.files?.length) return r.files[0].id;
-  r = await (await gapi(tok, `${DRIVE}?q=${q(`name='${DRIVE_FOLDER}' and mimeType='application/vnd.google-apps.folder' and trashed=false`)}&fields=files(id)`)).json();
-  let folder = r.files?.[0]?.id;
-  if (!folder) folder = (await (await gapi(tok, DRIVE, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: DRIVE_FOLDER, mimeType: 'application/vnd.google-apps.folder' }) })).json()).id;
-  const b = 'aura' + uid(), body = `--${b}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify({ name: DRIVE_FILE, parents: [folder], mimeType: 'application/json' })}\r\n--${b}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(shareable())}\r\n--${b}--`;
+  return (await (await gapi(tok, DRIVE, { method: 'POST', headers: JSON_H, body: JSON.stringify({ name, mimeType: FOLDER_T, ...(parent ? { parents: [parent] } : {}) }) })).json()).id;
+}
+async function uploadNew(tok, name, parent, data) {
+  const b = 'aura' + uid(), body = `--${b}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify({ name, parents: [parent], mimeType: 'application/json' })}\r\n--${b}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(data)}\r\n--${b}--`;
   return (await (await gapi(tok, `${UP}?uploadType=multipart&fields=id`, { method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + b }, body })).json()).id;
 }
+async function findOrCreateFile(tok) {
+  const r = await (await gapi(tok, `${DRIVE}?q=${enc(`name='${DRIVE_FILE}' and trashed=false and 'me' in owners`)}&fields=files(id)`)).json();
+  if (r.files?.length) return r.files[0].id;
+  return uploadNew(tok, DRIVE_FILE, await folderId(tok, DRIVE_FOLDER), shareable());
+}
+// Before the app overwrites the Drive file, it saves the file as it was to Aura/backups in this person's own Drive,
+// at most once an hour. Kept: every snapshot from the newest KEEP_RECENT, then one per day for KEEP_DAYS days.
+const KEEP_RECENT = 48, KEEP_DAYS = 60;
+async function backupsDir(tok) { return folderId(tok, 'backups', await folderId(tok, DRIVE_FOLDER)); }
+async function listBackups(tok, dir) {
+  const r = await (await gapi(tok, `${DRIVE}?q=${enc(`'${dir}' in parents and trashed=false`)}&orderBy=name desc&pageSize=500&fields=files(id,name)`)).json();
+  return (r.files || []).filter(f => /^aura-backup-\d{4}-\d\d-\d\d(-\d\d)?\.json$/.test(f.name));
+}
+function prunable(files) { // files sorted newest first
+  const days = new Set();
+  return files.filter((f, i) => { if (i < KEEP_RECENT) return false; const d = f.name.slice(12, 22); if (days.has(d) || days.size >= KEEP_DAYS) return true; days.add(d); return false; });
+}
+async function snapshot(tok, data) {
+  const hour = toLocalInput(Date.now()).slice(0, 13).replace('T', '-'); if (S.drive.backupHour === hour) return;
+  const dir = await backupsDir(tok), name = `aura-backup-${hour}.json`, old = await listBackups(tok, dir);
+  if (!old.some(f => f.name === name)) await uploadNew(tok, name, dir, data);
+  for (const f of prunable(old.filter(f => f.name !== name))) await gapi(tok, `${DRIVE}/${f.id}`, { method: 'DELETE' });
+  S.drive.backupHour = hour; persist();
+}
+// On this phone too: one copy of the whole log per day in IndexedDB, newest LOCAL_SNAPS kept.
+const LOCAL_SNAPS = 14;
+const dbKeys = () => new Promise((res, rej) => { const q = db.transaction('kv').objectStore('kv').getAllKeys(); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); });
+async function localSnapshot() {
+  if (!db || S.example) return;
+  try {
+    const key = 'snap-' + toLocalInput(Date.now()).slice(0, 10), keys = (await dbKeys()).filter(k => String(k).startsWith('snap-')).sort().reverse();
+    const tx = db.transaction('kv', 'readwrite'), st = tx.objectStore('kv');
+    if (!keys.includes(key)) st.put(shareable(), key);
+    keys.filter(k => k !== key).slice(LOCAL_SNAPS - 1).forEach(k => st.delete(k));
+  } catch {}
+}
 function mergeList(a = [], b = []) { const m = new Map(a.map(x => [x.id, x])); for (const x of b) { const y = m.get(x.id); if (!y || (x.updatedAt || 0) > (y.updatedAt || 0)) m.set(x.id, x); } return [...m.values()]; }
+// Adds a backup or another phone's data to this log, item by item; newer edits and deletions win.
+function mergeIn(d) {
+  if (!d || (d.app !== 'aura' && d.app !== 'sick-day-log')) throw new Error("That doesn't look like Aura data.");
+  d = d.v === 2 ? d : migrate(d);
+  if (S.example) { const st = S.settings; S = emptyState(); S.settings = st; }
+  for (const k of SYNCED) S[k] = mergeList(S[k], d[k]); S.child = S.child || kids()[0]?.id || null;
+}
+const softRender = () => { if (!document.activeElement?.matches('input, textarea')) render(); };
+const isAura = d => d && (d.app === 'aura' || d.app === 'sick-day-log') && Array.isArray((d.v === 2 ? d : migrate(d) || {}).entries);
+const coveredBy = (mine, theirs) => SYNCED.every(k => { const m = new Map((theirs[k] || []).map(x => [x.id, x.updatedAt || 0])); return (mine[k] || []).every(x => m.has(x.id) && m.get(x.id) >= (x.updatedAt || 0)); });
+// Read, merge, write, then read back: if another phone wrote in between and our entries are missing, merge and write again.
 async function sync(interactive) {
-  if (syncing || S.example) return; syncing = true; syncMsg = 'Syncing…'; render();
+  if (syncing || S.example) return; syncing = true; syncMsg = 'Syncing…'; softRender();
   try {
     const tok = await token(interactive); if (!tok) return;
     const id = S.drive?.fileId || await findOrCreateFile(tok);
-    const remote = await (await gapi(tok, `${DRIVE}/${id}?alt=media`)).json();
-    const r2 = remote.v === 2 ? remote : migrate(remote) || {};
-    for (const k of SYNCED) S[k] = mergeList(S[k], r2[k]);
-    await gapi(tok, `${UP}/${id}?uploadType=media`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(shareable()) });
-    S.drive = { fileId: id, lastSync: Date.now(), error: '' }; persist();
-  } catch (e) { S.drive = { ...(S.drive || {}), error: e.message }; persist(); if (interactive) toast(e.message); }
-  finally { syncing = false; syncMsg = ''; render(); }
+    const read = async () => { const d = await (await gapi(tok, `${DRIVE}/${id}?alt=media`)).json().catch(() => null);
+      if (!isAura(d)) throw new Error("The Drive file doesn't look like an Aura log, so nothing was overwritten. Your data on this phone is safe.");
+      return d.v === 2 ? d : migrate(d); };
+    let remote = await read(), ok = false;
+    for (let round = 0; round < 3 && !ok; round++) {
+      for (const k of SYNCED) S[k] = mergeList(S[k], remote[k]);
+      persist();
+      if (coveredBy(remote, S) && coveredBy(S, remote)) { ok = true; break; }
+      if (round === 0) try { await snapshot(tok, remote); } catch {}
+      await gapi(tok, `${UP}/${id}?uploadType=media`, { method: 'PATCH', headers: JSON_H, body: JSON.stringify(shareable()) });
+      remote = await read(); ok = coveredBy(S, remote);
+    }
+    if (!ok) throw new Error('Another phone was saving at the same time. Will try again shortly.');
+    S.drive = { ...(S.drive || {}), fileId: id, lastSync: Date.now(), error: '' }; S.backedUpAt = Date.now();
+    if (S.drive.mine === undefined) { const m = await (await gapi(tok, `${DRIVE}/${id}?fields=ownedByMe,owners(displayName,emailAddress)`)).json(); S.drive.mine = !!m.ownedByMe; S.drive.owner = m.ownedByMe ? '' : m.owners?.[0]?.displayName || m.owners?.[0]?.emailAddress || 'someone'; }
+    persist();
+  } catch (e) { S.drive = { ...(S.drive || {}), error: e.message }; persist(); if (interactive) toast(e.message); if (/same time/.test(e.message)) setTimeout(() => sync(false), 20e3); }
+  finally { syncing = false; syncMsg = ''; softRender(); }
+}
+async function driveBackupsSheet() {
+  let list; try { const tok = await token(true); list = await listBackups(tok, await backupsDir(tok)); } catch (e) { return toast(e.message); }
+  openSheet(`<div class="hd"><h2>Restore from a Drive backup</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+    <p class="small muted" style="margin:0">Restoring adds back anything that is missing from the log. It does not undo later edits or deletions.</p>
+    ${list.length ? list.map(f => `<button class="pick" data-backup="${esc(f.id)}"><b>${esc(f.name.slice(12, 22))}</b>${f.name.length > 27 ? ' ' + esc(f.name.slice(23, 25)) + ':00' : ''}</button>`).join('') : '<p class="muted">No backups yet. One is saved before the app changes the Drive file, at most once an hour.</p>'}`);
+}
+async function localSnapsSheet() {
+  let keys = []; try { keys = db ? (await dbKeys()).filter(k => String(k).startsWith('snap-')).sort().reverse() : []; } catch {}
+  openSheet(`<div class="hd"><h2>Daily copies on this phone</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+    <p class="small muted" style="margin:0">The app keeps a copy of the whole log each day you open it (the newest ${LOCAL_SNAPS}). Restoring adds back anything that is missing. It does not undo later edits or deletions.</p>
+    ${keys.length ? keys.map(k => `<button class="pick" data-snap="${esc(k)}"><b>${esc(k.slice(5))}</b></button>`).join('') : '<p class="muted">No copies yet.</p>'}`);
+}
+async function restoreDrive(id) {
+  try { const tok = await token(true); mergeIn(await (await gapi(tok, `${DRIVE}/${id}?alt=media`)).json()); closeSheet(); commit(); toast('Backup restored'); }
+  catch (e) { toast(e.message || 'Could not restore that backup.'); }
+}
+/* ---------- Sharing: Google Drive gives a partner access to the one log file ---------- */
+async function peopleList() {
+  const el = $('#people'); if (!el) return;
+  try {
+    const tok = await token(false); if (!tok) { el.innerHTML = '<button class="linkish" data-act="drive-sync">Sign in to see who has access</button>'; return; }
+    const r = await (await gapi(tok, `${DRIVE}/${S.drive.fileId}/permissions?fields=permissions(id,emailAddress,displayName,role)`)).json();
+    const others = (r.permissions || []).filter(x => x.role !== 'owner');
+    S.drive.people = others.length; persist();
+    if ($('#people')) $('#people').innerHTML = others.length ? others.map(x => `<div class="list-row"><span><b>${esc(x.displayName || x.emailAddress || 'Someone')}</b> <span class="muted">${esc(x.emailAddress || '')} · can edit</span></span><button class="btn ghost sm danger" data-unshare="${esc(x.id)}">Remove</button></div>`).join('') : 'Only you have access right now.';
+  } catch { el.textContent = 'Could not check who has access.'; }
+}
+async function share() {
+  const email = $('#shareEmail').value.trim(); if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast("Enter your partner's Google email address.");
+  try {
+    const tok = await token(true), msg = `I'm sharing our Aura log with you. Open Aura on your phone, go to More → Google Drive, and tap “Join a shared log”.`;
+    await gapi(tok, `${DRIVE}/${S.drive.fileId}/permissions?sendNotificationEmail=true&emailMessage=${enc(msg)}`, { method: 'POST', headers: JSON_H, body: JSON.stringify({ type: 'user', role: 'writer', emailAddress: email }) });
+    $('#shareEmail').value = ''; toast(`Shared with ${email}. Google has emailed them.`); peopleList();
+  } catch (e) { toast(e.message); }
+}
+async function unshare(pid) {
+  try { const tok = await token(true); await gapi(tok, `${DRIVE}/${S.drive.fileId}/permissions/${enc(pid)}`, { method: 'DELETE' }); toast('Access removed'); peopleList(); } catch (e) { toast(e.message); }
+}
+function joinSheet() {
+  openSheet(`<div class="hd"><h2>Join a shared log</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+    <p class="small muted" style="margin:0">If your partner shared their Aura log with your Google account, you can pick it here. Anything already on this phone is added to the shared log.</p>
+    <label class="field"><span>Google OAuth client ID (the same one your partner uses)</span><input id="j_client" value="${esc(S.settings.clientId)}" autocomplete="off"></label>
+    <label class="field"><span>Google API key for the file picker (see README)</span><input id="j_key" value="${esc(S.settings.pickerKey)}" autocomplete="off"></label>
+    <div class="sheet-actions"><span></span><button class="btn primary" data-act="join-pick">Choose the shared file</button></div>`);
+}
+function loadPicker() {
+  return new Promise((res, rej) => { if (window.google?.picker) return res();
+    const go = () => window.gapi.load('picker', { callback: res, onerror: () => rej(new Error('The Google file picker could not load.')) });
+    if (window.gapi?.load) return go();
+    const s = document.createElement('script'); s.src = 'https://apis.google.com/js/api.js'; s.onload = go; s.onerror = () => rej(new Error('The Google file picker could not load.')); document.head.appendChild(s); });
+}
+async function joinPick() {
+  S.settings.clientId = $('#j_client').value.trim(); S.settings.pickerKey = $('#j_key').value.trim(); persist();
+  if (!S.settings.pickerKey) return toast('Add the API key first.');
+  try {
+    const tok = await token(true); await loadPicker();
+    const view = new google.picker.DocsView(google.picker.ViewId.DOCS).setMimeTypes('application/json').setQuery(DRIVE_FILE).setMode(google.picker.DocsViewMode.LIST);
+    new google.picker.PickerBuilder().addView(view).setOAuthToken(tok).setDeveloperKey(S.settings.pickerKey).setAppId(S.settings.clientId.split('-')[0])
+      .setTitle('Pick the shared Aura log').setCallback(d => {
+        if (d.action !== google.picker.Action.PICKED || !d.docs?.[0]) return;
+        if (S.example) { const st = S.settings; S = emptyState(); S.settings = st; }
+        S.drive = { fileId: d.docs[0].id }; closeSheet(); persist(); sync(true).then(() => { if (!S.drive.error) toast('Joined. You now share this log.'); tab = 'today'; render(); });
+      }).build().setVisible(true);
+  } catch (e) { toast(e.message); }
+}
+/* ---------- Storage on this phone ---------- */
+async function keepStorage() { try { if (navigator.storage?.persist && !(await navigator.storage.persisted())) await navigator.storage.persist(); } catch {} }
+async function storageInfo() {
+  const el = $('#storeInfo'); if (!el) return;
+  try {
+    const [est, kept] = await Promise.all([navigator.storage?.estimate?.(), navigator.storage?.persisted?.()]);
+    const mb = est?.usage != null ? (est.usage / 1048576).toFixed(1) + ' MB' : null;
+    el.textContent = `Saved on this phone${mb ? ', using ' + mb : ''}. ${kept ? 'The browser will keep it even when space runs low.' : 'Install the app (Add to Home Screen) so the browser keeps it for good.'}`;
+  } catch {}
+}
+// Backups are not optional: Today keeps asking until there is a copy off this phone (Drive sync or a saved file) that is less than BACKUP_DAYS old.
+const BACKUP_DAYS = 2;
+const backedUp = () => { S.backedUpAt = Date.now(); persist(); };
+function backupDue() {
+  if (S.example || !kids().length || (S.backupSnooze || 0) > Date.now()) return null;
+  if (!S.backedUpAt) return 'Nothing is backed up yet. If this phone is lost or reset, the log is gone.';
+  if ((S.changedAt || 0) > S.backedUpAt && Date.now() - S.backedUpAt > BACKUP_DAYS * DAY) return `Last backup ${ago(S.backedUpAt)}. Newer entries exist only on this phone.`;
+  return null;
+}
+const backupBanner = () => { const m = backupDue(); return m ? `<div class="banner backup-due"><p><b>Back up your log.</b> ${m}</p><button class="btn primary sm" data-act="backup-now">Back up now</button><button class="btn ghost sm" data-act="backup-snooze">Tomorrow</button></div>` : ''; };
+function backupSheet(first) {
+  openSheet(`<div class="hd"><h2>${first ? 'Keep this log safe' : 'Back up your log'}</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+    <p class="small muted" style="margin:0">The log is saved on this phone. A lost, broken or reset phone would take it with it, so keep a copy somewhere else.</p>
+    <button class="pick" data-act="backup-drive"><b>Google Drive, automatic (recommended)</b><br><span class="small muted">Every change is saved to your own Drive, with older versions kept. Needs the one-time setup in the README.</span></button>
+    <button class="pick" data-act="backup-file"><b>Save a backup file</b><br><span class="small muted">Send it to iCloud Files, Dropbox, email or any place you choose. Aura reminds you every ${BACKUP_DAYS} days when there are new entries.</span></button>
+    ${first ? '<div class="sheet-actions"><span></span><button class="btn ghost" data-act="close">Later</button></div>' : ''}`);
+}
+async function saveBackupFile() {
+  const name = `aura-backup-${toLocalInput(Date.now()).slice(0, 10)}.json`, blob = new Blob([JSON.stringify(shareable())], { type: 'application/json' });
+  const file = new File([blob], name, { type: 'application/json' });
+  if (navigator.canShare?.({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: 'Aura backup' }); backedUp(); render(); return toast('Backup saved'); }
+    catch (e) { if (e?.name === 'AbortError') return; }
+  }
+  const a = document.createElement('a'), url = URL.createObjectURL(blob);
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000);
+  backedUp(); render(); toast('Backup file downloaded');
 }
 function scheduleSync() { if (!S.drive?.fileId || S.example) return; clearTimeout(syncTimer); syncTimer = setTimeout(() => sync(false), 1500); }
 function syncLabel() {
@@ -1012,12 +1320,15 @@ function syncShow() { const v = readChips('kind'); $('#sheet').querySelectorAll(
 document.addEventListener('click', async ev => {
   const tr = ev.target.closest('tr[data-meas]'); if (tr) return measSheet(tr.dataset.meas);
   const b = ev.target.closest('button'); if (!b) return;
+  if (b.dataset.mic) return dictate(b.dataset.mic, b);
   if (b.dataset.tab) { tab = b.dataset.tab; showDays = 3; render(); window.scrollTo(0, 0); return; }
   if (b.dataset.tag) { const box = $('#f_symtext'); box.value = toggleTag(box.value, b.dataset.tag); markTags(); return; }
   if (b.closest('.chips')) {
     const box = b.closest('.chips');
     if (box.id === 'whenChips') { box.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); $('#f_when').value = toLocalInput(Date.now() - (+b.dataset.ago) * 60000); return; }
     if (b.dataset.unit) { S.settings.unit = b.dataset.unit; return commit(); }
+    if (b.dataset.aikind) { S.settings.aiKind = b.dataset.aikind; S.settings.aiModel = ''; persist(); return renderMore(); }
+    if (b.dataset.aibase) { S.settings.aiBase = b.dataset.aibase; persist(); return renderMore(); }
     if (b.dataset.themeSet) { S.settings.theme = b.dataset.themeSet; return commit(); }
     if (box.hasAttribute('data-multi')) b.classList.toggle('on');
     else { const was = b.classList.contains('on'); box.querySelectorAll('button').forEach(x => x.classList.remove('on')); if (!was || box.dataset.k === 'kind') b.classList.add('on'); const c = box.querySelector('[data-custom]'); if (c) c.value = ''; }
@@ -1044,6 +1355,9 @@ document.addEventListener('click', async ev => {
     const c = S.children.find(k => k.id === sheetCtx.trackKid), on = b.getAttribute('aria-checked') !== 'true';
     c.track = { ...trackMap(c), [b.dataset.track]: on }; touch(c); b.setAttribute('aria-checked', String(on)); commit(); return;
   }
+  if (b.dataset.backup) return restoreDrive(b.dataset.backup);
+  if (b.dataset.snap) { try { mergeIn(await dbGet(b.dataset.snap)); closeSheet(); commit(); toast('Copy restored'); } catch (e) { toast(e.message); } return; }
+  if (b.dataset.unshare) return unshare(b.dataset.unshare);
   if (b.dataset.delmed) { const m = S.meds.find(x => x.id === b.dataset.delmed); m.deleted = true; touch(m); return commit(); }
   switch (b.dataset.act) {
     case 'close': return closeSheet();
@@ -1077,7 +1391,8 @@ document.addEventListener('click', async ev => {
       const name = $('#k_name').value.trim(); if (!name) return toast('Enter a name.');
       const c = sheetCtx.kid === 'new' ? { id: uid() } : S.children.find(k => k.id === sheetCtx.kid);
       Object.assign(c, { name, dob: $('#k_dob').value }); touch(c);
-      if (sheetCtx.kid === 'new') { S.children.push(c); S.child = c.id; } closeSheet(); return commit();
+      const first = sheetCtx.kid === 'new' && !kids().length;
+      if (sheetCtx.kid === 'new') { S.children.push(c); S.child = c.id; keepStorage(); } closeSheet(); commit(); if (first && !S.backedUpAt && !S.drive?.fileId) backupSheet(true); return;
     }
     case 'del-kid': { const c = S.children.find(k => k.id === sheetCtx.kid); c.deleted = true; touch(c); if (S.child === c.id) S.child = kids()[0]?.id || null; closeSheet(); return commit(); }
     case 'add-meas': return measSheet();
@@ -1104,36 +1419,55 @@ document.addEventListener('click', async ev => {
     case 'ai-add': { const keep = [...document.querySelectorAll('[data-pi]')].filter(x => x.checked).map(x => aiParsed[+x.dataset.pi]);
       keep.forEach(e => { e.child = kid().id; S.entries.push(touch(e)); }); aiParsed = null; closeSheet(); commit(); return toast(`Added ${keep.length} ${keep.length === 1 ? 'entry' : 'entries'}`); }
     case 'ai-discard': aiParsed = null; $('#aiOut').innerHTML = ''; return;
-    case 'mic': return dictate();
+    case 'rec': return startRec(b);
+    case 'say-note': { const text = $('#aiText').value.trim(); if (!text) return toast('Type or dictate what happened first.');
+      S.entries.push(touch({ id: uid(), child: kid().id, type: 'note', t: Date.now(), note: text, ...(S.settings.me ? { by: S.settings.me } : {}) })); closeSheet(); commit(); return toast('Saved as a note'); }
     case 'ai-summary': return aiSummary();
     case 'copy-summary': { const ep = viewEp(); return copyText(summaryText(epEntries(ep), ep) + (narrative && narrative !== 'Writing…' ? '\n\nAI HANDOVER\n' + narrative : '')); }
     case 'export': return copyText(JSON.stringify(shareable()));
     case 'import': { const box = $('#importBox'); if (box.hidden) { box.hidden = false; box.focus(); return toast('Paste your data, then tap Restore again.'); }
-      try { let d = JSON.parse(box.value); if (d.app !== 'aura' && d.app !== 'sick-day-log') throw 0; d = d.v === 2 ? d : migrate(d);
-        if (S.example) { const st = S.settings; S = emptyState(); S.settings = st; }
-        for (const k of SYNCED) S[k] = mergeList(S[k], d[k]); S.child = S.child || kids()[0]?.id || null; commit(); toast('Data restored'); }
+      try { mergeIn(JSON.parse(box.value)); commit(); toast('Data restored'); }
       catch { toast("That doesn't look like Aura data."); } return; }
-    case 'wipe': $('#wipeConfirm').innerHTML = `<div class="banner"><p>This deletes everything on this device. A copy in Google Drive is not deleted.</p><button class="btn danger sm" data-act="wipe-yes">Delete everything</button></div>`; return;
-    case 'wipe-yes': S = emptyState(); narrative = ''; tab = 'today'; commit(); return toast('Deleted from this device');
+    case 'wipe': $('#wipeConfirm').innerHTML = `<div class="banner"><p>This deletes everything on this phone, including its daily copies. A copy in Google Drive is not deleted. Download a backup file first if you might want it back.</p><button class="btn danger sm" data-act="wipe-yes">Delete everything</button></div>`; return;
+    case 'wipe-yes': allowShrink = true; try { localStorage.removeItem(LS_KEY); localStorage.removeItem(LS_OLD); } catch {} S = emptyState(); narrative = ''; tab = 'today'; commit(); if (db) dbKeys().then(ks => { const st = db.transaction('kv', 'readwrite').objectStore('kv'); ks.filter(k => String(k).startsWith('snap-')).forEach(k => st.delete(k)); }).catch(() => {}); return toast('Deleted from this device');
     case 'drive-sync': S.settings.clientId = $('#clientId').value.trim(); persist(); return sync(true);
     case 'drive-forget': S.drive = {}; gTok = null; return commit();
+    case 'drive-backups': return driveBackupsSheet();
+    case 'share': return share();
+    case 'join': return joinSheet();
+    case 'join-pick': return joinPick();
+    case 'download': return saveBackupFile();
+    case 'backup-now': return S.drive?.fileId ? sync(true) : backupSheet(false);
+    case 'backup-snooze': S.backupSnooze = Date.now() + DAY; persist(); return render();
+    case 'backup-file': closeSheet(); return saveBackupFile();
+    case 'backup-drive': closeSheet(); tab = 'more'; render(); $('#clientId')?.scrollIntoView({ block: 'center' }); return;
+    case 'local-snaps': return localSnapsSheet();
+    case 'restore-file': return $('#restoreFile').click();
   }
 });
 document.addEventListener('change', ev => {
   const t = ev.target;
   if (t.dataset.gap) { const m = S.meds.find(x => x.id === t.dataset.gap); m.gapH = t.value === '' ? null : +t.value; touch(m); persist(); scheduleSync(); }
-  if (t.id === 'apiKey') { S.settings.apiKey = t.value.trim(); persist(); renderMore(); }
+  if (t.id === 'apiKey' || t.id === 'aiBase' || t.id === 'aiModel') { S.settings[t.id] = t.value.trim(); persist(); renderMore(); if (t.id === 'aiBase' && t.value && !okBase(t.value.trim())) toast('Use an https:// address, or http://localhost for a model on this computer.'); }
   if (t.id === 'clientId') { S.settings.clientId = t.value.trim(); persist(); }
+  if (t.id === 'meName') { S.settings.me = t.value.trim(); persist(); }
+  if (t.id === 'restoreFile' && t.files[0]) t.files[0].text().then(x => { mergeIn(JSON.parse(x)); commit(); toast('Backup restored'); }).catch(e => toast(e instanceof SyntaxError ? "That file isn't an Aura backup." : e.message));
 });
 function markTags() { const t = $('#f_symtext')?.value; document.querySelectorAll('#symTags [data-tag]').forEach(x => x.classList.toggle('on', hasTag(t, x.dataset.tag))); }
 document.addEventListener('input', ev => { if (ev.target.id === 'f_symtext') markTags(); });
 document.addEventListener('input', ev => { if (ev.target.matches('[data-custom]') && ev.target.value) ev.target.closest('.chips').querySelectorAll('button').forEach(x => x.classList.remove('on')); });
 $('#scrim').addEventListener('click', ev => { if (ev.target.id === 'scrim') closeSheet(); });
 document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && !$('#scrim').hidden) closeSheet(); });
-document.addEventListener('visibilitychange', () => { if (!document.hidden && $('#scrim').hidden) { render(); scheduleSync(); } });
-setInterval(tickTimers, 1000);
-setInterval(() => { if (!document.hidden && $('#scrim').hidden && tab !== 'more') render(); else applyTheme(); }, 60e3);
+document.addEventListener('visibilitychange', () => { if (S && !document.hidden && $('#scrim').hidden) { render(); scheduleSync(); } });
 if ('serviceWorker' in navigator && location.protocol === 'https:' && !window.claude) navigator.serviceWorker.register('sw.js').catch(() => {});
-render();
+load().then(() => {
+  render();
+  if (!S.example) { keepStorage(); localSnapshot(); }
+  setInterval(tickTimers, 1000);
+  setInterval(() => { if (!document.hidden && $('#scrim').hidden && tab !== 'more') render(); else applyTheme(); }, 60e3);
+  // Pick up a partner's entries while the app is open.
+  setInterval(() => { if (!document.hidden && gTok && gTok.exp > Date.now() + 60e3) sync(false); }, 5 * 60e3);
+  scheduleSync();
+});
 })();
 </script>
