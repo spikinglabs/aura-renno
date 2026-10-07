@@ -33,6 +33,7 @@ for (const theme of ['night', 'day']) {
 
   // Turning a tracker off hides its button and summary card; turning it back on restores them
   if (theme === 'night') {
+    await page.click('[data-view="day"]');
     const tile = () => page.locator('.tile small', { hasText: 'Diapers' }).count();
     if ((await tile()) !== 1) fail('diaper card missing before customizing');
     await page.click('[data-act="track-sheet"]');
@@ -47,10 +48,29 @@ for (const theme of ['night', 'day']) {
     if ((await tile()) !== 1) fail('diaper card not back after turning it on');
   }
 
+  // While sick, Today switches between sick and everyday views without ending sick mode
+  if (theme === 'night') {
+    await page.click('[data-view="day"]');
+    if ((await page.locator('.quick [data-add="symptom"]').count()) !== 0) fail('everyday view still shows sick buttons');
+    if ((await page.locator('[data-view="sick"]').count()) !== 1) fail('everyday view lost the way back to sick view');
+    await page.reload();
+    if ((await page.locator('[data-view="day"].on').count()) !== 1) fail('view choice not remembered');
+    await page.click('[data-view="sick"]');
+    if ((await page.locator('.quick [data-add="symptom"]').count()) !== 1) fail('sick view missing sick buttons');
+  }
+
   // Sick view tabs, Growth and More
   await page.click('[data-act="open-sick"]');
   for (const t of ['overview', 'chart', 'doctor']) { await page.click(`[data-sick="${t}"]`); if (await overflow()) fail(`${theme}: sick ${t} scrolls sideways`); }
   for (const t of ['growth', 'more']) { await page.click(`.tabs [data-tab="${t}"]`); if (await overflow()) fail(`${theme}: ${t} scrolls sideways`); }
+  // Ending sick mode asks first, then Today returns to everyday tracking
+  if (theme === 'day') {
+    await page.click('.tabs [data-tab="today"]');
+    await page.click('[data-act="end-ask"]');
+    await page.click('[data-act="end-episode"]');
+    if ((await page.locator('.sick, .sick-card, [data-view]').count()) !== 0) fail('sick mode still shown after ending it');
+    if ((await page.locator('[data-act="new-episode"]').count()) !== 1) fail('no way to start sick mode again');
+  }
   await page.close();
 }
 
@@ -64,7 +84,7 @@ for (const theme of ['night', 'day']) {
     entries: [{ id: 'x1', ep: 'e1', type: 'temp', t: Date.now() - 36e5, tempC: 38.8 }], meds: [], measurements: [], settings: { unit: 'C' } })); });
   await page.reload();
   if (!(await page.locator('h1').first().innerText()).includes('Leo')) fail('migration: child not carried over');
-  if ((await page.locator('.sick').count()) !== 1) fail('migration: open illness not shown as sick mode');
+  if ((await page.locator('.sick-card').count()) !== 1) fail('migration: open illness not shown as sick mode');
   await page.close();
 }
 

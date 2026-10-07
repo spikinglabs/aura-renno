@@ -61,6 +61,8 @@ textarea { resize: vertical }
 .banner p { margin: 0; flex: 1 1 220px }
 .sick { width: 100%; text-align: left; border: 0; background: var(--warm-soft); border-radius: var(--r); padding: 12px 14px; display: flex; justify-content: space-between; gap: 10px; align-items: center }
 .sick .pill { background: var(--card); border-radius: 999px; padding: 4px 12px; font-size: .8rem; font-weight: 700; white-space: nowrap }
+.sick-card { background: var(--warm-soft); border-radius: var(--r); padding: 14px; display: flex; flex-direction: column; gap: 8px }
+.btn.end { background: var(--card); box-shadow: inset 0 0 0 1.5px var(--accent) }
 .sick small { display: block; color: var(--muted); font-size: .82rem }
 .alerts { border-radius: var(--r); padding: 12px 14px; background: var(--card); box-shadow: inset 0 0 0 1.5px var(--wait) }
 .alerts h3 { color: var(--wait); font-size: .98rem }
@@ -451,12 +453,21 @@ function renderToday() {
   const sleepMs = sleepIn(es, t0, now + 1), naps = todayEs.filter(e => e.type === 'sleep' && e.kind === 'Nap').length;
   const diapers = todayEs.filter(e => e.type === 'diaper'), wet = diapers.filter(isWet).length;
   const run = running();
+  // While sick, Today has two views: sick (temperature and medicine first) and everyday. Sick mode stays on in both.
+  const sickView = !!ep && S.todayView !== 'day';
   let sick = '';
   if (ep) {
-    const eps = epEntries(ep), lt = eps.find(e => e.type === 'temp'), al = alerts(eps, ep);
-    sick = `<button class="sick" data-act="open-sick"><span><b>Sick mode</b> · day ${dayNo(now, ep)}${ep.title ? ' · ' + esc(ep.title) : ''}<small>${lt ? `Last ${showT(lt.tempC)} at ${fmtTime(lt.t)}` : 'No temperature logged yet'}${al.length ? ` · ${al.length} reminder${al.length > 1 ? 's' : ''}` : ''}</small></span><span class="pill">Chart and summary</span></button>`;
+    const eps = epEntries(ep), lt = eps.find(e => e.type === 'temp'), al = alerts(eps, ep), lastMed = eps.find(e => e.type === 'med');
+    const seg = `<div class="seg" role="tablist" aria-label="Today view"><button data-view="sick" class="${sickView ? 'on' : ''}">Sick · day ${dayNo(now, ep)}</button><button data-view="day" class="${sickView ? '' : 'on'}">Everyday</button></div>`;
+    sick = seg + (sickView
+      ? `<div class="sick-card"><div><b>${esc(ep.title || 'Sick mode')}</b> <span class="muted small">since ${fmtDay(ep.start)}</span></div>
+          <div class="small">${lt ? `Last temperature <b class="num">${showT(lt.tempC)}</b> at ${fmtTime(lt.t)}` : 'No temperature logged yet'}${lastMed ? `<br>Last medicine <b>${esc(lastMed.name)}</b> at ${fmtTime(lastMed.t)}` : ''}</div>
+          ${al.length ? `<button class="linkish" data-act="open-sick" style="color:var(--wait)">${al.length} reminder${al.length > 1 ? 's' : ''} to look at</button>` : ''}
+          <div class="row"><button class="btn sm" data-act="open-sick">Chart and doctor summary</button><button class="btn sm end" data-act="end-ask">${esc(c.name)} is better: end sick mode</button></div></div>`
+      : '');
+
   }
-  const quick = ep ? ['temp', 'med', 'symptom', ...['feed', 'sleep', 'diaper'].filter(k => tracks(k)), 'vomit', ...['solids', 'doctor', 'photo', 'note'].filter(k => tracks(k))]
+  const quick = sickView ? ['temp', 'med', 'symptom', ...['feed', 'sleep', 'diaper'].filter(k => tracks(k)), 'vomit', ...['solids', 'doctor', 'photo', 'note'].filter(k => tracks(k))]
     : QUICK_DAY.filter(k => tracks(k));
   const lastMeal = es.find(e => e.type === 'solids' || e.type === 'food');
   const since = e => now - e.t < 60000 ? 'now' : dur(now - e.t);
@@ -466,10 +477,11 @@ function renderToday() {
     tracks('diaper') && `<div class="tile"><small>Diapers</small><strong class="num">${diapers.length}</strong><em>${wet} wet</em></div>`,
     tracks('solids') && `<div class="tile"><small>Last meal</small><strong class="num">${lastMeal ? since(lastMeal) : '–'}</strong><em>${lastMeal ? esc(lastMeal.food || plain(lastMeal)) : 'none yet'}</em></div>`].filter(Boolean);
   el.innerHTML = header(`${esc(c.name)}'s day`, `${greeting()} · ${new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}`) + exampleBanner() + sick + `
-    ${tiles.length ? `<div class="sum n${tiles.length}">${tiles.join('')}</div>` : ''}
+    ${tiles.length && !sickView ? `<div class="sum n${tiles.length}">${tiles.join('')}</div>` : ''}
     ${run.map(r => `<div class="timer"><span>${r.type === 'sleep' ? (r.kind === 'Nap' ? 'Napping' : 'Sleeping') : 'Breastfeeding' + (r.side ? ' · ' + esc(lc(r.side)) : '')} since ${fmtTime(r.t)}<br><strong class="num" data-since="${r.t}">${clock(now - r.t)}</strong></span><button class="btn" data-stop="${r.id}">${r.type === 'sleep' ? 'Woke up' : 'Done'}</button></div>`).join('')}
+    <div class="row between"><h3>Log</h3><button class="btn sm" data-act="track-sheet">What to track</button></div>
     <div class="quick">${quick.map(k => `<button class="qb" data-add="${k}">${icon(k)}${TYPES[k].label}</button>`).join('')}<button class="qb" data-act="say">${icon('say')}Say it</button></div>
-    <div class="row between">${ep ? '<span></span>' : `<button class="linkish" data-act="new-episode">${esc(c.name)} is sick? Start sick mode</button>`}<button class="linkish" data-act="track-sheet">Choose what to track</button></div>
+    ${ep ? '' : `<button class="linkish" data-act="new-episode">${esc(c.name)} is sick? Start sick mode</button>`}
     <div>${timelineHtml(es.filter(e => shownType(e.type)), showDays)}</div>`;
 }
 function timelineHtml(es, days) {
@@ -514,7 +526,7 @@ function sickOverview(ep, es, el) {
     ${ep.end ? '' : `<div class="quick">${['temp', 'med', 'symptom'].map(k => `<button class="qb" data-add="${k}">${icon(k)}${TYPES[k].label}</button>`).join('')}</div>`}
     <div><h3 style="margin-bottom:4px">During this illness</h3><ul class="tl">${es.filter(e => ['temp', 'med', 'symptom', 'vomit', 'doctor', 'note', 'photo'].includes(e.type)).map(entryRow).join('') || '<p class="muted">Nothing logged yet.</p>'}</ul>
       <p class="small muted">Feeds, sleep and diapers from these days are in the daily log and in the doctor summary.</p></div>
-    <div class="row">${ep.end ? `<button class="btn" data-act="reopen-episode">This illness isn't over</button>` : `<button class="btn primary" data-act="end-episode">${esc(childOf(ep)?.name || 'They')} is better: end sick mode</button>`}<button class="btn ghost" data-act="edit-episode">Rename or change start</button></div>
+    <div class="row">${ep.end ? `<button class="btn" data-act="reopen-episode">This illness isn't over</button>` : `<button class="btn primary" data-act="end-ask">${esc(childOf(ep)?.name || 'They')} is better: end sick mode</button>`}<button class="btn ghost" data-act="edit-episode">Rename or change start</button></div>
   </div>`;
 }
 function sickChart(ep, es, el) {
@@ -945,6 +957,7 @@ document.addEventListener('click', async ev => {
   if (b.dataset.add) return kid() ? entryForm(b.dataset.add) : kidSheet('new');
   if (b.dataset.edit) { const e = S.entries.find(x => x.id === b.dataset.edit); return entryForm(e.type, e); }
   if (b.dataset.stop) return stopTimer(b.dataset.stop);
+  if (b.dataset.view) { S.todayView = b.dataset.view; persist(); render(); return; }
   if (b.dataset.sick) { sickTab = b.dataset.sick; return render(); }
   if (b.dataset.ep) { const e = S.episodes.find(x => x.id === b.dataset.ep); S.child = e.childId; viewEpId = e.id; sickTab = 'overview'; narrative = ''; tab = 'sick'; persist(); render(); return window.scrollTo(0, 0); }
   if (b.dataset.pickkid) { S.child = b.dataset.pickkid; closeSheet(); return commit(); }
@@ -972,10 +985,14 @@ document.addEventListener('click', async ev => {
       const start = new Date($('#f_start').value).getTime() || Date.now(), title = $('#f_title').value.trim();
       if (sheetCtx.ep) { const e = S.episodes.find(x => x.id === sheetCtx.ep); Object.assign(e, { title, start }); touch(e); closeSheet(); return commit(); }
       const e = touch({ id: uid(), childId: kid().id, title, start, end: null }); S.episodes.push(e);
-      viewEpId = e.id; closeSheet(); tab = 'today'; commit(); return toast('Sick mode is on. Temperature and medicine are at the top.');
+      viewEpId = e.id; S.todayView = 'sick'; closeSheet(); tab = 'today'; commit(); return toast('Sick mode is on. Temperature and medicine are at the top.');
     }
     case 'del-episode': { const e = S.episodes.find(x => x.id === sheetCtx.ep); e.deleted = true; touch(e); closeSheet(); tab = 'today'; commit(); return toast('Illness deleted. Its entries stay in the daily log.'); }
-    case 'end-episode': { const e = viewEp(); e.end = Date.now(); touch(e); tab = 'today'; commit(); return toast('Glad to hear it. Sick mode is off.'); }
+    case 'end-ask': { const e = activeEp(); if (!e) return; viewEpId = e.id;
+      return openSheet(`<div class="hd"><h2>End sick mode for ${esc(childOf(e)?.name || 'your child')}?</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+        <p class="muted" style="margin:0">Today goes back to everyday tracking. This illness and everything you logged stay saved under More → Illnesses, with its chart and doctor summary.</p>
+        <div class="sheet-actions"><button class="btn ghost" data-act="close">Not yet</button><button class="btn primary" data-act="end-episode">Yes, end sick mode</button></div>`); }
+    case 'end-episode': { const e = viewEp(); e.end = Date.now(); touch(e); closeSheet(); tab = 'today'; commit(); return toast('Glad to hear it. Sick mode is off.'); }
     case 'reopen-episode': { const e = viewEp(); e.end = null; touch(e); return commit(); }
     case 'clear-example': { const st = S.settings; S = emptyState(); S.settings = { ...S.settings, ...st }; narrative = ''; aiParsed = null; tab = 'today'; commit(); return kidSheet('new'); }
     case 'save-kid': {
