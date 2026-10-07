@@ -31,6 +31,22 @@ for (const theme of ['night', 'day']) {
   await page.click('[data-act="save-entry"]');
   if (!(await page.locator('.tl li').first().innerText()).includes('Apple')) fail(`${theme}: solids entry missing`);
 
+  // Turning a tracker off hides its button and summary card; turning it back on restores them
+  if (theme === 'night') {
+    const tile = () => page.locator('.tile small', { hasText: 'Diapers' }).count();
+    if ((await tile()) !== 1) fail('diaper card missing before customizing');
+    await page.click('[data-act="track-sheet"]');
+    await page.click('[data-track="diaper"]');
+    await page.click('[data-act="close"]');
+    if ((await tile()) !== 0 || (await page.locator('.quick [data-add="diaper"], .tl .t-diaper').count()) !== 0) fail('diaper still shown after turning it off');
+    await page.reload();
+    if ((await tile()) !== 0) fail('diaper setting not saved');
+    await page.click('[data-act="track-sheet"]');
+    await page.click('[data-track="diaper"]');
+    await page.click('[data-act="close"]');
+    if ((await tile()) !== 1) fail('diaper card not back after turning it on');
+  }
+
   // Sick view tabs, Growth and More
   await page.click('[data-act="open-sick"]');
   for (const t of ['overview', 'chart', 'doctor']) { await page.click(`[data-sick="${t}"]`); if (await overflow()) fail(`${theme}: sick ${t} scrolls sideways`); }

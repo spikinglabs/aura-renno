@@ -72,7 +72,14 @@ textarea { resize: vertical }
 .tile strong { display: block; font-size: 1.12rem; font-weight: 800; margin-top: 2px }
 .tile em { font-style: normal; font-size: .76rem; color: var(--muted); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
 .tile.hot strong { color: var(--alert) }
-.sum.two { grid-template-columns: repeat(2, minmax(0, 1fr)) }
+.sum.two, .sum.n2, .sum.n4 { grid-template-columns: repeat(2, minmax(0, 1fr)) } .sum.n1 { grid-template-columns: 1fr }
+.track-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line) }
+.track-row:first-of-type { border-top: 0 }
+.track-row small { display: block; color: var(--muted); font-size: .82rem }
+.tog { width: 52px; height: 30px; border-radius: 999px; border: 0; background: var(--line); position: relative; flex: none; padding: 0 }
+.tog::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: var(--muted); transition: transform .2s, background .2s }
+.tog[aria-checked="true"] { background: var(--accent-soft) }
+.tog[aria-checked="true"]::after { transform: translateX(22px); background: var(--accent) }
 .wide-tile { grid-column: 1 / -1 }
 .dose-line { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-top: 1px solid var(--line); font-size: .92rem }
 .dose-line:first-of-type { border-top: 0 }
@@ -315,6 +322,29 @@ const TYPES = {
 };
 const QUICK_DAY = ['feed', 'sleep', 'diaper', 'solids', 'temp', 'med', 'doctor', 'photo', 'note'];
 const QUICK_SICK = ['temp', 'med', 'symptom', 'feed', 'sleep', 'diaper', 'vomit', 'solids', 'doctor', 'photo', 'note'];
+// What each child's daily log tracks. Until a parent customizes it, the set follows the child's age.
+const TRACKERS = [
+  ['feed', 'Feeds', 'Breast, bottle or cup, with a breastfeeding timer'],
+  ['sleep', 'Sleep', 'Naps and nights, with a timer'],
+  ['diaper', 'Diapers', 'Wet and dirty diapers'],
+  ['solids', 'Solids and meals', 'What they ate and how much'],
+  ['temp', 'Temperature', 'Always available in sick mode'],
+  ['med', 'Medicine', 'Always available in sick mode'],
+  ['doctor', "Doctor's notes", 'What a doctor or nurse said'],
+  ['photo', 'Photos', 'A rash, a stool, a first smile'],
+  ['note', 'Notes', 'Anything else, in your own words']];
+function suggestedTrack(c) {
+  const m = ageMonths(c), on = new Set(['sleep', 'temp', 'med', 'doctor', 'photo', 'note']);
+  if (m == null || m < 30) on.add('feed');
+  if (m == null || m < 42) on.add('diaper');
+  if (m == null || m >= 5) on.add('solids');
+  return Object.fromEntries(TRACKERS.map(([k]) => [k, on.has(k)]));
+}
+const trackMap = c => ({ ...suggestedTrack(c), ...(c?.track || {}) });
+const tracks = (k, c = kid()) => !c || trackMap(c)[k] !== false;
+const TRACKER_OF = { food: 'solids', drink: 'feed' };
+// Entries of a type the parent turned off stay saved but leave the daily timeline (sick-mode types stay while sick).
+const shownType = (t, c = kid()) => { const k = TRACKER_OF[t] || t; return !TRACKERS.some(([x]) => x === k) || tracks(k, c) || ((k === 'temp' || k === 'med') && activeEp(c?.id)); };
 const DOC_FIELDS = [['diagnosis', 'Thinks'], ['advice', 'Advice'], ['prescribed', 'Medicine'], ['followUp', 'Come back if']];
 const docText = d => [d.who && d.who + (d.how ? ' (' + d.how.toLowerCase() + ')' : ''), ...DOC_FIELDS.filter(([k]) => d[k]).map(([k, l]) => l + ': ' + d[k]), d.note].filter(Boolean).join('\n');
 
@@ -426,17 +456,21 @@ function renderToday() {
     const eps = epEntries(ep), lt = eps.find(e => e.type === 'temp'), al = alerts(eps, ep);
     sick = `<button class="sick" data-act="open-sick"><span><b>Sick mode</b> · day ${dayNo(now, ep)}${ep.title ? ' · ' + esc(ep.title) : ''}<small>${lt ? `Last ${showT(lt.tempC)} at ${fmtTime(lt.t)}` : 'No temperature logged yet'}${al.length ? ` · ${al.length} reminder${al.length > 1 ? 's' : ''}` : ''}</small></span><span class="pill">Chart and summary</span></button>`;
   }
-  const quick = ep ? QUICK_SICK : QUICK_DAY;
+  const quick = ep ? ['temp', 'med', 'symptom', ...['feed', 'sleep', 'diaper'].filter(k => tracks(k)), 'vomit', ...['solids', 'doctor', 'photo', 'note'].filter(k => tracks(k))]
+    : QUICK_DAY.filter(k => tracks(k));
+  const lastMeal = es.find(e => e.type === 'solids' || e.type === 'food');
+  const since = e => now - e.t < 60000 ? 'now' : dur(now - e.t);
+  const tiles = [
+    tracks('feed') && `<div class="tile"><small>Last feed</small><strong class="num">${lastFeed ? since(lastFeed) : '–'}</strong><em>${lastFeed ? esc(plain(lastFeed)) : 'none yet'}</em></div>`,
+    tracks('sleep') && `<div class="tile"><small>Sleep today</small><strong class="num">${sleepMs ? dur(sleepMs) : '–'}</strong><em>${naps} nap${naps === 1 ? '' : 's'}</em></div>`,
+    tracks('diaper') && `<div class="tile"><small>Diapers</small><strong class="num">${diapers.length}</strong><em>${wet} wet</em></div>`,
+    tracks('solids') && `<div class="tile"><small>Last meal</small><strong class="num">${lastMeal ? since(lastMeal) : '–'}</strong><em>${lastMeal ? esc(lastMeal.food || plain(lastMeal)) : 'none yet'}</em></div>`].filter(Boolean);
   el.innerHTML = header(`${esc(c.name)}'s day`, `${greeting()} · ${new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}`) + exampleBanner() + sick + `
-    <div class="sum">
-      <div class="tile"><small>Last feed</small><strong class="num">${lastFeed ? (now - lastFeed.t < 60000 ? 'now' : dur(now - lastFeed.t)) : '–'}</strong><em>${lastFeed ? esc(plain(lastFeed)) : 'none yet'}</em></div>
-      <div class="tile"><small>Sleep today</small><strong class="num">${sleepMs ? dur(sleepMs) : '–'}</strong><em>${naps} nap${naps === 1 ? '' : 's'}</em></div>
-      <div class="tile"><small>Diapers</small><strong class="num">${diapers.length}</strong><em>${wet} wet</em></div>
-    </div>
+    ${tiles.length ? `<div class="sum n${tiles.length}">${tiles.join('')}</div>` : ''}
     ${run.map(r => `<div class="timer"><span>${r.type === 'sleep' ? (r.kind === 'Nap' ? 'Napping' : 'Sleeping') : 'Breastfeeding' + (r.side ? ' · ' + esc(lc(r.side)) : '')} since ${fmtTime(r.t)}<br><strong class="num" data-since="${r.t}">${clock(now - r.t)}</strong></span><button class="btn" data-stop="${r.id}">${r.type === 'sleep' ? 'Woke up' : 'Done'}</button></div>`).join('')}
     <div class="quick">${quick.map(k => `<button class="qb" data-add="${k}">${icon(k)}${TYPES[k].label}</button>`).join('')}<button class="qb" data-act="say">${icon('say')}Say it</button></div>
-    ${ep ? '' : `<button class="linkish" data-act="new-episode">${esc(c.name)} is sick? Start sick mode</button>`}
-    <div>${timelineHtml(es, showDays)}</div>`;
+    <div class="row between">${ep ? '<span></span>' : `<button class="linkish" data-act="new-episode">${esc(c.name)} is sick? Start sick mode</button>`}<button class="linkish" data-act="track-sheet">Choose what to track</button></div>
+    <div>${timelineHtml(es.filter(e => shownType(e.type)), showDays)}</div>`;
 }
 function timelineHtml(es, days) {
   if (!es.length) return `<p class="muted">Nothing logged yet. Tap a button above to add the first entry.</p>`;
@@ -472,8 +506,8 @@ function sickOverview(ep, es, el) {
     ${al.length ? `<div class="alerts"><h3>Worth a call to your doctor</h3><ul>${al.map(a => `<li>${esc(a)}</li>`).join('')}</ul><p class="small muted" style="margin:8px 0 0">These are reminders, not a diagnosis. If you are worried, call your doctor or emergency services.</p></div>` : ''}
     <div class="sum two">
       <div class="tile ${lastT && lastT.tempC >= FEVER_C ? 'hot' : ''}"><small>Last temperature</small><strong class="num">${lastT ? showT(lastT.tempC) : '–'}</strong><em>${lastT ? ago(lastT.t) : 'none logged'}</em></div>
-      <div class="tile"><small>Fluids, 24 h</small><strong class="num">${fl24 ? fl24 + ' ml' : '–'}</strong><em>bottle, cup and drinks</em></div>
-      <div class="tile"><small>Wet diapers, 24 h</small><strong class="num">${wet24}</strong><em>${wets.length ? 'last ' + ago(wets[0].t) : 'none logged'}</em></div>
+      ${tracks('feed', childOf(ep)) || fl24 ? `<div class="tile"><small>Fluids, 24 h</small><strong class="num">${fl24 ? fl24 + ' ml' : '–'}</strong><em>bottle, cup and drinks</em></div>` : ''}
+      ${tracks('diaper', childOf(ep)) || wets.length ? `<div class="tile"><small>Wet diapers, 24 h</small><strong class="num">${wet24}</strong><em>${wets.length ? 'last ' + ago(wets[0].t) : 'none logged'}</em></div>` : ''}
       <div class="tile"><small>Illness day</small><strong class="num">${dayNo(ep.end || now, ep)}</strong><em>since ${fmtDay(ep.start)}</em></div>
       ${doses ? `<div class="tile wide-tile"><small>Last doses</small>${doses}</div>` : ''}
     </div>
@@ -531,20 +565,29 @@ function summaryFacts(es, ep) {
   if (docs.length) f.push(`Seen or called a doctor ${docs.length} time${docs.length > 1 ? 's' : ''}, last ${fmtDT(docs[0].t)}. See the doctor's notes below.`);
   return f;
 }
+function dayCols(rows, ep) {
+  const c = childOf(ep), show = (k, has) => tracks(k, c) || rows.some(has);
+  return [
+    ['Fluids', 'r num', r => r.ml ? r.ml + ' ml' : '–', show('feed', r => r.ml), r => `fluids ${r.ml || 0} ml`],
+    ['Ate', '', r => esc(r.ate || '–'), show('solids', r => r.ate), r => `ate ${r.ate || '–'}`],
+    ['Sleep', 'r num', r => r.sleep ? dur(r.sleep) : '–', show('sleep', r => r.sleep), r => `sleep ${r.sleep ? dur(r.sleep) : '–'}`],
+    ['Wet', 'r num', r => r.wet, show('diaper', r => r.wet), r => `wet ${r.wet}`],
+    ['Stools', '', r => esc(r.stools || '–'), show('diaper', r => r.stools), r => `stools ${r.stools || 'none'}`]].filter(x => x[3]);
+}
 function summaryText(es, ep) {
   const docs = es.filter(e => e.type === 'doctor').reverse();
   return ['ILLNESS SUMMARY', ...summaryFacts(es, ep).map(s => '• ' + s), ...(docs.length ? ['', 'WHAT DOCTORS SAID', ...docs.map(d => `${fmtDT(d.t)}: ${docText(d).replace(/\n/g, '. ')}`)] : []), '', 'BY DAY',
-    ...dailyRows(es, ep).map(r => `Day ${dayNo(r.d, ep)} (${fmtDay(r.d)}): max temp ${r.max != null ? showT(r.max) : '–'}; meds ${r.meds || 'none'}; fluids ${r.ml || 0} ml; ate ${r.ate || '–'}; sleep ${r.sleep ? dur(r.sleep) : '–'}; wet ${r.wet}; stools ${r.stools || 'none'}; vomited ${r.vomit}×${r.newSym ? '; new: ' + r.newSym : ''}`)].join('\n');
+    ...(rows => { const cols = dayCols(rows, ep); return rows.map(r => `Day ${dayNo(r.d, ep)} (${fmtDay(r.d)}): max temp ${r.max != null ? showT(r.max) : '–'}; meds ${r.meds || 'none'}; ${cols.map(c => c[4](r) + '; ').join('')}vomited ${r.vomit}×${r.newSym ? '; new: ' + r.newSym : ''}`); })(dailyRows(es, ep))].join('\n');
 }
 function sickDoctor(ep, es, el) {
-  const rows = dailyRows(es, ep), photos = es.filter(e => e.type === 'photo' && e.img), docs = es.filter(e => e.type === 'doctor').reverse();
+  const rows = dailyRows(es, ep), cols = dayCols(rows, ep), photos = es.filter(e => e.type === 'photo' && e.img), docs = es.filter(e => e.type === 'doctor').reverse();
   el.innerHTML = `<div class="view" style="padding:0">
     <p class="muted small" style="margin:0">Show this screen, or copy it into a message.</p>
     <div class="card"><ul class="facts">${summaryFacts(es, ep).map(f => `<li>${esc(f)}</li>`).join('')}</ul></div>
     <div class="card doc-said"><div class="row between"><h3>What doctors said</h3><button class="btn sm" data-add="doctor">Add notes</button></div>
       ${docs.length ? docs.map(d => `<div class="item"><b>${fmtDT(d.t)}</b> <span class="muted small">day ${dayNo(d.t, ep)}</span> <button class="btn ghost sm" data-edit="${d.id}">Edit</button><div class="narrative" style="margin-top:4px">${esc(docText(d))}</div></div>`).join('') : '<p class="muted small" style="margin:8px 0 0">After a visit or call, write down what the doctor said so you can check it later and tell the next doctor.</p>'}</div>
-    <div class="tbl-wrap"><table><thead><tr><th>Day</th><th class="r">Max temp</th><th>Medicines</th><th class="r">Fluids</th><th>Ate</th><th class="r">Sleep</th><th class="r">Wet</th><th>Stools</th><th class="r">Vomit</th><th>New symptoms</th></tr></thead><tbody>
-      ${rows.map(r => `<tr><td><b>Day ${dayNo(r.d, ep)}</b><br><span class="muted small">${fmtDay(r.d)}</span></td><td class="r num ${r.max >= FEVER_C ? 'hot' : ''}">${r.max != null ? showT(r.max) : '–'}<br><span class="muted small">${r.n} readings</span></td><td>${esc(r.meds || '–')}</td><td class="r num">${r.ml ? r.ml + ' ml' : '–'}</td><td>${esc(r.ate || '–')}</td><td class="r num">${r.sleep ? dur(r.sleep) : '–'}</td><td class="r num">${r.wet}</td><td>${esc(r.stools || '–')}</td><td class="r num">${r.vomit}</td><td>${esc(r.newSym || '–')}</td></tr>`).join('')}
+    <div class="tbl-wrap"><table><thead><tr><th>Day</th><th class="r">Max temp</th><th>Medicines</th>${cols.map(c => `<th class="${c[1].includes('r') ? 'r' : ''}">${c[0]}</th>`).join('')}<th class="r">Vomit</th><th>New symptoms</th></tr></thead><tbody>
+      ${rows.map(r => `<tr><td><b>Day ${dayNo(r.d, ep)}</b><br><span class="muted small">${fmtDay(r.d)}</span></td><td class="r num ${r.max >= FEVER_C ? 'hot' : ''}">${r.max != null ? showT(r.max) : '–'}<br><span class="muted small">${r.n} readings</span></td><td>${esc(r.meds || '–')}</td>${cols.map(c => `<td class="${c[1]}">${c[2](r)}</td>`).join('')}<td class="r num">${r.vomit}</td><td>${esc(r.newSym || '–')}</td></tr>`).join('')}
     </tbody></table></div>
     ${photos.length ? `<div class="card"><h3>Photos</h3><div class="row" style="margin-top:8px">${photos.map(p => `<figure style="margin:0;max-width:140px"><img src="${p.img}" alt="" style="border-radius:10px;max-width:100%"><figcaption class="small muted">${fmtDT(p.t)}${p.note ? ' · ' + esc(p.note) : ''}</figcaption></figure>`).join('')}</div></div>` : ''}
     <div class="row"><button class="btn primary" data-act="copy-summary">Copy summary</button><button class="btn" data-act="ai-summary">Write a handover with AI</button></div>
@@ -596,7 +639,7 @@ function renderMore() {
   const st = S.settings, d = S.drive || {}, eps = live(S.episodes).sort((a, b) => b.start - a.start);
   $('#view-more').innerHTML = header('More', 'Children, illnesses and settings') + `
     <div class="card set"><h2>Children</h2>
-      ${kids().map(c => `<div class="list-row"><span><b>${esc(c.name)}</b> <span class="muted small">${c.dob ? ageText(c) : 'no birth date'}${weightOf(c) ? ' · ' + weightOf(c).v + ' kg' : ''}</span></span><button class="btn sm" data-kid="${c.id}">Edit</button></div>`).join('') || '<p class="muted" style="margin:0">No children added yet.</p>'}
+      ${kids().map(c => `<div class="list-row"><span><b>${esc(c.name)}</b> <span class="muted small">${c.dob ? ageText(c) : 'no birth date'}${weightOf(c) ? ' · ' + weightOf(c).v + ' kg' : ''}</span></span><span class="row"><button class="btn sm ghost" data-act="track-sheet" data-for="${c.id}">Tracking</button><button class="btn sm" data-kid="${c.id}">Edit</button></span></div>`).join('') || '<p class="muted" style="margin:0">No children added yet.</p>'}
       <div><button class="btn sm" data-kid="new">Add a child</button></div></div>
     <div class="card set"><h2>Illnesses</h2>
       ${eps.map(e => `<div class="list-row"><span><b>${esc(e.title || 'Illness')}</b> <span class="muted small">${esc(childOf(e)?.name || '')} · ${fmtDay(e.start)}${e.end ? ' – ' + fmtDay(e.end) : ' · ongoing'}</span></span><button class="btn sm" data-ep="${e.id}">Open</button></div>`).join('') || '<p class="muted small" style="margin:0">Past illnesses show up here, with their chart and doctor summary.</p>'}</div>
@@ -712,12 +755,21 @@ function kidPicker() {
     ${kids().map(c => `<button class="pick ${c.id === kid()?.id ? 'on' : ''}" data-pickkid="${c.id}"><b>${esc(c.name)}</b><br><span class="small muted">${c.dob ? ageText(c) : ''}${activeEp(c.id) ? ' · sick mode on' : ''}</span></button>`).join('')}
     <div class="sheet-actions"><span></span><button class="btn" data-kid="new">Add a child</button></div>`);
 }
+function trackSheet(id = kid()?.id) {
+  const c = S.children.find(k => k.id === id); if (!c) return kidSheet('new');
+  const on = trackMap(c);
+  openSheet(`<div class="hd"><h2>What to track for ${esc(c.name)}</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+    <p class="small muted" style="margin:0">Turn off anything you don't need. Its button, summary card and timeline entries are hidden. Nothing you already logged is deleted, and it all comes back if you turn it on again.</p>
+    <div>${TRACKERS.map(([k, l, d]) => `<div class="track-row">${icon(k)}<span><b>${l}</b><small>${d}</small></span><button class="tog" role="switch" aria-checked="${on[k] !== false}" aria-label="${l}" data-track="${k}"></button></div>`).join('')}</div>
+    <div class="sheet-actions">${c.track ? `<button class="btn ghost" data-act="track-reset">Use suggestions${c.dob ? ' for ' + ageText(c) : ''}</button>` : `<span class="small muted" style="align-self:center">Suggested for ${c.dob ? ageText(c) : 'young children'}</span>`}<button class="btn primary" data-act="close">Done</button></div>`, { trackKid: c.id });
+}
 function kidSheet(id) {
   const c = id === 'new' ? {} : S.children.find(k => k.id === id);
   openSheet(`<div class="hd"><h2>${id === 'new' ? 'Add a child' : 'Edit ' + esc(c.name)}</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
     <label class="field"><span>Name</span><input id="k_name" value="${esc(c.name || '')}" autofocus></label>
     <label class="field"><span>Birth date (for age and baby reminders)</span><input id="k_dob" type="date" value="${esc(c.dob || '')}"></label>
     <p class="small muted" style="margin:0">Weight and height are tracked over time in the Growth tab.</p>
+    ${id !== 'new' ? `<div><button class="btn sm" data-act="track-sheet" data-for="${c.id}">Choose what to track</button></div>` : ''}
     <div class="sheet-actions">${id !== 'new' ? '<button class="btn ghost danger" data-act="del-kid">Remove</button>' : '<span></span>'}<button class="btn primary" data-act="save-kid">Save</button></div>`, { kid: id });
 }
 function episodeSheet(ep) {
@@ -897,9 +949,15 @@ document.addEventListener('click', async ev => {
   if (b.dataset.ep) { const e = S.episodes.find(x => x.id === b.dataset.ep); S.child = e.childId; viewEpId = e.id; sickTab = 'overview'; narrative = ''; tab = 'sick'; persist(); render(); return window.scrollTo(0, 0); }
   if (b.dataset.pickkid) { S.child = b.dataset.pickkid; closeSheet(); return commit(); }
   if (b.dataset.kid) return kidSheet(b.dataset.kid);
+  if (b.dataset.track) {
+    const c = S.children.find(k => k.id === sheetCtx.trackKid), on = b.getAttribute('aria-checked') !== 'true';
+    c.track = { ...trackMap(c), [b.dataset.track]: on }; touch(c); b.setAttribute('aria-checked', String(on)); commit(); return;
+  }
   if (b.dataset.delmed) { const m = S.meds.find(x => x.id === b.dataset.delmed); m.deleted = true; touch(m); return commit(); }
   switch (b.dataset.act) {
     case 'close': return closeSheet();
+    case 'track-sheet': return trackSheet(b.dataset.for || kid()?.id);
+    case 'track-reset': { const c = S.children.find(k => k.id === sheetCtx.trackKid); delete c.track; touch(c); commit(); return trackSheet(c.id); }
     case 'pick-kid': return kids().length ? kidPicker() : kidSheet('new');
     case 'sync-tap': if (S.drive?.fileId) return sync(true); tab = 'more'; render(); return window.scrollTo(0, 0);
     case 'say': aiParsed = null; return saySheet();
