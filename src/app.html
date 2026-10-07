@@ -809,8 +809,8 @@ function renderMore() {
     <div class="card set"><h2>Google Drive backup and sync</h2>
       <p class="small muted" style="margin:0">Your log is saved as <span class="num">${DRIVE_FILE}</span> in an “${DRIVE_FOLDER}” folder in your own Drive (you can move or rename it), with a backup copy saved before each change (hourly for two days, then daily for ${KEEP_DAYS} days). The app can only see files it created or that you picked. There is no other server. <a href="privacy.html" style="color:var(--accent-ink)">Privacy policy</a></p>
       ${GOOGLE_CLIENT_ID ? `<details class="small"><summary class="muted">Advanced: use your own Google project</summary>${googleOwnFields(st)}</details>` : googleOwnFields(st)}
-      <div class="row"><button class="btn primary sm" data-act="drive-sync">${d.fileId ? 'Sync now' : 'Connect Google Drive'}</button>${d.fileId ? '<button class="btn sm" data-act="drive-backups">Restore from a Drive backup</button><button class="btn ghost sm" data-act="drive-forget">Disconnect</button>' : '<button class="btn sm" data-act="join">Join a shared log</button>'}</div>
-      <p class="small muted" style="margin:0">${d.lastSync ? 'Last synced ' + ago(d.lastSync) : 'Not connected yet.'}${d.owner ? ' Shared with you by ' + esc(d.owner) + '.' : ''}${d.error ? ' Last error: ' + esc(d.error) : ''}</p></div>
+      <div class="row"><button class="btn primary sm" data-act="drive-sync" ${syncing ? 'disabled' : ''}>${syncing ? 'Syncing…' : d.fileId ? 'Sync now' : 'Connect Google Drive'}</button>${d.fileId ? '<button class="btn sm" data-act="drive-backups">Restore from a Drive backup</button><button class="btn ghost sm" data-act="drive-forget">Disconnect</button>' : '<button class="btn sm" data-act="join">Join a shared log</button>'}</div>
+      <p class="small muted" style="margin:0">${d.lastSync ? 'Last synced ' + ago(d.lastSync) + '.' : 'Not connected yet.'}${d.owner ? ' Shared with you by ' + esc(d.owner) + '.' : ''}${d.error ? ' Last error: ' + esc(d.error) : ''}</p></div>
     <div class="card set"><h2>Share with a partner</h2>
       <p class="small muted" style="margin:0">Both of you can log on your own phones. ${d.fileId ? 'Google Drive gives your partner access to this one file, using their Google account. You can remove them at any time.' : 'Connect Google Drive first, or join a log someone shared with you.'}</p>
       <label class="field"><span>Your name on entries you log (stays on this phone)</span><input id="meName" value="${esc(st.me)}" placeholder="e.g. Anna" autocomplete="off"></label>
@@ -1222,7 +1222,7 @@ const unknownParts = d => Object.fromEntries(Object.entries(d).filter(([k]) => !
 const coveredBy = (mine, theirs) => SYNCED.every(k => { const m = new Map((theirs[k] || []).map(x => [x.id, x.updatedAt || 0])); return (mine[k] || []).every(x => m.has(x.id) && m.get(x.id) >= (x.updatedAt || 0)); });
 // Read, merge, write, then read back: if another phone wrote in between and our entries are missing, merge and write again.
 async function sync(interactive) {
-  if (syncing || S.example) return; syncing = true; syncMsg = 'Syncing…'; softRender();
+  if (syncing || S.example) return; syncing = true; syncMsg = 'Syncing…'; (interactive ? render : softRender)();
   try {
     if (tooNew(S)) throw new Error(NEWER);
     const tok = await token(interactive); if (!tok) return;
@@ -1233,21 +1233,32 @@ async function sync(interactive) {
       if (!isAura(d)) throw new Error("The Drive file doesn't look like an Aura log, so nothing was overwritten. Your data on this phone is safe.");
       if (logVersion(d) < SCHEMA) await keepBeforeDrive(tok, id, d); else extra = unknownParts(d);
       return migrate(d); };
-    let remote = await read(), ok = false;
+    // Drive's version number of the file goes up with every change, and asking for it is a tiny request. So an idle check
+    // costs one small call, and the whole file is downloaded only when it changed. Instead of downloading the file again
+    // after writing, the app checks that the version is still the one its own write produced; if another phone wrote
+    // in between, it reads and merges again.
+    const version = async () => (await (await gapi(tok, `${DRIVE}/${id}?fields=version`)).json()).version;
+    const started = Date.now(), since = S.drive?.syncedAt || 0;
+    const dirty = (S.changedAt || 0) > since || SYNCED.some(k => S[k].some(x => (x.updatedAt || 0) > since));
+    let ok = false, ver = null;
     for (let round = 0; round < 3 && !ok; round++) {
+      ver = await version();
+      if (round === 0 && !dirty && ver != null && ver === S.drive?.version) { ok = true; break; }
+      const remote = await read();
       for (const k of SYNCED) S[k] = mergeList(S[k], remote[k]);
       persist();
-      if (coveredBy(remote, S) && coveredBy(S, remote)) { ok = true; break; }
+      if (coveredBy(S, remote)) { ok = true; break; }
       if (round === 0) try { await snapshot(tok, id, remote); } catch {}
-      await gapi(tok, `${UP}/${id}?uploadType=media`, { method: 'PATCH', headers: JSON_H, body: JSON.stringify({ ...extra, ...shareable() }) });
-      remote = await read(); ok = coveredBy(S, remote);
+      if (await version() !== ver) continue; // another phone wrote while this one was merging: read it first
+      ver = (await (await gapi(tok, `${UP}/${id}?uploadType=media&fields=version`, { method: 'PATCH', headers: JSON_H, body: JSON.stringify({ ...extra, ...shareable() }) })).json()).version;
+      ok = ver != null && await version() === ver;
     }
     if (!ok) throw new Error('Another phone was saving at the same time. Will try again shortly.');
-    S.drive = { ...(S.drive || {}), fileId: id, lastSync: Date.now(), error: '' }; S.backedUpAt = Date.now();
+    S.drive = { ...(S.drive || {}), fileId: id, lastSync: Date.now(), syncedAt: started, version: ver, error: '' }; S.backedUpAt = Date.now();
     if (S.drive.mine === undefined) { const m = await (await gapi(tok, `${DRIVE}/${id}?fields=ownedByMe,owners(displayName,emailAddress)`)).json(); S.drive.mine = !!m.ownedByMe; S.drive.owner = m.ownedByMe ? '' : m.owners?.[0]?.displayName || m.owners?.[0]?.emailAddress || 'someone'; }
-    persist();
+    persist(); if (interactive) toast('Synced. Your log in Drive is up to date.');
   } catch (e) { S.drive = { ...(S.drive || {}), error: e.message }; persist(); if (interactive) toast(e.message); if (/same time/.test(e.message)) setTimeout(() => sync(false), 20e3); }
-  finally { syncing = false; syncMsg = ''; softRender(); }
+  finally { syncing = false; syncMsg = ''; (interactive ? render : softRender)(); }
 }
 async function driveBackupsSheet() {
   let list; try { const tok = await token(true); list = await listBackups(tok, await backupsDir(tok)); } catch (e) { return toast(e.message); }
