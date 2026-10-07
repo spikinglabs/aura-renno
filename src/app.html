@@ -229,6 +229,11 @@ const SDK_URL = 'https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.131.0/+esm';
 const MODEL = 'claude-opus-5-5';
 const LS_KEY = 'aura.v2', LS_OLD = 'sickdaylog.v1', DB_NAME = 'aura';
 const DRIVE_FILE = 'aura-log.json', DRIVE_FOLDER = 'Aura';
+// Aura's own Google project, filled in by build.sh from the repo's GOOGLE_CLIENT_ID and GOOGLE_PICKER_KEY variables.
+// Both are public by design (Google restricts them to this site's address). A user's own values under More override them.
+const built = v => /^__/.test(v) ? '' : v;
+const GOOGLE_CLIENT_ID = built('__GOOGLE_CLIENT_ID__'), GOOGLE_PICKER_KEY = built('__GOOGLE_PICKER_KEY__');
+const gClient = () => S.settings.clientId || GOOGLE_CLIENT_ID, gPickerKey = () => S.settings.pickerKey || GOOGLE_PICKER_KEY;
 const FEVER_C = 38.0, EXAMPLE_V = 5;
 const H = 3600e3, DAY = 24 * H;
 const reEsc = s => s.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
@@ -784,8 +789,8 @@ function renderMore() {
       ${live(S.meds).map(m => `<div class="list-row medrow"><span>${esc(m.name)}</span><span class="row"><input type="number" min="0" step="0.5" value="${m.gapH ?? ''}" data-gap="${m.id}" aria-label="Hours between doses for ${esc(m.name)}"> h <button class="btn ghost danger" data-delmed="${m.id}" aria-label="Remove">✕</button></span></div>`).join('')}
       <div class="row"><input id="newMed" placeholder="Add a medicine" style="flex:1"><button class="btn sm" data-act="add-med">Add</button></div></div>
     <div class="card set"><h2>Google Drive backup and sync</h2>
-      <p class="small muted" style="margin:0">Optional. Your log is saved as <span class="num">${DRIVE_FILE}</span> in an “${DRIVE_FOLDER}” folder in your own Drive, with a backup copy saved before each change (hourly for two days, then daily for ${KEEP_DAYS} days). The app can only see files it created or that you picked. There is no other server.</p>
-      <label class="field"><span>Google OAuth client ID (one-time setup, see README)</span><input id="clientId" value="${esc(st.clientId)}" placeholder="1234-abc.apps.googleusercontent.com" autocomplete="off"></label>
+      <p class="small muted" style="margin:0">Your log is saved as <span class="num">${DRIVE_FILE}</span> in an “${DRIVE_FOLDER}” folder in your own Drive, with a backup copy saved before each change (hourly for two days, then daily for ${KEEP_DAYS} days). The app can only see files it created or that you picked. There is no other server. <a href="privacy.html" style="color:var(--accent-ink)">Privacy policy</a></p>
+      ${GOOGLE_CLIENT_ID ? `<details class="small"><summary class="muted">Advanced: use your own Google project</summary>${googleOwnFields(st)}</details>` : googleOwnFields(st)}
       <div class="row"><button class="btn primary sm" data-act="drive-sync">${d.fileId ? 'Sync now' : 'Connect Google Drive'}</button>${d.fileId ? '<button class="btn sm" data-act="drive-backups">Restore from a Drive backup</button><button class="btn ghost sm" data-act="drive-forget">Disconnect</button>' : '<button class="btn sm" data-act="join">Join a shared log</button>'}</div>
       <p class="small muted" style="margin:0">${d.lastSync ? 'Last synced ' + ago(d.lastSync) : 'Not connected yet.'}${d.owner ? ' Shared with you by ' + esc(d.owner) + '.' : ''}${d.error ? ' Last error: ' + esc(d.error) : ''}</p></div>
     <div class="card set"><h2>Share with a partner</h2>
@@ -1106,10 +1111,10 @@ function loadGis() {
 }
 async function token(interactive) {
   if (gTok && gTok.exp > Date.now() + 60e3) return gTok.v; if (!interactive) return null;
-  if (!S.settings.clientId) throw new Error('Add your Google OAuth client ID first.');
+  if (!gClient()) throw new Error('Add your Google OAuth client ID first (More → Google Drive).');
   await loadGis();
   return new Promise((res, rej) => {
-    const tc = google.accounts.oauth2.initTokenClient({ client_id: S.settings.clientId, scope: 'https://www.googleapis.com/auth/drive.file',
+    const tc = google.accounts.oauth2.initTokenClient({ client_id: gClient(), scope: 'https://www.googleapis.com/auth/drive.file',
       callback: r => { if (r.error) return rej(new Error(r.error)); gTok = { v: r.access_token, exp: Date.now() + r.expires_in * 1000 }; res(gTok.v); },
       error_callback: e => rej(new Error(e?.type === 'popup_closed' ? 'Sign-in window was closed.' : 'Sign-in failed.')) });
     tc.requestAccessToken({ prompt: S.drive?.fileId ? '' : 'consent' });
@@ -1239,11 +1244,13 @@ async function share() {
 async function unshare(pid) {
   try { const tok = await token(true); await gapi(tok, `${DRIVE}/${S.drive.fileId}/permissions/${enc(pid)}`, { method: 'DELETE' }); toast('Access removed'); peopleList(); } catch (e) { toast(e.message); }
 }
+const googleOwnFields = st => `<label class="field"><span>Google OAuth client ID${GOOGLE_CLIENT_ID ? ' (leave empty to use Aura’s)' : ' (one-time setup, see README)'}</span><input id="clientId" value="${esc(st.clientId)}" placeholder="1234-abc.apps.googleusercontent.com" autocomplete="off"></label>
+  <label class="field"><span>Google API key for the file picker (only for joining a shared log)</span><input id="pickerKey" value="${esc(st.pickerKey)}" autocomplete="off"></label>`;
 function joinSheet() {
   openSheet(`<div class="hd"><h2>Join a shared log</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
     <p class="small muted" style="margin:0">If your partner shared their Aura log with your Google account, you can pick it here. Anything already on this phone is added to the shared log.</p>
-    <label class="field"><span>Google OAuth client ID (the same one your partner uses)</span><input id="j_client" value="${esc(S.settings.clientId)}" autocomplete="off"></label>
-    <label class="field"><span>Google API key for the file picker (see README)</span><input id="j_key" value="${esc(S.settings.pickerKey)}" autocomplete="off"></label>
+    ${gClient() && gPickerKey() ? '' : `<label class="field"><span>Google OAuth client ID (the same one your partner uses)</span><input id="j_client" value="${esc(S.settings.clientId)}" autocomplete="off"></label>
+    <label class="field"><span>Google API key for the file picker (see README)</span><input id="j_key" value="${esc(S.settings.pickerKey)}" autocomplete="off"></label>`}
     <div class="sheet-actions"><span></span><button class="btn primary" data-act="join-pick">Choose the shared file</button></div>`);
 }
 function loadPicker() {
@@ -1253,12 +1260,12 @@ function loadPicker() {
     const s = document.createElement('script'); s.src = 'https://apis.google.com/js/api.js'; s.onload = go; s.onerror = () => rej(new Error('The Google file picker could not load.')); document.head.appendChild(s); });
 }
 async function joinPick() {
-  S.settings.clientId = $('#j_client').value.trim(); S.settings.pickerKey = $('#j_key').value.trim(); persist();
-  if (!S.settings.pickerKey) return toast('Add the API key first.');
+  if ($('#j_client')) { S.settings.clientId = $('#j_client').value.trim(); S.settings.pickerKey = $('#j_key').value.trim(); persist(); }
+  if (!gPickerKey()) return toast('Add the API key first.');
   try {
     const tok = await token(true); await loadPicker();
     const view = new google.picker.DocsView(google.picker.ViewId.DOCS).setMimeTypes('application/json').setQuery(DRIVE_FILE).setMode(google.picker.DocsViewMode.LIST);
-    new google.picker.PickerBuilder().addView(view).setOAuthToken(tok).setDeveloperKey(S.settings.pickerKey).setAppId(S.settings.clientId.split('-')[0])
+    new google.picker.PickerBuilder().addView(view).setOAuthToken(tok).setDeveloperKey(gPickerKey()).setAppId(gClient().split('-')[0])
       .setTitle('Pick the shared Aura log').setCallback(d => {
         if (d.action !== google.picker.Action.PICKED || !d.docs?.[0]) return;
         if (S.example) { const st = S.settings; S = emptyState(); S.settings = st; }
@@ -1289,7 +1296,7 @@ const backupBanner = () => { const m = backupDue(); return m ? `<div class="bann
 function backupSheet(first) {
   openSheet(`<div class="hd"><h2>${first ? 'Keep this log safe' : 'Back up your log'}</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
     <p class="small muted" style="margin:0">The log is saved on this phone. A lost, broken or reset phone would take it with it, so keep a copy somewhere else.</p>
-    <button class="pick" data-act="backup-drive"><b>Google Drive, automatic (recommended)</b><br><span class="small muted">Every change is saved to your own Drive, with older versions kept. Needs the one-time setup in the README.</span></button>
+    <button class="pick" data-act="backup-drive"><b>Google Drive, automatic (recommended)</b><br><span class="small muted">Every change is saved to your own Drive, with older versions kept. Sign in with Google once.</span></button>
     <button class="pick" data-act="backup-file"><b>Save a backup file</b><br><span class="small muted">Send it to iCloud Files, Dropbox, email or any place you choose. Aura reminds you every ${BACKUP_DAYS} days when there are new entries.</span></button>
     ${first ? '<div class="sheet-actions"><span></span><button class="btn ghost" data-act="close">Later</button></div>' : ''}`);
 }
@@ -1430,7 +1437,7 @@ document.addEventListener('click', async ev => {
       catch { toast("That doesn't look like Aura data."); } return; }
     case 'wipe': $('#wipeConfirm').innerHTML = `<div class="banner"><p>This deletes everything on this phone, including its daily copies. A copy in Google Drive is not deleted. Download a backup file first if you might want it back.</p><button class="btn danger sm" data-act="wipe-yes">Delete everything</button></div>`; return;
     case 'wipe-yes': allowShrink = true; try { localStorage.removeItem(LS_KEY); localStorage.removeItem(LS_OLD); } catch {} S = emptyState(); narrative = ''; tab = 'today'; commit(); if (db) dbKeys().then(ks => { const st = db.transaction('kv', 'readwrite').objectStore('kv'); ks.filter(k => String(k).startsWith('snap-')).forEach(k => st.delete(k)); }).catch(() => {}); return toast('Deleted from this device');
-    case 'drive-sync': S.settings.clientId = $('#clientId').value.trim(); persist(); return sync(true);
+    case 'drive-sync': if ($('#clientId')) { S.settings.clientId = $('#clientId').value.trim(); persist(); } return sync(true);
     case 'drive-forget': S.drive = {}; gTok = null; return commit();
     case 'drive-backups': return driveBackupsSheet();
     case 'share': return share();
@@ -1440,7 +1447,7 @@ document.addEventListener('click', async ev => {
     case 'backup-now': return S.drive?.fileId ? sync(true) : backupSheet(false);
     case 'backup-snooze': S.backupSnooze = Date.now() + DAY; persist(); return render();
     case 'backup-file': closeSheet(); return saveBackupFile();
-    case 'backup-drive': closeSheet(); tab = 'more'; render(); $('#clientId')?.scrollIntoView({ block: 'center' }); return;
+    case 'backup-drive': closeSheet(); if (gClient()) return sync(true); tab = 'more'; render(); $('#clientId')?.scrollIntoView({ block: 'center' }); return;
     case 'local-snaps': return localSnapsSheet();
     case 'restore-file': return $('#restoreFile').click();
   }
@@ -1449,7 +1456,7 @@ document.addEventListener('change', ev => {
   const t = ev.target;
   if (t.dataset.gap) { const m = S.meds.find(x => x.id === t.dataset.gap); m.gapH = t.value === '' ? null : +t.value; touch(m); persist(); scheduleSync(); }
   if (t.id === 'apiKey' || t.id === 'aiBase' || t.id === 'aiModel') { S.settings[t.id] = t.value.trim(); persist(); renderMore(); if (t.id === 'aiBase' && t.value && !okBase(t.value.trim())) toast('Use an https:// address, or http://localhost for a model on this computer.'); }
-  if (t.id === 'clientId') { S.settings.clientId = t.value.trim(); persist(); }
+  if (t.id === 'clientId' || t.id === 'pickerKey') { S.settings[t.id] = t.value.trim(); persist(); }
   if (t.id === 'meName') { S.settings.me = t.value.trim(); persist(); }
   if (t.id === 'restoreFile' && t.files[0]) t.files[0].text().then(x => { mergeIn(JSON.parse(x)); commit(); toast('Backup restored'); }).catch(e => toast(e instanceof SyntaxError ? "That file isn't an Aura backup." : e.message));
 });
