@@ -200,6 +200,20 @@ const LS_KEY = 'aura.v2', LS_OLD = 'sickdaylog.v1';
 const DRIVE_FILE = 'aura-log.json', DRIVE_FOLDER = 'Aura';
 const FEVER_C = 38.0, EXAMPLE_V = 4;
 const H = 3600e3, DAY = 24 * H;
+const reEsc = s => s.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+// Symptoms are free text; preset tags found in the text are also kept as a list for reminders and the doctor summary.
+const hasTag = (text, tag) => new RegExp('(^|[^a-z])' + reEsc(tag.toLowerCase()) + '($|[^a-z])').test(String(text || '').toLowerCase());
+const tagsIn = text => SYMPTOMS.filter(t => hasTag(text, t));
+function toggleTag(text, tag) {
+  text = text || '';
+  if (hasTag(text, tag)) {
+    text = text.replace(new RegExp('[\\s,;]*' + reEsc(tag) + '(?![a-z])', 'i'), '').replace(/^[\s,;.]+/, '');
+  } else {
+    const base = text.replace(/[\s,;]+$/, '');
+    text = base ? base + (/[.!?]$/.test(base) ? ' ' : ', ') + (/[.!?]$/.test(base) ? tag : tag.toLowerCase()) : tag;
+  }
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
 const BREAST = 'Breast', BOTTLE = 'Bottle or cup';
 
 const $ = s => document.querySelector(s);
@@ -313,7 +327,7 @@ const TYPES = {
   solids: { label: 'Solids', fields: [{ kind: 'text', k: 'food', label: 'What did they eat?' }, { kind: 'chips', k: 'amount', label: 'How much', opts: ['A taste', 'A little', 'About half', 'All of it'] }, { kind: 'chips', k: 'reaction', label: 'Liked it?', opts: ['Loved it', 'So-so', 'Refused'] }] },
   temp: { label: 'Temp', long: 'Temperature', fields: [{ kind: 'temp', k: 'tempC' }, { kind: 'chips', k: 'method', label: 'How measured', opts: ['Ear', 'Forehead', 'Armpit', 'Mouth', 'Rectal'] }] },
   med: { label: 'Medicine', fields: [{ kind: 'medname', k: 'name' }, { kind: 'num', k: 'amount', label: 'Amount', step: 0.5 }, { kind: 'chips', k: 'unit', label: 'Unit', opts: ['ml', 'mg', 'tablet', 'drops', 'puffs', 'sachet'] }] },
-  symptom: { label: 'Symptoms', fields: [{ kind: 'chips', k: 'symptoms', label: 'Pick all that apply', opts: SYMPTOMS, multi: true }, { kind: 'chips', k: 'severity', label: 'Overall', opts: ['Mild', 'Moderate', 'Severe'] }] },
+  symptom: { label: 'Symptoms', fields: [{ kind: 'symtext', k: 'note' }, { kind: 'chips', k: 'severity', label: 'Overall', opts: ['Mild', 'Moderate', 'Severe'] }] },
   vomit: { label: 'Vomit', fields: [{ kind: 'chips', k: 'size', label: 'How much', opts: ['Small', 'Medium', 'Large'] }] },
   doctor: { label: 'Doctor', long: "Doctor's notes", fields: [] },
   photo: { label: 'Photo', fields: [{ kind: 'photo', k: 'img' }] },
@@ -366,7 +380,7 @@ function describe(e) {
     case 'drink': return `<b>${esc(e.what || 'Drink')}</b>${e.ml ? ' <span class="num">' + esc(e.ml) + ' ml</span>' : ''}`;
     case 'diaper': return `<b>${esc(e.kind || 'Diaper')}</b>${e.stool ? ' · ' + esc(lc(e.stool)) : ''}`;
     case 'vomit': return `<b>Vomited</b>${e.size ? ' · ' + esc(lc(e.size)) : ''}`;
-    case 'symptom': return `<b>${esc((e.symptoms || []).join(', ') || 'Symptoms')}</b>${e.severity ? ' · ' + esc(lc(e.severity)) : ''}`;
+    case 'symptom': return e.free ? `<b>Symptoms</b>${e.severity ? ' · ' + esc(lc(e.severity)) : ''}` : `<b>${esc((e.symptoms || []).join(', ') || 'Symptoms')}</b>${e.severity ? ' · ' + esc(lc(e.severity)) : ''}`;
     case 'food': return `<b>Food</b>${e.amount ? ' · ' + esc(lc(e.amount)) : ''}`;
     case 'doctor': return `<b>Doctor's notes</b>${DOC_FIELDS.filter(([k]) => e[k]).map(([k, l]) => `<span class="d"><span class="muted">${l}:</span> ${esc(e[k])}</span>`).join('')}`;
     case 'photo': return `<b>Photo</b>`;
@@ -701,6 +715,9 @@ function entryForm(type, e) {
     if (f.kind === 'text') return `<label class="field"><span>${f.label}</span><input id="f_${f.k}" value="${esc(ent[f.k] || '')}" ${!e ? 'autofocus' : ''}></label>`;
     if (f.kind === 'end') return `<label class="field"><span>${f.label}</span><input id="f_end" type="datetime-local" value="${ent.end ? toLocalInput(ent.end) : ''}"></label>`;
     if (f.kind === 'medname') { const names = [...new Set([...live(S.meds).map(m => m.name), ...live(S.entries).filter(x => x.type === 'med').map(x => x.name)])]; return `<div class="field"><span>Which medicine</span><div class="chips" data-k="name">${names.map(n => `<button type="button" data-v="${esc(n)}" class="${ent.name === n ? 'on' : ''}">${esc(n)}</button>`).join('')}</div><input id="f_medother" placeholder="Or type another name" value="${ent.name && !names.includes(ent.name) ? esc(ent.name) : ''}" style="margin-top:6px"></div>`; }
+    if (f.kind === 'symtext') { const text = ent.free ? ent.note || '' : [(ent.symptoms || []).join(', '), ent.note].filter(Boolean).join('. ');
+      return `<label class="field"><span>What's going on?</span><textarea id="f_symtext" style="min-height:90px" autofocus placeholder="In your own words, e.g. coughing at night, pulling at her left ear, not hungry">${esc(text)}</textarea></label>
+        <div class="field"><span>Or tap to add</span><div class="chips" id="symTags">${SYMPTOMS.map(t => `<button type="button" data-tag="${esc(t)}" class="${hasTag(text, t) ? 'on' : ''}">${esc(t)}</button>`).join('')}</div></div>`; }
     if (f.kind === 'photo') return `<label class="field"><span>Photo</span><input id="f_photo" type="file" accept="image/*" capture="environment"></label>${ent.img ? `<img src="${ent.img}" alt="" style="max-width:180px;border-radius:10px">` : ''}`;
     return '';
   }).join('');
@@ -708,7 +725,7 @@ function entryForm(type, e) {
   const isDoc = type === 'doctor';
   openSheet(`<div class="hd"><h2>${isDoc ? (e ? "Edit doctor's notes" : 'What did the doctor say?') : (e ? 'Edit ' : 'Log ') + lc(T.long || T.label)}</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
     ${parts}${timerBtn}
-    <label class="field"><span>${isDoc ? 'Notes' : 'Note (optional)'}</span><textarea id="f_note" style="min-height:${isDoc ? 200 : 64}px" placeholder="${type === 'note' ? 'What happened?' : isDoc ? 'Write it however you like: who you saw, what they think it is, what to do, medicine, when to come back…' : 'Anything else worth remembering'}" ${type === 'note' || isDoc ? 'autofocus' : ''}>${esc(isDoc && ent.id ? docText(ent) : ent.note || '')}</textarea></label>
+    ${type === 'symptom' ? '' : `<label class="field"><span>${isDoc ? 'Notes' : 'Note (optional)'}</span><textarea id="f_note" style="min-height:${isDoc ? 200 : 64}px" placeholder="${type === 'note' ? 'What happened?' : isDoc ? 'Write it however you like: who you saw, what they think it is, what to do, medicine, when to come back…' : 'Anything else worth remembering'}" ${type === 'note' || isDoc ? 'autofocus' : ''}>${esc(isDoc && ent.id ? docText(ent) : ent.note || '')}</textarea></label>`}
     <div class="field"><span>${T.whenLabel || 'When'}</span><div class="chips" id="whenChips">${[['Now', 0], ['15 min ago', 15], ['30 min ago', 30], ['1 h ago', 60], ['2 h ago', 120]].map(([l, m]) => `<button type="button" data-ago="${m}" class="${!e && m === 0 ? 'on' : ''}">${l}</button>`).join('')}</div><input id="f_when" type="datetime-local" value="${toLocalInput(ent.t || Date.now())}" style="margin-top:6px"></div>
     <div class="sheet-actions">${e ? '<button class="btn ghost danger" data-act="delete-entry">Delete</button>' : '<span></span>'}<button class="btn primary" data-act="save-entry">Save</button></div>`, { type, id: e?.id });
 }
@@ -731,9 +748,10 @@ async function collect(type, e) {
     else if (f.kind === 'num') { const v = $('#f_' + f.k).value; draft[f.k] = v === '' ? null : +v; }
     else if (f.kind === 'end') { const v = $('#f_end').value; draft.end = v ? new Date(v).getTime() : (e && e.end === null ? null : undefined); }
     else if (f.kind === 'medname') { draft.name = $('#f_medother').value.trim() || readChips('name'); if (!draft.name) throw 'Pick or type the medicine name.'; }
+    else if (f.kind === 'symtext') { const t = $('#f_symtext').value.trim(); if (!t) throw "Write what's going on, or tap a symptom."; Object.assign(draft, { note: t, symptoms: tagsIn(t), free: true }); }
     else if (f.kind === 'photo') { const file = $('#f_photo').files[0]; if (file) draft.img = await shrink(file); else if (!e?.img) throw 'Choose or take a photo.'; }
   }
-  draft.note = $('#f_note').value.trim();
+  if (type !== 'symptom') draft.note = $('#f_note').value.trim();
   if (type === 'note' && !draft.note) throw 'Write a note first.';
   if (type === 'doctor') { if (!draft.note) throw 'Write down what the doctor said first.'; for (const [k] of DOC_FIELDS) draft[k] = ''; draft.who = ''; draft.how = ''; }
   if (type === 'solids' && !draft.food && !draft.amount) throw 'Write what they ate.';
@@ -938,6 +956,7 @@ document.addEventListener('click', async ev => {
   const tr = ev.target.closest('tr[data-meas]'); if (tr) return measSheet(tr.dataset.meas);
   const b = ev.target.closest('button'); if (!b) return;
   if (b.dataset.tab) { tab = b.dataset.tab; showDays = 3; render(); window.scrollTo(0, 0); return; }
+  if (b.dataset.tag) { const box = $('#f_symtext'); box.value = toggleTag(box.value, b.dataset.tag); markTags(); return; }
   if (b.closest('.chips')) {
     const box = b.closest('.chips');
     if (box.id === 'whenChips') { box.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); $('#f_when').value = toLocalInput(Date.now() - (+b.dataset.ago) * 60000); return; }
@@ -1038,6 +1057,8 @@ document.addEventListener('change', ev => {
   if (t.id === 'apiKey') { S.settings.apiKey = t.value.trim(); persist(); renderMore(); }
   if (t.id === 'clientId') { S.settings.clientId = t.value.trim(); persist(); }
 });
+function markTags() { const t = $('#f_symtext')?.value; document.querySelectorAll('#symTags [data-tag]').forEach(x => x.classList.toggle('on', hasTag(t, x.dataset.tag))); }
+document.addEventListener('input', ev => { if (ev.target.id === 'f_symtext') markTags(); });
 document.addEventListener('input', ev => { if (ev.target.matches('[data-custom]') && ev.target.value) ev.target.closest('.chips').querySelectorAll('button').forEach(x => x.classList.remove('on')); });
 $('#scrim').addEventListener('click', ev => { if (ev.target.id === 'scrim') closeSheet(); });
 document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && !$('#scrim').hidden) closeSheet(); });

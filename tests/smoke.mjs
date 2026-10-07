@@ -59,6 +59,25 @@ for (const theme of ['night', 'day']) {
     if ((await page.locator('.quick [data-add="symptom"]').count()) !== 1) fail('sick view missing sick buttons');
   }
 
+  // Symptoms start as free text; preset tags add to the text and can be removed again
+  if (theme === 'day') {
+    await page.click('.tabs [data-tab="today"]');
+    await page.click('.quick [data-add="symptom"]');
+    await page.waitForTimeout(150);
+    if ((await page.evaluate(() => document.activeElement?.id)) !== 'f_symtext') fail('symptom text box is not focused first');
+    await page.fill('#f_symtext', 'Coughing at night');
+    await page.click('#symTags [data-tag="Ear pain"]');
+    await page.click('#symTags [data-tag="Rash"]');
+    await page.click('#symTags [data-tag="Rash"]');
+    const text = await page.inputValue('#f_symtext');
+    if (text !== 'Coughing at night, ear pain') fail(`symptom text is "${text}"`);
+    await page.click('[data-act="save-entry"]');
+    const row = await page.locator('.tl li').first().innerText();
+    if (!row.includes('Coughing at night, ear pain')) fail('symptom text missing from timeline');
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('aura.v2')).entries.filter(e => e.type === 'symptom').sort((a, b) => b.updatedAt - a.updatedAt)[0]);
+    if (!saved.symptoms.includes('Ear pain')) fail('tag not kept for the doctor summary');
+  }
+
   // Sick view tabs, Growth and More
   await page.click('[data-act="open-sick"]');
   for (const t of ['overview', 'chart', 'doctor']) { await page.click(`[data-sick="${t}"]`); if (await overflow()) fail(`${theme}: sick ${t} scrolls sideways`); }
