@@ -7,7 +7,7 @@ const errors = [];
 const fail = m => { errors.push(m); };
 // The app keeps its log in IndexedDB ('aura' database, 'kv' store, key 'state').
 const IDB = `const idb = mode => new Promise((res, rej) => { const r = indexedDB.open('aura', 1); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });`;
-const getState = page => page.evaluate(`(async () => { ${IDB} const d = await idb(); return await new Promise(res => { const q = d.transaction('kv').objectStore('kv').get('state'); q.onsuccess = () => { d.close(); res(q.result); }; }); })()`);
+const getState = (page, key = 'state') => page.evaluate(`(async () => { ${IDB} const d = await idb(); return await new Promise(res => { const q = d.transaction('kv').objectStore('kv').get('${key}'); q.onsuccess = () => { d.close(); res(q.result); }; }); })()`);
 const setState = (page, s) => page.evaluate(`(async () => { ${IDB} const d = await idb(); await new Promise(res => { const tx = d.transaction('kv', 'readwrite'); tx.objectStore('kv').put(${JSON.stringify(s)}, 'state'); tx.oncomplete = res; }); d.close(); })()`);
 
 for (const theme of ['night', 'day']) {
@@ -230,7 +230,8 @@ for (const theme of ['night', 'day']) {
   page.on('pageerror', e => fail(`sync: ${e.message}`));
   await page.addInitScript(() => { window.google = { accounts: { oauth2: { initTokenClient: o => ({ requestAccessToken: () => o.callback({ access_token: 't', expires_in: 3600 }) }) } } }; });
   const other = (id, t) => ({ id, child: 'kid-ex', type: 'note', t, note: 'From the other phone', updatedAt: t });
-  const drive = { file: { app: 'aura', v: 2, children: [], episodes: [], entries: [other('o1', 1000)], meds: [], measurements: [], growth: [] }, patches: 0, race: true, uploads: [] };
+  // "future" stands for a part added by a later version of the app without a format change; it must be kept.
+  const drive = { file: { app: 'aura', v: 2, children: [], episodes: [], entries: [other('o1', 1000)], meds: [], measurements: [], growth: [], future: ['kept'] }, patches: 0, race: true, uploads: [], queries: [] };
   await page.route('https://www.googleapis.com/**', async route => {
     const req = route.request(), u = new URL(req.url()), m = req.method();
     const json = b => route.fulfill({ status: 200, contentType: 'application/json', body: typeof b === 'string' ? b : JSON.stringify(b) });
@@ -242,7 +243,8 @@ for (const theme of ['night', 'day']) {
     }
     if (u.pathname.startsWith('/upload') && m === 'POST') { drive.uploads.push(req.postData()); return json({ id: 'b' + drive.uploads.length }); }
     if (u.pathname === '/drive/v3/files/f1' && u.searchParams.get('alt') === 'media') return json(drive.file);
-    if (u.pathname === '/drive/v3/files/f1') return json({ ownedByMe: true });
+    if (u.pathname === '/drive/v3/files/f1') return json({ ownedByMe: true, parents: ['logdir'] });
+    if (u.pathname === '/drive/v3/files') drive.queries.push(u.searchParams.get('q') || '');
     if (u.pathname === '/drive/v3/files') return json({ files: (u.searchParams.get('q') || '').includes('in parents') ? [] : [{ id: 'folder' }] });
     return json({});
   });
@@ -257,8 +259,21 @@ for (const theme of ['night', 'day']) {
   if (!mine.every(e => drive.file.entries.some(x => x.id === e.id))) fail('sync: our entries lost after the other phone wrote');
   if (drive.patches !== 2) fail(`sync: expected a second write after the clash, got ${drive.patches}`);
   if (!drive.uploads.some(b => b.includes('aura-backup-'))) fail('sync: no backup saved before overwriting');
+  if (!drive.queries.some(q => q.includes("name='backups'") && q.includes("'logdir' in parents"))) fail('sync: backups not kept next to the log (so a moved or renamed folder would lose them)');
+  if (drive.file.future?.[0] !== 'kept') fail('sync: a part of the Drive file this version does not know was dropped');
+  // A log saved by a newer version of the app is never overwritten by this one
+  drive.file = { ...drive.file, v: 99 }; let before = drive.patches;
+  await page.click('[data-act="sync-tap"]');
+  await page.waitForSelector('.sync.err');
+  if (drive.patches !== before || drive.file.v !== 99) fail('sync: a newer log in Drive was overwritten');
+  // An older log in Drive is upgraded, after a copy of it as it was is kept as aura-log-before-v2.json
+  drive.file = { app: 'sick-day-log', v: 1, children: [], episodes: [], entries: [other('old1', 500)], meds: [], measurements: [] }; before = drive.uploads.length;
+  await page.click('[data-act="sync-tap"]');
+  await page.waitForSelector('.sync.ok');
+  if (!drive.uploads.slice(before).some(b => b.includes('aura-log-before-v2.json') && b.includes('sick-day-log'))) fail('sync: no copy kept before upgrading the Drive log');
+  if (drive.file.v !== 2 || !drive.file.entries.some(e => e.id === 'old1')) fail('sync: older Drive log not upgraded');
   // A damaged Drive file is never overwritten
-  drive.file = 'not json'; const before = drive.patches;
+  drive.file = 'not json'; before = drive.patches;
   await page.click('[data-act="sync-tap"]');
   await page.waitForSelector('.sync.err');
   if (drive.patches !== before) fail('sync: damaged Drive file was overwritten');
@@ -292,6 +307,21 @@ for (const theme of ['night', 'day']) {
   await page.reload();
   if (!(await page.locator('h1').first().innerText()).includes('Leo')) fail('migration: child not carried over');
   if ((await page.locator('.sick-card').count()) !== 1) fail('migration: open illness not shown as sick mode');
+  if ((await getState(page, 'before-v2'))?.app !== 'sick-day-log') fail('migration: no copy kept of the log before the upgrade');
+  await page.close();
+}
+
+// A log saved by a newer version of the app is shown but never changed by this one
+{
+  const page = await browser.newPage({ viewport: { width: 375, height: 800 } });
+  page.on('pageerror', e => fail(`newer: ${e.message}`));
+  await page.goto(url);
+  await page.waitForSelector('h1');
+  const st = await getState(page); st.example = false; st.v = 99; const n = st.entries.length;
+  await setState(page, st); await page.reload(); await page.waitForSelector('h1');
+  await page.click('[data-add="note"]'); await page.fill('#f_note', 'Should not be saved'); await page.click('[data-act="save-entry"]');
+  const after = await getState(page);
+  if (after.v !== 99 || after.entries.length !== n) fail('newer: a log from a newer version was changed');
   await page.close();
 }
 
