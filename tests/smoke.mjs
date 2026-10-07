@@ -338,6 +338,38 @@ for (const theme of ['night', 'day']) {
   await page.close();
 }
 
+// Product recalls: the public list is loaded, products on the family's list are matched, and a warning shows until seen
+{
+  const page = await browser.newPage({ viewport: { width: 375, height: 800 } });
+  page.on('pageerror', e => fail(`recalls: ${e.message}`));
+  const feed = [
+    { id: 'https://example.org/r1', title: 'HiPP Bio Karotten mit Kartoffeln 190 g', url: 'https://example.org/r1', publish_datetime: '2026-09-20T12:00:00+02:00', country_sold_in: 'DE', source: 'Lebensmittelwarnung.de', reason: { en: 'Foreign bodies', de: 'Fremdkörper' }, company: 'HiPP GmbH, Pfaffenhofen', scraped_datetime: new Date().toISOString() },
+    { id: 'https://example.org/r2', title: 'Magic Sand', url: 'https://example.org/r2', publish_datetime: '2026-09-01T12:00:00Z', country_sold_in: 'US', source: 'FDA', reason: 'Lead', company: 'Toys Inc', scraped_datetime: new Date().toISOString() },
+  ];
+  let calls = 0;
+  await page.route('**/processed.json', r => { calls++; r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(feed) }); });
+  await page.goto(url);
+  await page.waitForSelector('h1');
+  await page.click('.tabs [data-tab="more"]');
+  await page.waitForSelector('#recalls .recall-row');
+  if ((await page.locator('#recalls .recall-row').count()) !== 2) fail('recalls: list not shown');
+  await page.click('[data-rcountry="DE"]');
+  if ((await page.locator('#recalls .recall-row').count()) !== 1) fail('recalls: country filter not applied');
+  await page.fill('#newProd', 'hipp');
+  await page.click('[data-act="add-prod"]');
+  if ((await page.locator('#recalls .hit').count()) !== 1) fail('recalls: product not matched');
+  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail('recalls: More scrolls sideways');
+  await page.click('.tabs [data-tab="today"]');
+  if ((await page.locator('.recall-due').count()) !== 1) fail('recalls: no warning on Today');
+  await page.click('.recall-due [data-seen]');
+  await page.reload(); await page.waitForSelector('h1');
+  if ((await page.locator('.recall-due').count()) !== 0) fail('recalls: warning back after Seen');
+  if (calls !== 1) fail(`recalls: list fetched ${calls} times, expected once`);
+  const st = await getState(page);
+  if (!st.products.some(p => p.name === 'hipp' && p.updatedAt)) fail('recalls: product list not saved');
+  await page.close();
+}
+
 await browser.close();
 if (errors.length) { console.error('Smoke test failed:\n- ' + errors.join('\n- ')); process.exit(1); }
 console.log('Smoke test passed');
