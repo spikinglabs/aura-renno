@@ -78,6 +78,23 @@ for (const theme of ['night', 'day']) {
     if (!saved.symptoms.includes('Ear pain')) fail('tag not kept for the doctor summary');
   }
 
+  // Teeth and milestones on the Growth tab
+  if (theme === 'night') {
+    await page.click('.tabs [data-tab="growth"]');
+    const teeth = () => page.locator('.tooth.in').count(), before = await teeth();
+    await page.locator('.tooth:not(.in)').first().click();
+    await page.click('[data-act="save-growth"]');
+    if ((await teeth()) !== before + 1) fail('tooth not marked');
+    await page.click('[data-ms="new"]');
+    await page.fill('#g_label', 'First haircut');
+    await page.click('[data-act="save-growth"]');
+    if ((await page.locator('.ms-row', { hasText: 'First haircut' }).count()) !== 1) fail('custom milestone missing');
+    await page.reload();
+    await page.click('.tabs [data-tab="growth"]');
+    if ((await teeth()) !== before + 1) fail('tooth not saved');
+    await page.click('.tabs [data-tab="today"]');
+  }
+
   // Sick view tabs, Growth and More
   await page.click('[data-act="open-sick"]');
   for (const t of ['overview', 'chart', 'doctor']) { await page.click(`[data-sick="${t}"]`); if (await overflow()) fail(`${theme}: sick ${t} scrolls sideways`); }

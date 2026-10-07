@@ -145,6 +145,21 @@ tr:last-child td { border-bottom: 0 }
 .medrow input { width: 70px }
 .grow-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px }
 
+/* Teeth and milestones */
+.mouth { display: flex; flex-direction: column; gap: 10px; align-items: center; padding: 6px 0 }
+.jaw { display: flex; gap: 4px; justify-content: center }
+.jaw .tooth { width: 26px; height: 32px; border-radius: 12px 12px 8px 8px; border: 1.5px solid var(--line); background: var(--card-2); padding: 0 }
+.jaw.lower .tooth { border-radius: 8px 8px 12px 12px }
+.jaw .tooth.m { width: 30px }
+.jaw .tooth.in { background: var(--accent); border-color: var(--accent) }
+.jaw .gap { width: 8px }
+.jaw-label { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em }
+.ms-row { width: 100%; text-align: left; display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 0; background: none; border: 0; border-top: 1px solid var(--line) }
+.ms-row:first-of-type { border-top: 0 }
+.ms-dot { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--muted) }
+.ms-row.done .ms-dot { background: var(--accent); border-color: var(--accent) }
+.ms-row small { display: block; color: var(--muted); font-size: .84rem; overflow-wrap: anywhere }
+
 /* Tabs */
 .tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--card); padding-bottom: env(safe-area-inset-bottom, 0px) }
 .tabs .in { max-width: 600px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr) }
@@ -198,7 +213,7 @@ const SDK_URL = 'https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.131.0/+esm';
 const MODEL = 'claude-opus-5-5';
 const LS_KEY = 'aura.v2', LS_OLD = 'sickdaylog.v1';
 const DRIVE_FILE = 'aura-log.json', DRIVE_FOLDER = 'Aura';
-const FEVER_C = 38.0, EXAMPLE_V = 4;
+const FEVER_C = 38.0, EXAMPLE_V = 5;
 const H = 3600e3, DAY = 24 * H;
 const reEsc = s => s.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
 // Symptoms are free text; preset tags found in the text are also kept as a list for reminders and the doctor summary.
@@ -249,7 +264,7 @@ const icon = k => `<span class="ic t-${k}"><svg viewBox="0 0 24 24" aria-hidden=
 
 /* ---------- State ---------- */
 function emptyState() {
-  return { app: 'aura', v: 2, example: false, children: [], episodes: [], entries: [], measurements: [],
+  return { app: 'aura', v: 2, example: false, children: [], episodes: [], entries: [], measurements: [], growth: [],
     meds: [{ id: 'm1', name: 'Paracetamol (acetaminophen)', gapH: 4, updatedAt: 0 }, { id: 'm2', name: 'Ibuprofen', gapH: 6, updatedAt: 0 }],
     settings: { unit: 'C', clientId: '', apiKey: '', theme: 'auto' }, child: null, drive: {} };
 }
@@ -268,6 +283,7 @@ function migrate(o) {
 let S = migrate(readLS(LS_KEY)), keepSettings = null;
 if (!S) { const old = readLS(LS_OLD); if (old && !old.example) S = migrate(old); else keepSettings = old?.settings || null; }
 if (!S || (S.example && S.exampleV !== EXAMPLE_V)) { const keep = S?.settings || keepSettings; S = exampleState(); if (keep) S.settings = { ...S.settings, ...keep }; try { localStorage.setItem(LS_KEY, JSON.stringify(S)); } catch {} }
+S.growth = S.growth || [];
 function persist() { try { localStorage.setItem(LS_KEY, JSON.stringify(S)); } catch { toast('Could not save on this device. Storage may be full.'); } }
 function commit() { persist(); render(); scheduleSync(); }
 const touch = o => (o.updatedAt = Date.now(), o);
@@ -297,6 +313,11 @@ function exampleState() {
   }
   if (now - today > 19.75 * H) add(today + 19.75 * H, 'sleep', { kind: 'Night sleep', end: null });
   else if (now - today > 13 * H && now - today < 14.8 * H) add(today + 13 * H, 'sleep', { kind: 'Nap', end: null });
+  const born = new Date(kid.dob).getTime(), atAge = m => born + m * 30.44 * DAY;
+  [['L-A', 6.5], ['L-B', 7], ['U-A', 8], ['U-B', 8.2], ['U-C', 10], ['U-D', 10.5], ['L-C', 11], ['L-D', 11.5], ['U-E', 14], ['U-F', 14.5], ['L-E', 15], ['L-F', 15.5], ['U-G', 19], ['U-H', 19.5], ['L-G', 20], ['L-H', 21]]
+    .forEach(([k, m]) => s.growth.push({ id: uid(), childId: kid.id, kind: 'tooth', key: k, t: atAge(m), note: '', updatedAt: 0 }));
+  [['smile', 1.6, ''], ['laugh', 3.5, 'At the dog'], ['roll', 4.5, ''], ['sit', 6.5, ''], ['crawl', 8.5, 'Backwards first!'], ['stand', 10, ''], ['walk', 12.5, 'Three steps to grandma'], ['word', 12, '"Dada"'], ['phrase', 21, '"More milk"']]
+    .forEach(([k, m, note]) => s.growth.push({ id: uid(), childId: kid.id, kind: 'milestone', key: k, t: atAge(m), note, updatedAt: 0 }));
   const start = now - 2.6 * DAY;
   s.episodes.push({ id: 'ep-ex', childId: kid.id, title: 'Fever and cough', start, end: null, updatedAt: 0 });
   const at = h => start + h * H;
@@ -649,7 +670,43 @@ function renderGrowth() {
     <div class="grow-stats">${stats}</div>${charts}
     ${ms.length ? `<div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Age</th><th class="r">Weight</th><th class="r">Height</th><th class="r">Head</th><th>Note</th></tr></thead><tbody>
       ${ms.map(m => `<tr data-meas="${m.id}" style="cursor:pointer"><td>${fmtDay(m.t)}</td><td>${c.dob ? ageText(c, m.t) : '–'}</td>${MEAS.map(([k, , u]) => `<td class="r num">${m[k] != null ? m[k] + ' ' + u : '–'}</td>`).join('')}<td>${esc(m.note || '')}</td></tr>`).join('')}
-    </tbody></table></div><p class="small muted" style="margin:0">Tap a row to edit it. The latest weight goes into the doctor summary.</p>` : '<p class="muted">No measurements yet. Add one from a checkup or your home scale.</p>'}`;
+    </tbody></table></div><p class="small muted" style="margin:0">Tap a row to edit it. The latest weight goes into the doctor summary.</p>` : '<p class="muted">No measurements yet. Add one from a checkup or your home scale.</p>'}
+    ${teethHtml(c)}${milestonesHtml(c)}`;
+}
+/* Teeth: 20 baby teeth, keyed jaw + letter, A/B central incisors outward to G/H second molars. As seen when facing the child. */
+const TOOTH_TYPES = [['Central incisor', 'A', 'B'], ['Lateral incisor', 'C', 'D'], ['Canine', 'I', 'J'], ['First molar', 'E', 'F'], ['Second molar', 'G', 'H']];
+const toothName = key => { const [jaw, l] = key.split('-'), t = TOOTH_TYPES.find(x => x.includes(l)); return `${jaw === 'U' ? 'Upper' : 'Lower'} ${t[0].toLowerCase()}, ${l === t[1] ? 'right' : 'left'} side`; };
+const JAW_ORDER = ['G', 'E', 'I', 'C', 'A', '|', 'B', 'D', 'J', 'F', 'H']; // facing the child: their right side is on the left of the screen
+const MILESTONES = [['smile', 'First smile'], ['laugh', 'First laugh'], ['head', 'Holds head up'], ['roll', 'Rolls over'], ['sit', 'Sits without help'], ['crawl', 'Crawls'], ['stand', 'Pulls up to stand'], ['walk', 'First steps'], ['word', 'First word'], ['wave', 'Waves bye-bye'], ['phrase', 'Two-word phrases'], ['night', 'Sleeps through the night']];
+const growthOf = c => live(S.growth || []).filter(g => g.childId === c.id);
+const msLabel = g => g.label || (MILESTONES.find(([k]) => k === g.key) || [, 'Milestone'])[1];
+function teethHtml(c) {
+  const teeth = Object.fromEntries(growthOf(c).filter(g => g.kind === 'tooth').map(g => [g.key, g]));
+  const jaw = j => `<div class="jaw ${j === 'L' ? 'lower' : ''}">${JAW_ORDER.map(l => l === '|' ? '<span class="gap"></span>' : `<button class="tooth ${'EFGH'.includes(l) ? 'm' : ''} ${teeth[j + '-' + l] ? 'in' : ''}" data-tooth="${j}-${l}" aria-label="${toothName(j + '-' + l)}${teeth[j + '-' + l] ? ', came in ' + fmtDay(teeth[j + '-' + l].t) : ''}"></button>`).join('')}</div>`;
+  const list = Object.values(teeth).sort((a, b) => b.t - a.t);
+  return `<div class="card set"><div class="row between"><h2>Teeth</h2><span class="muted small">${list.length} of 20</span></div>
+    <div class="mouth"><span class="jaw-label">Upper</span>${jaw('U')}${jaw('L')}<span class="jaw-label">Lower</span></div>
+    <p class="small muted" style="margin:0">Tap a tooth when it comes in.${list.length ? ` Latest: ${toothName(list[0].key).toLowerCase()}, ${fmtDay(list[0].t)}${c.dob ? ' (' + ageText(c, list[0].t) + ')' : ''}.` : ''}</p></div>`;
+}
+function milestonesHtml(c) {
+  const done = growthOf(c).filter(g => g.kind === 'milestone'), byKey = Object.fromEntries(done.filter(g => g.key).map(g => [g.key, g]));
+  const custom = done.filter(g => !g.key || !MILESTONES.some(([k]) => k === g.key));
+  const rows = [...MILESTONES.map(([k, l]) => byKey[k] ? { g: byKey[k], l } : { k, l }), ...custom.map(g => ({ g, l: msLabel(g) }))];
+  return `<div class="card set"><div class="row between"><h2>Milestones and firsts</h2><button class="btn sm" data-ms="new">Add your own</button></div><div>
+    ${rows.map(r => `<button class="ms-row ${r.g ? 'done' : ''}" data-ms="${r.g ? r.g.id : 'key:' + r.k}"><span class="ms-dot"></span><span><b>${esc(r.l)}</b>${r.g?.note ? `<small>${esc(r.g.note)}</small>` : ''}</span><span class="small muted num">${r.g ? fmtDay(r.g.t) + (c.dob ? '<br>' + ageText(c, r.g.t) : '') : 'Not yet'}</span></button>`).join('')}</div>
+    <p class="small muted" style="margin:0">Every child gets there in their own time. This is a keepsake, not a checklist.</p></div>`;
+}
+function growthSheet(kind, ref) {
+  const c = kid(), g = ref && !ref.startsWith('key:') && S.growth.find(x => x.id === ref);
+  const key = kind === 'tooth' ? ref : g ? g.key : ref?.startsWith('key:') ? ref.slice(4) : null;
+  const existing = kind === 'tooth' ? growthOf(c).find(x => x.kind === 'tooth' && x.key === key) : g;
+  const title = kind === 'tooth' ? toothName(key) : existing ? msLabel(existing) : key ? msLabel({ key }) : 'Add a milestone or first';
+  openSheet(`<div class="hd"><h2>${esc(title)}</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+    ${!key && kind === 'milestone' ? `<label class="field"><span>What happened?</span><input id="g_label" value="${esc(existing?.label || '')}" placeholder="e.g. First swim, first haircut" autofocus></label>` : ''}
+    <label class="field"><span>${kind === 'tooth' ? 'Came in on' : 'When'}</span><input id="g_date" type="date" value="${toLocalInput(existing?.t || Date.now()).slice(0, 10)}"></label>
+    <label class="field"><span>Note (optional)</span><textarea id="g_note" style="min-height:70px" placeholder="${kind === 'tooth' ? 'e.g. fussy for a few nights before' : 'What it was like, who was there…'}">${esc(existing?.note || '')}</textarea></label>
+    <div class="sheet-actions">${existing ? `<button class="btn ghost danger" data-act="del-growth">${kind === 'tooth' ? 'Not in yet' : 'Remove'}</button>` : '<span></span>'}<button class="btn primary" data-act="save-growth">Save</button></div>`,
+    { growth: { kind, key, id: existing?.id || null } });
 }
 function measSheet(id) {
   const c = kid(), m = id ? S.measurements.find(x => x.id === id) : {};
@@ -913,7 +970,7 @@ async function token(interactive) {
 }
 async function gapi(tok, url, opts = {}) { const r = await fetch(url, { ...opts, headers: { Authorization: 'Bearer ' + tok, ...(opts.headers || {}) } }); if (!r.ok) throw new Error(`Drive error ${r.status}`); return r; }
 const DRIVE = 'https://www.googleapis.com/drive/v3/files', UP = 'https://www.googleapis.com/upload/drive/v3/files';
-const SYNCED = ['children', 'episodes', 'entries', 'meds', 'measurements'];
+const SYNCED = ['children', 'episodes', 'entries', 'meds', 'measurements', 'growth'];
 const shareable = () => ({ app: 'aura', v: 2, savedAt: Date.now(), ...Object.fromEntries(SYNCED.map(k => [k, S[k]])) });
 async function findOrCreateFile(tok) {
   const q = s => encodeURIComponent(s);
@@ -981,6 +1038,8 @@ document.addEventListener('click', async ev => {
   if (b.dataset.ep) { const e = S.episodes.find(x => x.id === b.dataset.ep); S.child = e.childId; viewEpId = e.id; sickTab = 'overview'; narrative = ''; tab = 'sick'; persist(); render(); return window.scrollTo(0, 0); }
   if (b.dataset.pickkid) { S.child = b.dataset.pickkid; closeSheet(); return commit(); }
   if (b.dataset.kid) return kidSheet(b.dataset.kid);
+  if (b.dataset.tooth) return growthSheet('tooth', b.dataset.tooth);
+  if (b.dataset.ms) return growthSheet('milestone', b.dataset.ms === 'new' ? null : b.dataset.ms);
   if (b.dataset.track) {
     const c = S.children.find(k => k.id === sheetCtx.trackKid), on = b.getAttribute('aria-checked') !== 'true';
     c.track = { ...trackMap(c), [b.dataset.track]: on }; touch(c); b.setAttribute('aria-checked', String(on)); commit(); return;
@@ -1022,6 +1081,15 @@ document.addEventListener('click', async ev => {
     }
     case 'del-kid': { const c = S.children.find(k => k.id === sheetCtx.kid); c.deleted = true; touch(c); if (S.child === c.id) S.child = kids()[0]?.id || null; closeSheet(); return commit(); }
     case 'add-meas': return measSheet();
+    case 'save-growth': {
+      const ctx = sheetCtx.growth, label = $('#g_label')?.value.trim();
+      if (ctx.kind === 'milestone' && !ctx.key && !label) return toast('Write what happened first.');
+      const day = $('#g_date').value, t = day ? new Date(day + 'T12:00').getTime() : Date.now();
+      const g = ctx.id ? S.growth.find(x => x.id === ctx.id) : { id: uid(), childId: kid().id, kind: ctx.kind, key: ctx.key };
+      Object.assign(g, { t, note: $('#g_note').value.trim() }); if (label) g.label = label; touch(g);
+      if (!ctx.id) S.growth.push(g); closeSheet(); commit(); return toast('Saved');
+    }
+    case 'del-growth': { const g = S.growth.find(x => x.id === sheetCtx.growth.id); g.deleted = true; touch(g); closeSheet(); commit(); return toast('Removed'); }
     case 'save-meas': {
       const vals = Object.fromEntries(MEAS.map(([k]) => { const v = $('#m_' + k).value; return [k, v === '' ? null : +v]; }));
       if (MEAS.every(([k]) => vals[k] == null)) return toast('Enter at least one measurement.');
