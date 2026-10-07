@@ -286,21 +286,33 @@ const icon = k => `<span class="ic t-${k}"><svg viewBox="0 0 24 24" aria-hidden=
 
 /* ---------- State ---------- */
 function emptyState() {
-  return { app: 'aura', v: 2, example: false, children: [], episodes: [], entries: [], measurements: [], growth: [],
+  return { app: 'aura', v: SCHEMA, example: false, children: [], episodes: [], entries: [], measurements: [], growth: [],
     meds: [{ id: 'm1', name: 'Paracetamol (acetaminophen)', gapH: 4, updatedAt: 0 }, { id: 'm2', name: 'Ibuprofen', gapH: 6, updatedAt: 0 }],
     settings: { unit: 'C', clientId: '', pickerKey: '', apiKey: '', aiKind: 'anthropic', aiBase: '', aiModel: '', theme: 'auto', me: '' }, child: null, drive: {} };
 }
 function readLS(k) { try { const r = localStorage.getItem(k); return r ? JSON.parse(r) : null; } catch { return null; } }
+// The log's format version. To change the format, raise SCHEMA and add the step MIGRATIONS[old version], which turns a
+// log of that version into the next one. Steps run in order, once, on this phone's log and on the Drive file. Before a
+// step runs, the log as it was is kept as "before-vN" on the phone and in Drive, and those copies are never pruned.
+// An older app never writes a newer log: it stops and asks to be updated (see tooNew).
+const SCHEMA = 2;
+const MIGRATIONS = {
+  1: o => { // v1 sick-day log: entries belonged to an illness; give each one its child.
+    const s = emptyState(); Object.assign(s, { children: o.children || [], episodes: o.episodes || [], measurements: o.measurements || [], meds: o.meds || s.meds, drive: {} });
+    s.settings = { ...s.settings, ...(o.settings || {}) };
+    const epChild = Object.fromEntries((o.episodes || []).map(e => [e.id, e.childId]));
+    s.entries = (o.entries || []).map(e => ({ ...e, child: e.child || epChild[e.ep] }));
+    s.child = s.children.find(c => !c.deleted)?.id || null;
+    return s;
+  },
+};
+const logVersion = o => Number.isInteger(o?.v) && o.v > 0 ? o.v : 1;
+const tooNew = o => !!o && logVersion(o) > SCHEMA;
+const NEWER = 'This log was saved by a newer version of Aura. Close Aura fully and open it again to update. Nothing was changed.';
 function migrate(o) {
-  if (!o) return null;
-  if (o.v === 2) return o;
-  // v1 sick-day log: entries belonged to an illness; give each one its child.
-  const s = emptyState(); Object.assign(s, { children: o.children || [], episodes: o.episodes || [], measurements: o.measurements || [], meds: o.meds || s.meds, drive: {} });
-  s.settings = { ...s.settings, ...(o.settings || {}) };
-  const epChild = Object.fromEntries((o.episodes || []).map(e => [e.id, e.childId]));
-  s.entries = (o.entries || []).map(e => ({ ...e, child: e.child || epChild[e.ep] }));
-  s.child = s.children.find(c => !c.deleted)?.id || null;
-  return s;
+  if (!o || tooNew(o)) return o;
+  for (let v = logVersion(o); v < SCHEMA; v++) o = { ...MIGRATIONS[v](o), v: v + 1 };
+  return o;
 }
 // The log lives in IndexedDB (room for photos and sound clips); localStorage is only read to move older data over.
 let S = null, db = null;
@@ -313,10 +325,13 @@ const dbGet = k => new Promise((res, rej) => { const q = db.transaction('kv').ob
 async function load() {
   let o = null;
   try { db = await openDb(); o = await dbGet('state'); } catch { db = null; }
-  S = migrate(o || readLS(LS_KEY)); let keepSettings = null;
-  if (!S) { const old = readLS(LS_OLD); if (old && !old.example) S = migrate(old); else keepSettings = old?.settings || null; }
+  let raw = o || readLS(LS_KEY), keepSettings = null;
+  if (!raw) { const old = readLS(LS_OLD); if (old && !old.example) raw = old; else keepSettings = old?.settings || null; }
+  if (raw && !raw.example && logVersion(raw) < SCHEMA) keepBefore(raw);
+  S = migrate(raw);
   if (!S || (S.example && S.exampleV !== EXAMPLE_V)) { const keep = S?.settings || keepSettings; S = exampleState(); if (keep) S.settings = { ...S.settings, ...keep }; }
   for (const k of SYNCED) if (!Array.isArray(S[k])) S[k] = []; S.settings = { ...emptyState().settings, ...S.settings };
+  if (tooNew(S)) return; // Opened by an older copy of the app (for example a cached one): show the log, change nothing.
   persist(); // The old localStorage copy is left in place, so going back to an earlier version of the app still finds the data.
 }
 // Each save replaces the one record in a single IndexedDB transaction, so a crash leaves the previous version whole.
@@ -325,8 +340,11 @@ async function load() {
 let savedCount = null, savedExample = false, allowShrink = false;
 const itemCount = st => SYNCED.reduce((n, k) => n + st[k].length, 0);
 const wellFormed = st => !!st && typeof st === 'object' && !!st.settings && SYNCED.every(k => Array.isArray(st[k]) && st[k].every(x => x && x.id != null));
+// Keeps the log as it was before a format upgrade, as "before-vN" (N = the new version); daily copies never delete it.
+function keepBefore(raw) { if (!db) return; try { db.transaction('kv', 'readwrite').objectStore('kv').put(raw, 'before-v' + SCHEMA); } catch {} }
 function persist() {
   const fail = () => toast('Could not save on this device. Storage may be full.');
+  if (tooNew(S)) { toast(NEWER); return; }
   if (!wellFormed(S)) { toast('Something went wrong, so this change was not saved. Your saved log is unchanged.'); return; }
   const n = itemCount(S);
   if (savedCount != null && n < savedCount && !savedExample && !allowShrink) { toast('Something went wrong, so this change was not saved. Your saved log is unchanged.'); return; }
@@ -789,7 +807,7 @@ function renderMore() {
       ${live(S.meds).map(m => `<div class="list-row medrow"><span>${esc(m.name)}</span><span class="row"><input type="number" min="0" step="0.5" value="${m.gapH ?? ''}" data-gap="${m.id}" aria-label="Hours between doses for ${esc(m.name)}"> h <button class="btn ghost danger" data-delmed="${m.id}" aria-label="Remove">✕</button></span></div>`).join('')}
       <div class="row"><input id="newMed" placeholder="Add a medicine" style="flex:1"><button class="btn sm" data-act="add-med">Add</button></div></div>
     <div class="card set"><h2>Google Drive backup and sync</h2>
-      <p class="small muted" style="margin:0">Your log is saved as <span class="num">${DRIVE_FILE}</span> in an “${DRIVE_FOLDER}” folder in your own Drive, with a backup copy saved before each change (hourly for two days, then daily for ${KEEP_DAYS} days). The app can only see files it created or that you picked. There is no other server. <a href="privacy.html" style="color:var(--accent-ink)">Privacy policy</a></p>
+      <p class="small muted" style="margin:0">Your log is saved as <span class="num">${DRIVE_FILE}</span> in an “${DRIVE_FOLDER}” folder in your own Drive (you can move or rename it), with a backup copy saved before each change (hourly for two days, then daily for ${KEEP_DAYS} days). The app can only see files it created or that you picked. There is no other server. <a href="privacy.html" style="color:var(--accent-ink)">Privacy policy</a></p>
       ${GOOGLE_CLIENT_ID ? `<details class="small"><summary class="muted">Advanced: use your own Google project</summary>${googleOwnFields(st)}</details>` : googleOwnFields(st)}
       <div class="row"><button class="btn primary sm" data-act="drive-sync">${d.fileId ? 'Sync now' : 'Connect Google Drive'}</button>${d.fileId ? '<button class="btn sm" data-act="drive-backups">Restore from a Drive backup</button><button class="btn ghost sm" data-act="drive-forget">Disconnect</button>' : '<button class="btn sm" data-act="join">Join a shared log</button>'}</div>
       <p class="small muted" style="margin:0">${d.lastSync ? 'Last synced ' + ago(d.lastSync) : 'Not connected yet.'}${d.owner ? ' Shared with you by ' + esc(d.owner) + '.' : ''}${d.error ? ' Last error: ' + esc(d.error) : ''}</p></div>
@@ -1123,7 +1141,7 @@ async function token(interactive) {
 async function gapi(tok, url, opts = {}) { const r = await fetch(url, { ...opts, headers: { Authorization: 'Bearer ' + tok, ...(opts.headers || {}) } }); if (!r.ok) throw new Error(`Drive error ${r.status}`); return r; }
 const DRIVE = 'https://www.googleapis.com/drive/v3/files', UP = 'https://www.googleapis.com/upload/drive/v3/files';
 const SYNCED = ['children', 'episodes', 'entries', 'meds', 'measurements', 'growth'];
-const shareable = () => ({ app: 'aura', v: 2, savedAt: Date.now(), ...Object.fromEntries(SYNCED.map(k => [k, S[k]])) });
+const shareable = () => ({ app: 'aura', v: SCHEMA, savedAt: Date.now(), ...Object.fromEntries(SYNCED.map(k => [k, S[k]])) });
 const enc = encodeURIComponent, JSON_H = { 'Content-Type': 'application/json' }, FOLDER_T = 'application/vnd.google-apps.folder';
 async function folderId(tok, name, parent) {
   const r = await (await gapi(tok, `${DRIVE}?q=${enc(`name='${name}' and mimeType='${FOLDER_T}' and trashed=false${parent ? ` and '${parent}' in parents` : ''}`)}&fields=files(id)`)).json();
@@ -1142,18 +1160,35 @@ async function findOrCreateFile(tok) {
 // Before the app overwrites the Drive file, it saves the file as it was to Aura/backups in this person's own Drive,
 // at most once an hour. Kept: every snapshot from the newest KEEP_RECENT, then one per day for KEEP_DAYS days.
 const KEEP_RECENT = 48, KEEP_DAYS = 60;
-async function backupsDir(tok) { return folderId(tok, 'backups', await folderId(tok, DRIVE_FOLDER)); }
+// Backups go in a "backups" folder next to the log, so the parent can move or rename the Aura folder in Drive.
+// A partner can't write in the owner's folder, so their backups go in an Aura folder in their own Drive.
+let backupsHome = null;
+async function backupsDir(tok, fileId = S.drive?.fileId) {
+  if (backupsHome) return backupsHome;
+  let home = null;
+  if (fileId) try { const f = await (await gapi(tok, `${DRIVE}/${fileId}?fields=parents,ownedByMe`)).json(); if (f.ownedByMe) home = f.parents?.[0] || null; } catch {}
+  return backupsHome = await folderId(tok, 'backups', home || await folderId(tok, DRIVE_FOLDER));
+}
+// Before a format upgrade, the Drive file as it was is saved once as backups/aura-log-before-vN.json and never pruned.
+async function keepBeforeDrive(tok, fileId, raw) {
+  if (S.drive.beforeV === SCHEMA) return;
+  const dir = await backupsDir(tok, fileId), name = `aura-log-before-v${SCHEMA}.json`;
+  if (!(await listBackups(tok, dir)).some(f => f.name === name)) await uploadNew(tok, name, dir, raw);
+  S.drive.beforeV = SCHEMA;
+}
 async function listBackups(tok, dir) {
   const r = await (await gapi(tok, `${DRIVE}?q=${enc(`'${dir}' in parents and trashed=false`)}&orderBy=name desc&pageSize=500&fields=files(id,name)`)).json();
-  return (r.files || []).filter(f => /^aura-backup-\d{4}-\d\d-\d\d(-\d\d)?\.json$/.test(f.name));
+  return (r.files || []).filter(f => HOURLY.test(f.name) || BEFORE.test(f.name));
 }
+const HOURLY = /^aura-backup-\d{4}-\d\d-\d\d(-\d\d)?\.json$/, BEFORE = /^aura-log-before-v(\d+)\.json$/;
+const backupLabel = n => BEFORE.test(n) ? `Before the update to version ${n.match(BEFORE)[1]}` : `<b>${esc(n.slice(12, 22))}</b>${n.length > 27 ? ' ' + esc(n.slice(23, 25)) + ':00' : ''}`;
 function prunable(files) { // files sorted newest first
   const days = new Set();
   return files.filter((f, i) => { if (i < KEEP_RECENT) return false; const d = f.name.slice(12, 22); if (days.has(d) || days.size >= KEEP_DAYS) return true; days.add(d); return false; });
 }
-async function snapshot(tok, data) {
+async function snapshot(tok, fileId, data) {
   const hour = toLocalInput(Date.now()).slice(0, 13).replace('T', '-'); if (S.drive.backupHour === hour) return;
-  const dir = await backupsDir(tok), name = `aura-backup-${hour}.json`, old = await listBackups(tok, dir);
+  const dir = await backupsDir(tok, fileId), name = `aura-backup-${hour}.json`, old = (await listBackups(tok, dir)).filter(f => HOURLY.test(f.name));
   if (!old.some(f => f.name === name)) await uploadNew(tok, name, dir, data);
   for (const f of prunable(old.filter(f => f.name !== name))) await gapi(tok, `${DRIVE}/${f.id}`, { method: 'DELETE' });
   S.drive.backupHour = hour; persist();
@@ -1162,7 +1197,7 @@ async function snapshot(tok, data) {
 const LOCAL_SNAPS = 14;
 const dbKeys = () => new Promise((res, rej) => { const q = db.transaction('kv').objectStore('kv').getAllKeys(); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); });
 async function localSnapshot() {
-  if (!db || S.example) return;
+  if (!db || S.example || tooNew(S)) return;
   try {
     const key = 'snap-' + toLocalInput(Date.now()).slice(0, 10), keys = (await dbKeys()).filter(k => String(k).startsWith('snap-')).sort().reverse();
     const tx = db.transaction('kv', 'readwrite'), st = tx.objectStore('kv');
@@ -1174,29 +1209,37 @@ function mergeList(a = [], b = []) { const m = new Map(a.map(x => [x.id, x])); f
 // Adds a backup or another phone's data to this log, item by item; newer edits and deletions win.
 function mergeIn(d) {
   if (!d || (d.app !== 'aura' && d.app !== 'sick-day-log')) throw new Error("That doesn't look like Aura data.");
-  d = d.v === 2 ? d : migrate(d);
+  if (tooNew(d)) throw new Error('That copy was saved by a newer version of Aura. Close Aura fully and open it again to update, then restore it.');
+  d = migrate(d);
   if (S.example) { const st = S.settings; S = emptyState(); S.settings = st; }
   for (const k of SYNCED) S[k] = mergeList(S[k], d[k]); S.child = S.child || kids()[0]?.id || null;
 }
 const softRender = () => { if (!document.activeElement?.matches('input, textarea')) render(); };
-const isAura = d => d && (d.app === 'aura' || d.app === 'sick-day-log') && Array.isArray((d.v === 2 ? d : migrate(d) || {}).entries);
+const isAura = d => !!d && (d.app === 'aura' || d.app === 'sick-day-log') && Array.isArray(d.entries);
+// Top-level parts of the Drive file this version doesn't know (added by a later version) are written back unchanged.
+const KNOWN = new Set(['app', 'v', 'savedAt', ...SYNCED, ...Object.keys(emptyState())]);
+const unknownParts = d => Object.fromEntries(Object.entries(d).filter(([k]) => !KNOWN.has(k)));
 const coveredBy = (mine, theirs) => SYNCED.every(k => { const m = new Map((theirs[k] || []).map(x => [x.id, x.updatedAt || 0])); return (mine[k] || []).every(x => m.has(x.id) && m.get(x.id) >= (x.updatedAt || 0)); });
 // Read, merge, write, then read back: if another phone wrote in between and our entries are missing, merge and write again.
 async function sync(interactive) {
   if (syncing || S.example) return; syncing = true; syncMsg = 'Syncing…'; softRender();
   try {
+    if (tooNew(S)) throw new Error(NEWER);
     const tok = await token(interactive); if (!tok) return;
     const id = S.drive?.fileId || await findOrCreateFile(tok);
+    let extra = {};
     const read = async () => { const d = await (await gapi(tok, `${DRIVE}/${id}?alt=media`)).json().catch(() => null);
+      if (tooNew(d)) throw new Error('Your log in Drive was saved by a newer version of Aura. Close Aura fully and open it again to update. Nothing was overwritten.');
       if (!isAura(d)) throw new Error("The Drive file doesn't look like an Aura log, so nothing was overwritten. Your data on this phone is safe.");
-      return d.v === 2 ? d : migrate(d); };
+      if (logVersion(d) < SCHEMA) await keepBeforeDrive(tok, id, d); else extra = unknownParts(d);
+      return migrate(d); };
     let remote = await read(), ok = false;
     for (let round = 0; round < 3 && !ok; round++) {
       for (const k of SYNCED) S[k] = mergeList(S[k], remote[k]);
       persist();
       if (coveredBy(remote, S) && coveredBy(S, remote)) { ok = true; break; }
-      if (round === 0) try { await snapshot(tok, remote); } catch {}
-      await gapi(tok, `${UP}/${id}?uploadType=media`, { method: 'PATCH', headers: JSON_H, body: JSON.stringify(shareable()) });
+      if (round === 0) try { await snapshot(tok, id, remote); } catch {}
+      await gapi(tok, `${UP}/${id}?uploadType=media`, { method: 'PATCH', headers: JSON_H, body: JSON.stringify({ ...extra, ...shareable() }) });
       remote = await read(); ok = coveredBy(S, remote);
     }
     if (!ok) throw new Error('Another phone was saving at the same time. Will try again shortly.');
@@ -1208,15 +1251,16 @@ async function sync(interactive) {
 }
 async function driveBackupsSheet() {
   let list; try { const tok = await token(true); list = await listBackups(tok, await backupsDir(tok)); } catch (e) { return toast(e.message); }
+  list.sort((a, b) => BEFORE.test(a.name) - BEFORE.test(b.name));
   openSheet(`<div class="hd"><h2>Restore from a Drive backup</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
     <p class="small muted" style="margin:0">Restoring adds back anything that is missing from the log. It does not undo later edits or deletions.</p>
-    ${list.length ? list.map(f => `<button class="pick" data-backup="${esc(f.id)}"><b>${esc(f.name.slice(12, 22))}</b>${f.name.length > 27 ? ' ' + esc(f.name.slice(23, 25)) + ':00' : ''}</button>`).join('') : '<p class="muted">No backups yet. One is saved before the app changes the Drive file, at most once an hour.</p>'}`);
+    ${list.length ? list.map(f => `<button class="pick" data-backup="${esc(f.id)}">${backupLabel(f.name)}</button>`).join('') : '<p class="muted">No backups yet. One is saved before the app changes the Drive file, at most once an hour.</p>'}`);
 }
 async function localSnapsSheet() {
-  let keys = []; try { keys = db ? (await dbKeys()).filter(k => String(k).startsWith('snap-')).sort().reverse() : []; } catch {}
+  let keys = []; try { keys = db ? (await dbKeys()).map(String).filter(k => /^(snap|before)-/.test(k)).sort((a, b) => a.startsWith('before') - b.startsWith('before') || (a < b) - (a > b)) : []; } catch {}
   openSheet(`<div class="hd"><h2>Daily copies on this phone</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
     <p class="small muted" style="margin:0">The app keeps a copy of the whole log each day you open it (the newest ${LOCAL_SNAPS}). Restoring adds back anything that is missing. It does not undo later edits or deletions.</p>
-    ${keys.length ? keys.map(k => `<button class="pick" data-snap="${esc(k)}"><b>${esc(k.slice(5))}</b></button>`).join('') : '<p class="muted">No copies yet.</p>'}`);
+    ${keys.length ? keys.map(k => `<button class="pick" data-snap="${esc(k)}">${k.startsWith('before-v') ? `Before the update to version ${esc(k.slice(8))}` : `<b>${esc(k.slice(5))}</b>`}</button>`).join('') : '<p class="muted">No copies yet.</p>'}`);
 }
 async function restoreDrive(id) {
   try { const tok = await token(true); mergeIn(await (await gapi(tok, `${DRIVE}/${id}?alt=media`)).json()); closeSheet(); commit(); toast('Backup restored'); }
@@ -1269,7 +1313,7 @@ async function joinPick() {
       .setTitle('Pick the shared Aura log').setCallback(d => {
         if (d.action !== google.picker.Action.PICKED || !d.docs?.[0]) return;
         if (S.example) { const st = S.settings; S = emptyState(); S.settings = st; }
-        S.drive = { fileId: d.docs[0].id }; closeSheet(); persist(); sync(true).then(() => { if (!S.drive.error) toast('Joined. You now share this log.'); tab = 'today'; render(); });
+        S.drive = { fileId: d.docs[0].id }; backupsHome = null; closeSheet(); persist(); sync(true).then(() => { if (!S.drive.error) toast('Joined. You now share this log.'); tab = 'today'; render(); });
       }).build().setVisible(true);
   } catch (e) { toast(e.message); }
 }
@@ -1438,7 +1482,7 @@ document.addEventListener('click', async ev => {
     case 'wipe': $('#wipeConfirm').innerHTML = `<div class="banner"><p>This deletes everything on this phone, including its daily copies. A copy in Google Drive is not deleted. Download a backup file first if you might want it back.</p><button class="btn danger sm" data-act="wipe-yes">Delete everything</button></div>`; return;
     case 'wipe-yes': allowShrink = true; try { localStorage.removeItem(LS_KEY); localStorage.removeItem(LS_OLD); } catch {} S = emptyState(); narrative = ''; tab = 'today'; commit(); if (db) dbKeys().then(ks => { const st = db.transaction('kv', 'readwrite').objectStore('kv'); ks.filter(k => String(k).startsWith('snap-')).forEach(k => st.delete(k)); }).catch(() => {}); return toast('Deleted from this device');
     case 'drive-sync': if ($('#clientId')) { S.settings.clientId = $('#clientId').value.trim(); persist(); } return sync(true);
-    case 'drive-forget': S.drive = {}; gTok = null; return commit();
+    case 'drive-forget': S.drive = {}; gTok = null; backupsHome = null; return commit();
     case 'drive-backups': return driveBackupsSheet();
     case 'share': return share();
     case 'join': return joinSheet();
