@@ -280,6 +280,7 @@ tr:last-child td { border-bottom: 0 }
 <div class="scrim" id="scrim" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
 <button class="fab" id="fab" data-act="say" hidden aria-label="Say it: log anything by talking or typing"><svg viewBox="0 0 24 24" aria-hidden="true"></svg>Say it</button>
 <div class="toast" id="toast" hidden></div>
+<input id="docFiles" type="file" accept="image/*" multiple hidden><input id="pageFile" type="file" accept="image/*" hidden>
 
 <script>
 (() => {
@@ -349,7 +350,7 @@ const icon = k => `<span class="ic t-${k}"><svg viewBox="0 0 24 24" aria-hidden=
 
 /* ---------- State ---------- */
 function emptyState() {
-  return { app: 'aura', v: SCHEMA, example: false, children: [], episodes: [], entries: [], measurements: [], growth: [], products: [], vaccines: [], checkups: [], emergency: [],
+  return { app: 'aura', v: SCHEMA, example: false, children: [], episodes: [], entries: [], measurements: [], growth: [], products: [], vaccines: [], checkups: [], emergency: [], docs: [], pages: [],
     meds: [{ id: 'm1', name: 'Paracetamol (acetaminophen)', gapH: 4, updatedAt: 0 }, { id: 'm2', name: 'Ibuprofen', gapH: 6, updatedAt: 0 }],
     settings: { unit: 'C', clientId: '', pickerKey: '', apiKey: '', aiKind: 'anthropic', aiBase: '', aiModel: '', theme: 'auto', me: '', recallCountries: null, docLang: 'en', vaxPlan: 'de', uPlan: 'de' }, child: null, drive: {}, recalls: {}, docTr: {} };
 }
@@ -358,7 +359,7 @@ function readLS(k) { try { const r = localStorage.getItem(k); return r ? JSON.pa
 // log of that version into the next one. Steps run in order, once, on this phone's log and on the Drive file. Before a
 // step runs, the log as it was is kept as "before-vN" on the phone and in Drive, and those copies are never pruned.
 // An older app never writes a newer log: it stops and asks to be updated (see tooNew).
-const SCHEMA = 2;
+const SCHEMA = 3;
 const MIGRATIONS = {
   1: o => { // v1 sick-day log: entries belonged to an illness; give each one its child.
     const s = emptyState(); Object.assign(s, { children: o.children || [], episodes: o.episodes || [], measurements: o.measurements || [], meds: o.meds || s.meds, drive: {} });
@@ -367,6 +368,18 @@ const MIGRATIONS = {
     s.entries = (o.entries || []).map(e => ({ ...e, child: e.child || epChild[e.ep] }));
     s.child = s.children.find(c => !c.deleted)?.id || null;
     return s;
+  },
+  2: o => { // v2 kept photos of the vaccination book and U-Heft inside `vaccines` and `checkups`; they become pages of documents.
+    // Deterministic (same ids and times on every phone), so two phones that upgrade separately end up with the same log.
+    const docs = [...(o.docs || [])], pages = [...(o.pages || [])];
+    const move = (list, type) => (list || []).map(x => {
+      if (x.kind !== 'page') return x;
+      const docId = `${type}-${x.childId}`;
+      if (!docs.some(d => d.id === docId)) docs.push({ id: docId, childId: x.childId, type, title: '', note: '', updatedAt: 1 });
+      if (!x.deleted && !pages.some(p => p.id === x.id)) pages.push({ id: x.id, docId, childId: x.childId, t: x.t, img: x.img, note: x.note || '', ...(x.order != null ? { order: x.order } : {}), updatedAt: x.updatedAt || 0 });
+      return { id: x.id, childId: x.childId, kind: 'page', deleted: true, updatedAt: (x.updatedAt || 0) + 1 };
+    });
+    return { ...o, vaccines: move(o.vaccines, 'vax'), checkups: move(o.checkups, 'u'), docs, pages };
   },
 };
 const logVersion = o => Number.isInteger(o?.v) && o.v > 0 ? o.v : 1;
@@ -1087,7 +1100,7 @@ function renderVax() {
   const soon = VAX_PLAN.filter(v => m == null || v.at[0] <= m + 12 || vaxStatus(c, v).n), later = VAX_PLAN.filter(v => !soon.includes(v));
   const open = vaxOpen(c);
   el.innerHTML = header('Vaccines', `${esc(c.name)}${c.dob ? ' · ' + ageText(c) : ''}`) + exampleBanner() + `
-    <div class="row"><button class="btn primary" data-act="scan" data-for="vax">Scan a page</button><button class="btn" data-act="add-vax">Add a vaccination</button><input id="vaxPage" type="file" accept="image/*" multiple hidden></div>
+    <div class="row"><button class="btn primary" data-act="doc-add" data-type="vax">Add a page of the book</button><button class="btn" data-act="add-vax">Add a vaccination</button></div>
     ${planOn() ? `<div class="card set"><div class="row between"><h2>Schedule</h2><span class="muted small">Germany · STIKO</span></div>
       ${!c.dob ? '<p class="small muted" style="margin:0">Add a birth date to see when each vaccination is usually given.</p>' : open.length ? `<p class="small" style="margin:0;color:var(--wait)"><b>${open.length} to check with your pediatrician.</b> If one was given, tap it and add the date from the book.</p>` : ''}
       <div>${soon.map(row).join('')}</div>
@@ -1095,8 +1108,8 @@ function renderVax() {
       <p class="small muted" style="margin:0">The usual ages from the STIKO recommendations (as of 2026), as a reminder only. Your pediatrician decides what your child gets and when. Plans differ for babies born early, for health conditions and for catch-up doses.</p></div>` : ''}
     <div class="card set"><div class="row between"><h2>Recorded</h2>${doses.length ? '<button class="btn sm" data-act="copy-vax">Copy list</button>' : ''}</div>
       ${doses.length ? `<div>${doses.map(d => `<button class="vx-dose" data-vxdose="${d.id}"><span><b>${esc(vaxNames(d))}</b> <span class="muted small num">${fmtDate(d.t)}${c.dob ? ' · ' + ageText(c, d.t) : ''}</span></span>${d.name || d.batch || d.by ? `<small>${esc([d.name, d.batch && 'batch ' + d.batch, d.by].filter(Boolean).join(' · '))}</small>` : ''}${d.note ? `<small>${esc(d.note)}</small>` : ''}</button>`).join('')}</div>`
-        : '<p class="muted small" style="margin:0">Nothing recorded yet. Tap Scan a page and photograph the filled pages of the vaccination book, or add each line by hand.</p>'}</div>
-    ${pagesCard(c, 'vax')}
+        : '<p class="muted small" style="margin:0">Nothing recorded yet. Add the pages of the vaccination book (with AI reading on, Aura reads the vaccinations from them), or add each line by hand.</p>'}</div>
+    ${docCard(c, 'vax')}
     <div class="card set"><h2>Schedule to show</h2>
       <div class="chips">${[['de', 'Germany (STIKO)'], ['none', 'None, just my records']].map(([k, l]) => `<button data-vaxplan="${k}" class="${(S.settings.vaxPlan || 'de') === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>`;
 }
@@ -1264,7 +1277,7 @@ function renderCheckups() {
   const soon = U_PLAN.filter(u => !c.dob || uStatus(c, u).st !== 'later' || uStatus(c, u).ws < now + 400 * DAY), later = U_PLAN.filter(u => !soon.includes(u));
   const evs = c.dob ? nextEvents(c) : [];
   el.innerHTML = header('Checkups', `${esc(c.name)}${c.dob ? ' · ' + ageText(c) : ''}`) + exampleBanner() + `
-    <div class="row"><button class="btn primary" data-act="scan" data-for="u">Scan a page</button><button class="btn" data-act="add-u">Add a checkup</button><input id="uPage" type="file" accept="image/*" multiple hidden></div>
+    <div class="row"><button class="btn primary" data-act="doc-add" data-type="u">Add a page of the U-Heft</button><button class="btn" data-act="add-u">Add a checkup</button></div>
     ${uPlanOn() ? `<div class="card set"><div class="row between"><h2>U-Heft</h2><span class="muted small">Germany</span></div>
       ${!c.dob ? '<p class="small muted" style="margin:0">Add a birth date to see when each checkup is due.</p>' : ''}
       <div>${soon.map(row).join('')}</div>
@@ -1273,8 +1286,8 @@ function renderCheckups() {
       <p class="small muted" style="margin:0">Ages from the German child checkup rules (Kinder-Richtlinie). The first dates are the usual time; a checkup can still be done until the last day shown. Daycare and school often ask to see the U-Heft.</p></div>` : ''}
     <div class="card set"><h2>Recorded</h2>
       ${exams.length ? `<div>${exams.map(e => `<button class="vx-dose" data-uexam="${e.id}"><span><b>${esc(uName(e.u))}</b> <span class="muted small num">${fmtDate(e.t)}${c.dob ? ' · ' + ageText(c, e.t) : ''}</span></span>${e.by ? `<small>${esc(e.by)}</small>` : ''}${e.note ? `<small>${esc(e.note)}</small>` : ''}</button>`).join('')}</div>`
-        : '<p class="muted small" style="margin:0">Nothing recorded yet. Tap Scan a page and photograph the stamped pages of the U-Heft, or add each checkup by hand with what the doctor said, in your own words.</p>'}</div>
-    ${pagesCard(c, 'u')}
+        : '<p class="muted small" style="margin:0">Nothing recorded yet. Add the pages of the U-Heft (with AI reading on, Aura reads the checkups from them), or add each checkup by hand with what the doctor said, in your own words.</p>'}</div>
+    ${docCard(c, 'u')}
     <div class="card set"><h2>Schedule to show</h2>
       <div class="chips">${[['de', 'Germany (U-Heft)'], ['none', 'None, just my records']].map(([k, l]) => `<button data-uplan="${k}" class="${(S.settings.uPlan || 'de') === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>`;
 }
@@ -1335,6 +1348,7 @@ function renderMore() {
       <div><button class="btn sm" data-kid="new">Add a child</button></div></div>
     <div class="card set"><h2>Illnesses</h2>
       ${eps.map(e => `<div class="list-row"><span><b>${esc(e.title || 'Illness')}</b> <span class="muted small">${esc(childOf(e)?.name || '')} · ${fmtDay(e.start)}${e.end ? ' – ' + fmtDay(e.end) : ' · ongoing'}</span></span><span class="row"><button class="btn sm ghost" data-act="edit-episode" data-for="${e.id}">Edit</button><button class="btn sm" data-ep="${e.id}">Open</button></span></div>`).join('') || '<p class="muted small" style="margin:0">Past illnesses show up here, with their chart and doctor summary.</p>'}</div>
+    ${kid() ? docsCard(kid()) : ''}
     ${recallCard()}
     <div class="card set"><h2>Look</h2>
       <div class="chips">${[['auto', 'Dim at night (7 pm – 7 am)'], ['night', 'Always dim'], ['day', 'Always light']].map(([k, l]) => `<button data-theme-set="${k}" class="${(st.theme || 'auto') === k ? 'on' : ''}">${l}</button>`).join('')}</div>
@@ -1361,7 +1375,7 @@ function renderMore() {
       <label class="field"><span>Address (base URL)</span><input id="aiBase" value="${esc(st.aiBase)}" placeholder="https://api.example.com/v1" autocomplete="off" inputmode="url"></label>
       <label class="field"><span>Model name, as the service spells it</span><input id="aiModel" value="${esc(st.aiModel)}" placeholder="e.g. the model id from your service's docs" autocomplete="off"></label>` : `<label class="field"><span>Model (optional)</span><input id="aiModel" value="${esc(st.aiModel)}" placeholder="${MODEL}" autocomplete="off"></label>`}
       <label class="field"><span>API key${st.aiKind === 'openai' ? ' (leave empty for Ollama or LM Studio)' : ''}, stored only on this phone, never synced</span><input id="apiKey" type="password" value="${esc(st.apiKey)}" placeholder="${st.aiKind === 'openai' ? 'key' : 'sk-ant-…'}" autocomplete="off"></label>
-      <p class="small muted" style="margin:0">AI is used only when you tap an AI button. Then the text needed for that task goes from your phone straight to the service you chose, with names replaced by placeholders and age instead of birth date. Photos, sounds, links and Drive details are never sent, except pages of the vaccination book or U-Heft you choose to scan. Each answer has a “See exactly what was sent” link. AI never gives doses or diagnoses.</p></div>
+      <p class="small muted" style="margin:0">AI is used only when you tap an AI button. Then the text needed for that task goes from your phone straight to the service you chose, with names replaced by placeholders and age instead of birth date. Photos, sounds, links and Drive details are never sent, except pages of the vaccination book or U-Heft when you turn on reading them. Each answer has a “See exactly what was sent” link. AI never gives doses or diagnoses.</p></div>
     <div class="card set"><h2>Your data</h2>
       <p class="small muted" style="margin:0" id="storeInfo">Saved on this phone.</p>
       <div class="row"><button class="btn sm" data-act="download">Save a backup file</button><button class="btn sm" data-act="restore-file">Restore from a backup file</button><button class="btn sm" data-act="local-snaps">Restore a daily copy on this phone</button><input id="restoreFile" type="file" accept="application/json,.json" hidden></div>
@@ -1539,7 +1553,7 @@ async function apiCall(system, user, schema, images = []) {
   return schema ? JSON.parse(text) : text;
 }
 // Privacy: names become placeholders before anything is sent and are put back on the phone. Photos, sounds, links and birth dates are never part of a prompt,
-// with one exception the parent opts into: pages of the vaccination book or U-Heft they scan (`images`), which only go to their own AI service.
+// with one exception the parent opts into: pages of the vaccination book or U-Heft to be read (`images`), which only go to their own AI service.
 let lastSent = null;
 function nameMap(cid) {
   const cs = kids().slice().sort((a, b) => (b.id === cid) - (a.id === cid)), map = cs.map((c, i) => [c.name.trim(), i ? `[CHILD ${i + 1}]` : '[CHILD]']);
@@ -1619,12 +1633,17 @@ async function aiSummary() {
   try { narrative = (await ai(system, user, null, ep.childId)).trim(); } catch (err) { narrative = ''; toast(aiError(err)); }
   render();
 }
-/* ---------- Scan a page ---------- */
-// Reads new entries from photos of the vaccination book or the U-Heft with the parent's own AI service, which must be able
-// to read pictures. The parent photographs only the pages with new entries. Nothing is saved until they check the list,
-// entries already recorded are left out, and the photos are kept only if they ask. The photos are the one thing in Aura
-// that goes to the AI as a picture, so the first scan asks once, and the sheet always says that names printed on a page
-// can't be replaced by placeholders. The answer is only read off the page: no advice, no judging of findings.
+/* ---------- Documents: a digital twin of paper documents ---------- */
+// Any paper document is kept as photos of its pages, in the paper's order: the vaccination book, the U-Heft, or anything
+// else (an allergy pass, a hospital letter, the daycare contract). The parent keeps the pages up to date: add a page when a
+// new one is filled in, replace a page when more is written on it. Documents are `docs` ({ id, childId, type, title, note });
+// pages are `pages` ({ id, docId, childId, order, img, note, t }), so each page syncs on its own. The vaccination book and
+// the U-Heft have one document per child with a fixed id (`vax-<child>`, `u-<child>`), so two phones never make two.
+// Those two types also have a reader: when a page is added or replaced, the parent's own AI service (optional, and it has
+// to understand pictures) reads the entries on it, and Aura proposes the ones not recorded yet. Nothing is saved until the
+// parent checks them. A page photo is the one thing in Aura that goes to the AI as a picture, so the first reading asks once,
+// and the sheet says that names printed on a page can't be replaced by placeholders. The reading only copies what is
+// written: no advice, no judging of findings.
 let scanned = null;
 const aiKeySet = () => { const st = S.settings; return st.aiKind === 'openai' ? !!(okBase(st.aiBase) && st.aiModel) : !!st.apiKey; };
 const VAX_SCAN_SCHEMA = { type: 'object', additionalProperties: false, required: ['doses'], properties: { doses: { type: 'array', items: { type: 'object', additionalProperties: false,
@@ -1639,36 +1658,89 @@ const VAX_SCAN_SYSTEM = `You read photos of pages from a child's vaccination rec
 const U_SCAN_SYSTEM = `You read photos of pages from the German child health booklet (gelbes Kinderuntersuchungsheft, U-Heft). List each checkup that was done: U1, U2, U3, U4, U5, U6, U7, U7a, U8, U9, U10 or J1 ("other" for anything else). ` +
   `A checkup counts as done only when a date is written for it, usually with a practice stamp or signature, for example on the attendance card (Teilnahmekarte) or at the end of that checkup's section. ` +
   `"by": the doctor or practice from the stamp. weightKg, heightCm and headCm: body weight (Körpergewicht, convert grams to kg), length or height (Körperlänge/Größe) and head circumference (Kopfumfang) if written in that checkup's section, else null. Ignore ticked findings and the rest of the examination. ${SCAN_RULES}`;
-function scanSheet(book) {
-  const vax = book === 'vax', keyOk = aiKeySet(), read = keyOk && S.settings.scanRead !== false;
+const DOC_TYPES = {
+  vax: { title: 'Vaccination book', tab: 'vax', read: { system: VAX_SCAN_SYSTEM, user: 'Read the vaccinations on these pages.', schema: VAX_SCAN_SCHEMA } },
+  u: { title: 'U-Heft', tab: 'checkups', read: { system: U_SCAN_SYSTEM, user: 'Read the checkups on these pages.', schema: U_SCAN_SCHEMA } },
+  other: { title: 'Document' } };
+const docTitle = d => d.title || DOC_TYPES[d.type]?.title || 'Document';
+const docsOf = c => live(S.docs || []).filter(d => d.childId === c.id).sort((a, b) => (a.type === 'other') - (b.type === 'other') || docTitle(a).localeCompare(docTitle(b)));
+// The vaccination book or U-Heft of a child; made when its first page is added.
+function typedDoc(c, type, create) {
+  const id = `${type}-${c.id}`; let d = S.docs.find(x => x.id === id);
+  if (create && !d) { d = touch({ id, childId: c.id, type, title: '', note: '' }); S.docs.push(d); }
+  if (create && d.deleted) { d.deleted = false; touch(d); }
+  return d && !d.deleted ? d : null;
+}
+const docPages = d => d ? live(S.pages || []).filter(p => p.docId === d.id).sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity) || a.t - b.t) : [];
+const setOrder = pages => pages.forEach((p, i) => { if (p.order !== i) { p.order = i; touch(p); } });
+function addPages(d, imgs) {
+  const pages = docPages(d); setOrder(pages);
+  return imgs.map((img, i) => { const p = touch({ id: uid(), docId: d.id, childId: d.childId, t: Date.now(), img, note: '', order: pages.length + i }); S.pages.push(p); return p; });
+}
+const pagesGrid = pages => pages.length ? `<div class="book">${pages.map((p, i) => `<button data-pg="${p.id}" aria-label="Page ${i + 1}"><img src="${p.img}" alt=""><span class="pg num">${i + 1}</span></button>`).join('')}</div>` : '';
+const readOn = () => aiKeySet() && S.settings.scanRead !== false;
+// The card on the Vaccines and Checkups tabs.
+function docCard(c, type) {
+  const d = typedDoc(c, type), pages = docPages(d), what = type === 'vax' ? 'vaccination book' : 'U-Heft';
+  return `<div class="card set"><div class="row between"><h2>Pages of the ${what}</h2><span class="muted small">${pages.length ? pages.length + (pages.length > 1 ? ' pages' : ' page') : ''}</span></div>
+    ${pagesGrid(pages)}
+    <p class="small muted" style="margin:0">Keep the ${what} here page by page: add a page when a new one is filled in, and replace a page when more is written on it.${readOn() ? ' Aura then reads the new entries on that page and asks you to check them.' : aiKeySet() ? ' Reading the entries with AI is off.' : ' To have Aura read the entries for you, set up an AI service that understands pictures under More.'} Pages sync with your partner and go into Drive backups.</p>
+    <div><button class="btn sm" data-act="doc-add" data-type="${type}">Add a page</button></div></div>`;
+}
+let addTo = null; // where the photos chosen next go: { type } or { doc }
+function pickPages(target) { addTo = target; $('#docFiles').click(); }
+function pagesChosen(files) {
+  const c = kid(), target = addTo; addTo = null; if (!c || !target) return;
+  Promise.all(files.map(f => shrink(f, 1600))).then(imgs => {
+    const d = target.type ? typedDoc(c, target.type, true) : S.docs.find(x => x.id === target.doc); if (!d) return;
+    const added = addPages(d, imgs); commit();
+    toast(added.length > 1 ? `${added.length} pages added` : 'Page added');
+    pageSheet(added[0].id, added.map(p => p.id));
+  }).catch(e => toast(e.message));
+}
+// One page, large, with the pages before and after; `fresh` are pages just added or replaced, to be read.
+function pageSheet(id, fresh) {
+  const p = S.pages.find(x => x.id === id && !x.deleted), d = p && S.docs.find(x => x.id === p.docId); if (!d) return closeSheet();
+  const pages = docPages(d), i = pages.indexOf(p), n = pages.length, reader = DOC_TYPES[d.type]?.read;
+  const nav = (j, l, a) => `<button class="btn ghost" data-act="page-go" data-for="${pages[j]?.id || ''}" ${pages[j] ? '' : 'disabled'} aria-label="${a}">${l}</button>`;
   scanned = null;
-  openSheet(`<div class="hd"><h2>Scan a page</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
-    <p class="small muted" style="margin:0">Photograph only the page${vax ? ' with the newest vaccinations' : 's with the newest stamps'}, not the whole book. You can choose several photos.</p>
-    ${keyOk ? `<label class="scan-ok small"><input type="checkbox" id="scanRead" ${read ? 'checked' : ''}><span><b>Read the entries with AI</b>, so you don't have to type them. When this is off, the photos are just kept as pages of the book.</span></label>
-    <div id="scanAi" class="set" ${read ? '' : 'hidden'}><p class="small muted" style="margin:0">Aura reads ${vax ? 'the dates, vaccines, batch numbers and stamps' : 'which checkups were done, their dates and stamps, and the weight, height and head size'} and shows you what it found. Nothing is saved until you check it, and what is already recorded is left out.</p>
-    <label class="scan-ok small"><input type="checkbox" id="scanOk" ${S.settings.scanOk ? 'checked' : ''}><span>The photos go from this phone straight to ${esc(aiName())}, the AI service you chose. Names, addresses and stamps printed on the page can't be hidden in a picture, so that service sees them. Nothing else from your log is sent.</span></label></div>
-    <input id="scanFiles" type="file" accept="image/*" multiple hidden>`
-    : `<p class="small muted" style="margin:0">Aura keeps the photos as pages of the book. To have it also read the entries for you, set up an AI service that understands pictures (for example Claude, GPT-4o or Gemini) under More → AI helper.</p>`}
-    <div class="row"><button class="btn primary" data-act="scan-pick">Choose photos</button><button class="btn ghost" data-act="scan-hand">Add by hand</button>${keyOk ? '' : '<button class="btn ghost" data-act="scan-setup">Set up AI</button>'}</div>
-    <div id="scanOut"></div>`, { scan: book });
+  openSheet(`<div class="hd"><h2>Page ${i + 1} of ${n}</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+    <button class="linkish small" data-docid="${d.id}">${esc(docTitle(d))}</button>
+    <div class="pager">${nav(i - 1, '‹', 'Previous page')}<img id="pageImg" src="${p.img}" alt="Page ${i + 1} of ${esc(docTitle(d))}">${nav(i + 1, '›', 'Next page')}</div>
+    <label class="field"><span>Note (optional)</span><input id="pg_note" value="${esc(p.note || '')}" placeholder="${d.type === 'vax' ? 'e.g. pages 4 and 5' : d.type === 'u' ? 'e.g. U5, pages 1 and 2' : 'e.g. front side'}" autocomplete="off"></label>
+    <p class="small muted" style="margin:0">Photo from ${fmtDate(p.t)}</p>
+    <div class="row"><button class="btn" data-act="page-replace">Replace with a newer photo</button>${n > 1 ? `<button class="btn ghost sm" data-act="page-move" data-for="-1" ${i ? '' : 'disabled'}>Move earlier</button><button class="btn ghost sm" data-act="page-move" data-for="1" ${i < n - 1 ? '' : 'disabled'}>Move later</button>` : ''}</div>
+    ${reader ? readerHtml(d) : ''}
+    <div id="scanOut"></div>
+    <div class="sheet-actions"><button class="btn ghost danger" data-act="page-del">Delete page</button><button class="btn primary" data-act="close">Done</button></div>`, { page: id, doc: d.id, fresh: fresh || null });
+  if (reader && fresh && readOn() && S.settings.scanOk) readPages(fresh);
+}
+function readerHtml(d) {
+  if (!aiKeySet()) return `<p class="small muted" style="margin:0">To have Aura read the entries on this page, set up an AI service that understands pictures (for example Claude, GPT-4o or Gemini).</p><div><button class="btn ghost sm" data-act="doc-setup">Set up AI</button></div>`;
+  return `<div class="set reader"><label class="scan-ok small"><input type="checkbox" id="scanRead" ${S.settings.scanRead !== false ? 'checked' : ''}><span><b>Read new and replaced pages with AI</b>, so you don't have to type the ${d.type === 'vax' ? 'vaccinations' : 'checkups'}. Nothing is saved until you check it.</span></label>
+    ${S.settings.scanOk ? `<p class="small muted" style="margin:0">Page photos go to ${esc(aiName())}. Names printed on a page can't be hidden in a picture.</p>`
+      : `<label class="scan-ok small"><input type="checkbox" id="scanOk"><span>The photo goes from this phone straight to ${esc(aiName())}, the AI service you chose. Names, addresses and stamps printed on the page can't be hidden in a picture, so that service sees them. Nothing else from your log is sent.</span></label>`}
+    <div><button class="btn sm" data-act="page-read">Read this page now</button></div></div>`;
 }
 const scanDay = s => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || ''); if (!m) return ''; const t = new Date(s + 'T12:00').getTime(); return isNaN(t) || startOfDay(t) > Date.now() ? '' : s; };
 const sameDay = (a, b) => startOfDay(a) === startOfDay(b);
-async function scanRun(files) {
-  const book = sheetCtx?.scan, out = $('#scanOut'), c = kid(); if (!book || !out || !c) return;
-  out.innerHTML = `<p class="muted small">Reading ${files.length > 1 ? files.length + ' photos' : 'the photo'}…</p>`;
+async function readPages(ids) {
+  const out = $('#scanOut'), d = S.docs.find(x => x.id === sheetCtx?.doc), c = d && S.children.find(k => k.id === d.childId), type = d?.type, reader = DOC_TYPES[type]?.read;
+  if (!out || !c || !reader) return;
+  const images = ids.map(id => S.pages.find(p => p.id === id && !p.deleted)?.img).filter(Boolean); if (!images.length) return;
+  const page = sheetCtx.page;
+  out.innerHTML = `<p class="muted small">Reading ${images.length > 1 ? images.length + ' pages' : 'the page'}…</p>`;
   try {
-    const images = await Promise.all(files.map(f => shrink(f, 1600)));
-    const vax = book === 'vax', r = await ai(vax ? VAX_SCAN_SYSTEM : U_SCAN_SYSTEM, vax ? 'Read the vaccinations in these photos.' : 'Read the checkups in these photos.', vax ? VAX_SCAN_SCHEMA : U_SCAN_SCHEMA, c.id, images);
-    if (sheetCtx?.scan !== book) return;
+    const r = await ai(reader.system, reader.user, reader.schema, c.id, images);
+    if (sheetCtx?.page !== page) return;
     const items = [], skipped = [];
-    if (vax) {
+    if (type === 'vax') {
       const have = vaxDoses(c);
       for (const x of r.doses || []) {
-        const d = { against: (x.against || []).filter(k => VAX_KINDS.some(([v]) => v === k)), name: (x.name || '').trim(), batch: (x.batch || '').trim(), by: (x.by || '').trim(), day: scanDay(x.date) };
-        if (!d.against.length && !d.name) continue;
-        const t = d.day && new Date(d.day + 'T12:00').getTime(), same = y => sameDay(y.t, t) && ((y.against || []).some(k => d.against.includes(k) && k !== 'other') || (d.name && y.name?.toLowerCase() === d.name.toLowerCase()));
-        if (t && (have.some(same) || items.some(y => y.day && same({ ...y, t: new Date(y.day + 'T12:00').getTime() })))) skipped.push(d); else items.push(d);
+        const v = { against: (x.against || []).filter(k => VAX_KINDS.some(([w]) => w === k)), name: (x.name || '').trim(), batch: (x.batch || '').trim(), by: (x.by || '').trim(), day: scanDay(x.date) };
+        if (!v.against.length && !v.name) continue;
+        const t = v.day && new Date(v.day + 'T12:00').getTime(), same = y => sameDay(y.t, t) && ((y.against || []).some(k => v.against.includes(k) && k !== 'other') || (v.name && y.name?.toLowerCase() === v.name.toLowerCase()));
+        if (t && (have.some(same) || items.some(y => y.day && same({ ...y, t: new Date(y.day + 'T12:00').getTime() })))) skipped.push(v); else items.push(v);
       }
     } else {
       const have = uExams(c);
@@ -1677,83 +1749,86 @@ async function scanRun(files) {
         if (e.u !== 'other' && (have.some(y => y.u === e.u) || items.some(y => y.u === e.u))) skipped.push(e); else items.push(e);
       }
     }
-    scanned = { book, items, skipped, images };
+    scanned = { type, child: c.id, items, skipped, n: images.length };
     out.innerHTML = scanHtml();
   } catch (err) {
     if (!$('#scanOut')) return;
-    $('#scanOut').innerHTML = `<p class="small" style="color:var(--alert)">${esc(aiError(err))}</p><p class="small muted" style="margin:0">If your AI model can't read pictures, choose one that can under More, or add the entries by hand.</p>`;
+    $('#scanOut').innerHTML = `<p class="small" style="color:var(--alert)">${esc(aiError(err))}</p><p class="small muted" style="margin:0">If your AI model can't read pictures, choose one that can under More, or add the entries by hand. The page is kept either way.</p>`;
   }
 }
-const scanDesc = (book, x) => book === 'vax' ? `<b>${esc(vaxNames(x))}</b>${x.name || x.batch || x.by ? `<br><span class="small muted">${esc([x.name, x.batch && 'batch ' + x.batch, x.by].filter(Boolean).join(' · '))}</span>` : ''}`
+const scanDesc = (type, x) => type === 'vax' ? `<b>${esc(vaxNames(x))}</b>${x.name || x.batch || x.by ? `<br><span class="small muted">${esc([x.name, x.batch && 'batch ' + x.batch, x.by].filter(Boolean).join(' · '))}</span>` : ''}`
   : `<b>${esc(uName(x.u))}</b>${x.by || MEAS.some(([k]) => x[k] != null) ? `<br><span class="small muted">${esc([x.by, ...MEAS.filter(([k]) => x[k] != null).map(([k, l, u]) => `${l} ${x[k]} ${u}`)].filter(Boolean).join(' · '))}</span>` : ''}`;
 function scanHtml() {
-  const { book, items, skipped, images } = scanned, max = toLocalInput(Date.now()).slice(0, 10);
-  if (!items.length) return `<div class="parsed"><p class="small muted" style="margin:0">${skipped.length ? `Everything on ${images.length > 1 ? 'these pages' : 'this page'} is already recorded (${skipped.length}).` : `I couldn't find any ${book === 'vax' ? 'vaccinations' : 'checkups with a date'} on ${images.length > 1 ? 'these photos' : 'this photo'}. Try a sharper photo of one page, in good light.`}</p>
-    <div class="row"><button class="btn" data-act="scan-add">Keep ${images.length > 1 ? 'the photos as pages' : 'the photo as a page'}</button></div><input type="checkbox" id="scanKeep" checked hidden>${sentHtml()}</div>`;
-  return `<div class="parsed"><p class="small muted" style="margin:0">Check each line against the book. Fix a date if it was misread; you can change anything else later by tapping the entry.</p>
-    ${items.map((x, i) => `<div class="scan-item"><label><input type="checkbox" data-si="${i}" ${x.day ? 'checked' : ''}><span>${scanDesc(book, x)}</span></label><input type="date" data-sd="${i}" value="${x.day}" max="${max}" aria-label="Date"></div>`).join('')}
-    ${items.some(x => !x.day) ? '<p class="small" style="margin:0;color:var(--wait)">Some dates could not be read. Add them from the book, or leave those lines unticked.</p>' : ''}
-    ${skipped.length ? `<p class="small muted" style="margin:0">Already recorded, left out: ${esc(skipped.map(x => book === 'vax' ? vaxNames(x) + (x.day ? ' ' + fmtDate(new Date(x.day + 'T12:00').getTime()) : '') : x.u).join(', '))}</p>` : ''}
-    <label class="scan-ok small"><input type="checkbox" id="scanKeep" checked><span>Also keep ${images.length > 1 ? 'the photos' : 'the photo'} as ${images.length > 1 ? 'pages' : 'a page'} of the book (you can replace a page later with a newer photo)</span></label>
-    <div class="row"><button class="btn primary" data-act="scan-add">Add selected</button><button class="btn ghost" data-act="scan-discard">Discard</button></div>${sentHtml()}</div>`;
+  const { type, items, skipped, n } = scanned, max = toLocalInput(Date.now()).slice(0, 10), these = n > 1 ? 'these pages' : 'this page';
+  if (!items.length) return `<div class="parsed"><p class="small muted" style="margin:0">${skipped.length ? `Everything on ${these} is already recorded (${skipped.length}).` : `I couldn't find any ${type === 'vax' ? 'vaccinations' : 'checkups with a date'} on ${these}. If it is hard to read, replace it with a sharper photo, in good light.`}</p>${sentHtml()}</div>`;
+  return `<div class="parsed"><p class="small muted" style="margin:0">New on ${these}. Check each line against the paper and fix a date if it was misread; you can change anything else later by tapping the entry.</p>
+    ${items.map((x, i) => `<div class="scan-item"><label><input type="checkbox" data-si="${i}" ${x.day ? 'checked' : ''}><span>${scanDesc(type, x)}</span></label><input type="date" data-sd="${i}" value="${x.day}" max="${max}" aria-label="Date"></div>`).join('')}
+    ${items.some(x => !x.day) ? '<p class="small" style="margin:0;color:var(--wait)">Some dates could not be read. Add them from the paper, or leave those lines unticked.</p>' : ''}
+    ${skipped.length ? `<p class="small muted" style="margin:0">Already recorded, left out: ${esc(skipped.map(x => type === 'vax' ? vaxNames(x) + (x.day ? ' ' + fmtDate(new Date(x.day + 'T12:00').getTime()) : '') : x.u).join(', '))}</p>` : ''}
+    <div class="row"><button class="btn primary" data-act="scan-add">Add selected</button><button class="btn ghost" data-act="scan-discard">Not now</button></div>${sentHtml()}</div>`;
 }
 function scanAdd() {
   if (!scanned) return;
-  const { book, items, images } = scanned, c = kid(), pick = [];
+  const { type, items, child } = scanned, pick = [];
   for (const box of document.querySelectorAll('#scanOut [data-si]')) {
     if (!box.checked) continue;
     const x = items[+box.dataset.si], day = scanDay($(`#scanOut [data-sd="${box.dataset.si}"]`).value);
-    if (!day) return toast(`Add the date for ${book === 'vax' ? vaxNames(x) : x.u} from the book, or untick it.`);
+    if (!day) return toast(`Add the date for ${type === 'vax' ? vaxNames(x) : x.u} from the paper, or untick it.`);
     pick.push({ ...x, t: Math.min(new Date(day + 'T12:00').getTime(), Date.now()) });
   }
-  const keep = $('#scanKeep')?.checked;
-  if (!pick.length && !keep) return toast('Tick what you want to add.');
+  if (!pick.length) return toast('Tick what you want to add.');
   for (const x of pick) {
-    if (book === 'vax') S.vaccines.push(touch({ id: uid(), childId: c.id, kind: 'dose', t: x.t, against: x.against, name: x.name, batch: x.batch, by: x.by, note: '' }));
+    if (type === 'vax') S.vaccines.push(touch({ id: uid(), childId: child, kind: 'dose', t: x.t, against: x.against, name: x.name, batch: x.batch, by: x.by, note: '' }));
     else {
-      const e = { id: uid(), childId: c.id, kind: 'exam', u: x.u, t: x.t, by: x.by, note: '' };
-      if (MEAS.some(([k]) => x[k] != null)) { const m = touch({ id: uid(), childId: c.id, t: x.t, note: uName(x.u), ...Object.fromEntries(MEAS.map(([k]) => [k, x[k]])) }); S.measurements.push(m); e.measId = m.id; }
+      const e = { id: uid(), childId: child, kind: 'exam', u: x.u, t: x.t, by: x.by, note: '' };
+      if (MEAS.some(([k]) => x[k] != null)) { const m = touch({ id: uid(), childId: child, t: x.t, note: uName(x.u), ...Object.fromEntries(MEAS.map(([k]) => [k, x[k]])) }); S.measurements.push(m); e.measId = m.id; }
       S.checkups.push(touch(e));
     }
   }
-  if (keep) addPages(c, book, images);
-  scanned = null; closeSheet(); commit();
-  toast(pick.length ? `Added ${pick.length} ${book === 'vax' ? (pick.length > 1 ? 'vaccinations' : 'vaccination') : (pick.length > 1 ? 'checkups' : 'checkup')}${keep ? ' and kept the page' + (images.length > 1 ? 's' : '') : ''}` : (images.length > 1 ? 'Pages kept' : 'Page kept'));
-}
-
-/* ---------- Pages of the book ---------- */
-// Photos of the vaccination book and the U-Heft, kept page by page in the book's order (`order`; pages from before it
-// existed follow in the order they were added). When more is written on a page, the parent replaces it with a newer
-// photo; the earlier one stays in the phone and Drive backups like any earlier version of the log.
-const BOOK = { vax: { list: () => S.vaccines, name: 'the vaccination book', title: 'Pages of the book' }, u: { list: () => S.checkups, name: 'the U-Heft', title: 'Pages of the U-Heft' } };
-const bookPages = (c, book) => live(BOOK[book].list()).filter(x => x.childId === c.id && x.kind === 'page').sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity) || a.t - b.t);
-const setOrder = pages => pages.forEach((p, i) => { if (p.order !== i) { p.order = i; touch(p); } });
-function addPages(c, book, imgs) {
-  const pages = bookPages(c, book); setOrder(pages);
-  imgs.forEach((img, i) => BOOK[book].list().push(touch({ id: uid(), childId: c.id, kind: 'page', t: Date.now(), img, note: '', order: pages.length + i })));
-}
-function pagesCard(c, book) {
-  const pages = bookPages(c, book), attr = book === 'vax' ? 'data-vxpage' : 'data-upage';
-  return `<div class="card set"><div class="row between"><h2>${BOOK[book].title}</h2><span class="muted small">${pages.length ? pages.length + (pages.length > 1 ? ' pages' : ' page') : ''}</span></div>
-    ${pages.length ? `<div class="book">${pages.map((p, i) => `<button ${attr}="${p.id}" aria-label="Page ${i + 1}"><img src="${p.img}" alt=""><span class="pg num">${i + 1}</span></button>`).join('')}</div>` : ''}
-    <p class="small muted" style="margin:0">${pages.length ? 'Tap a page to leaf through the book, or to replace it with a newer photo when more is written on it.' : `Keep a photo of each filled page of ${BOOK[book].name} as a backup if it gets lost: tap Scan a page.`} Pages sync with your partner and go into Drive backups.</p></div>`;
-}
-function pageSheet(book, id) {
-  const c = kid(), pages = bookPages(c, book), i = pages.findIndex(p => p.id === id); if (i < 0) return closeSheet();
-  const p = pages[i], n = pages.length, nav = (j, l, a) => `<button class="btn ghost" data-act="page-go" data-for="${pages[j]?.id || ''}" ${pages[j] ? '' : 'disabled'} aria-label="${a}">${l}</button>`;
-  openSheet(`<div class="hd"><h2>Page ${i + 1} of ${n}</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
-    <div class="pager">${nav(i - 1, '‹', 'Previous page')}<img id="pageImg" src="${p.img}" alt="Page ${i + 1} of ${esc(BOOK[book].name)}">${nav(i + 1, '›', 'Next page')}</div>
-    <label class="field"><span>Note (optional)</span><input id="pg_note" value="${esc(p.note || '')}" placeholder="${book === 'vax' ? 'e.g. pages 4 and 5' : 'e.g. U5, pages 1 and 2'}" autocomplete="off"></label>
-    <p class="small muted" style="margin:0">Photo from ${fmtDate(p.t)}</p>
-    <div class="row"><button class="btn" data-act="page-replace">Replace with a newer photo</button>${n > 1 ? `<button class="btn ghost sm" data-act="page-move" data-for="-1" ${i ? '' : 'disabled'}>Move earlier</button><button class="btn ghost sm" data-act="page-move" data-for="1" ${i < n - 1 ? '' : 'disabled'}>Move later</button>` : ''}</div>
-    <input id="pageFile" type="file" accept="image/*" hidden>
-    <div class="sheet-actions"><button class="btn ghost danger" data-act="page-del">Delete page</button><button class="btn primary" data-act="close">Done</button></div>`, { page: id, book });
+  scanned = null; $('#scanOut').innerHTML = ''; commit();
+  toast(`Added ${pick.length} ${type === 'vax' ? (pick.length > 1 ? 'vaccinations' : 'vaccination') : (pick.length > 1 ? 'checkups' : 'checkup')}`);
 }
 function movePage(dir) {
-  const { book, page } = sheetCtx, pages = bookPages(kid(), book), i = pages.findIndex(x => x.id === page), j = i + dir;
+  const p = S.pages.find(x => x.id === sheetCtx.page), pages = docPages(S.docs.find(x => x.id === p.docId)), i = pages.indexOf(p), j = i + dir;
   if (!pages[j]) return;
-  [pages[i], pages[j]] = [pages[j], pages[i]]; setOrder(pages); commit(); pageSheet(book, page);
+  [pages[i], pages[j]] = [pages[j], pages[i]]; setOrder(pages); commit(); pageSheet(p.id);
 }
+function deletePage() {
+  const p = S.pages.find(x => x.id === sheetCtx.page), pages = docPages(S.docs.find(x => x.id === p.docId)), i = pages.indexOf(p), next = pages[i + 1] || pages[i - 1];
+  p.deleted = true; touch(p); commit(); toast('Page deleted');
+  return next ? pageSheet(next.id) : closeSheet();
+}
+// Any other document: a name, pages and a note. Opened from More → Documents.
+function docSheet(id) {
+  const c = kid(), d = id === 'new' ? null : S.docs.find(x => x.id === id && !x.deleted); if (id !== 'new' && !d) return closeSheet();
+  if (!d) return openSheet(`<div class="hd"><h2>Add a document</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+    <p class="small muted" style="margin:0">A digital copy of a paper document for ${esc(c.name)}, page by page. Keep it up to date by replacing a page when something new is written on it.</p>
+    <label class="field"><span>What is it?</span><input id="doc_title" placeholder="e.g. Allergy pass, hospital letter, daycare contract" autocomplete="off" autofocus></label>
+    <div class="sheet-actions"><span></span><button class="btn primary" data-act="doc-save">Add pages</button></div>`, { docEdit: 'new' });
+  const pages = docPages(d), typed = d.type !== 'other';
+  openSheet(`<div class="hd"><h2>${esc(docTitle(d))}</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+    ${typed ? `<p class="small muted" style="margin:0">Its entries are on the ${d.type === 'vax' ? 'Vaccines' : 'Checkups'} tab.</p>` : `<label class="field"><span>Name</span><input id="doc_title" value="${esc(d.title)}" autocomplete="off"></label>`}
+    ${pagesGrid(pages) || '<p class="small muted" style="margin:0">No pages yet.</p>'}
+    <div><button class="btn sm" data-act="doc-add" data-doc="${d.id}">Add a page</button></div>
+    <label class="field"><span>Note (optional)</span><textarea id="doc_note" style="min-height:64px" placeholder="e.g. where the paper is kept">${esc(d.note || '')}</textarea></label>
+    <div class="sheet-actions">${typed ? '<span></span>' : `<button class="btn ghost danger" data-act="doc-del">Delete document</button>`}<button class="btn primary" data-act="doc-save">Save</button></div>`, { docEdit: d.id });
+}
+function saveDoc() {
+  const id = sheetCtx.docEdit, title = $('#doc_title')?.value.trim(), note = $('#doc_note')?.value.trim() ?? '';
+  if (id === 'new') { if (!title) return toast('Give it a name first.'); const d = touch({ id: uid(), childId: kid().id, type: 'other', title, note: '' }); S.docs.push(d); commit(); docSheet(d.id); return pickPages({ doc: d.id }); }
+  const d = S.docs.find(x => x.id === id); if (d.type === 'other' && !title) return toast('Give it a name.');
+  if (d.type === 'other') d.title = title; d.note = note; touch(d); closeSheet(); commit();
+}
+function deleteDoc() {
+  const d = S.docs.find(x => x.id === sheetCtx.docEdit), b = $('#sheet [data-act="doc-del"]');
+  if (!sheetCtx.sure) { sheetCtx.sure = true; b.textContent = `Tap again to delete it and its ${docPages(d).length} pages`; return; }
+  docPages(d).forEach(p => { p.deleted = true; touch(p); }); d.deleted = true; touch(d); closeSheet(); commit(); toast('Document deleted');
+}
+const docsCard = c => { const ds = docsOf(c);
+  return `<div class="card set"><h2>Documents</h2>
+    <p class="small muted" style="margin:0">Digital copies of ${esc(c.name)}'s paper documents, page by page. The vaccination book and U-Heft are kept on their own tabs.</p>
+    ${ds.length ? `<div>${ds.map(d => { const n = docPages(d).length; return `<button class="vx-dose" data-docid="${d.id}"><span><b>${esc(docTitle(d))}</b> <span class="muted small">${n} page${n === 1 ? '' : 's'}</span></span>${d.note ? `<small>${esc(d.note)}</small>` : ''}</button>`; }).join('')}</div>` : ''}
+    <div><button class="btn sm" data-act="doc-new">Add a document</button></div></div>`; };
 // Swipe left or right on a page to turn it.
 let swipeX = null;
 document.addEventListener('touchstart', ev => { swipeX = ev.target.id === 'pageImg' ? [ev.touches[0].clientX, ev.touches[0].clientY] : null; }, { passive: true });
@@ -1828,7 +1903,7 @@ async function token(interactive) {
 }
 async function gapi(tok, url, opts = {}) { const r = await fetch(url, { ...opts, headers: { Authorization: 'Bearer ' + tok, ...(opts.headers || {}) } }); if (!r.ok) throw new Error(`Drive error ${r.status}`); return r; }
 const DRIVE = 'https://www.googleapis.com/drive/v3/files', UP = 'https://www.googleapis.com/upload/drive/v3/files';
-const SYNCED = ['children', 'episodes', 'entries', 'meds', 'measurements', 'growth', 'products', 'vaccines', 'checkups', 'emergency'];
+const SYNCED = ['children', 'episodes', 'entries', 'meds', 'measurements', 'growth', 'products', 'vaccines', 'checkups', 'emergency', 'docs', 'pages'];
 const shareable = () => ({ app: 'aura', v: SCHEMA, savedAt: Date.now(), ...Object.fromEntries(SYNCED.map(k => [k, S[k]])) });
 const enc = encodeURIComponent, JSON_H = { 'Content-Type': 'application/json' }, FOLDER_T = 'application/vnd.google-apps.folder';
 async function folderId(tok, name, parent) {
@@ -1915,11 +1990,12 @@ async function sync(interactive) {
     if (tooNew(S)) throw new Error(NEWER);
     const tok = await token(interactive); if (!tok) return;
     const id = S.drive?.fileId || await findOrCreateFile(tok);
-    let extra = {};
+    let extra = {}, older = false;
     const read = async () => { const d = await (await gapi(tok, `${DRIVE}/${id}?alt=media`)).json().catch(() => null);
       if (tooNew(d)) throw new Error('Your log in Drive was saved by a newer version of Aura. Close Aura fully and open it again to update. Nothing was overwritten.');
       if (!isAura(d)) throw new Error("The Drive file doesn't look like an Aura log, so nothing was overwritten. Your data on this phone is safe.");
-      if (logVersion(d) < SCHEMA) await keepBeforeDrive(tok, id, d); else extra = unknownParts(d);
+      older = logVersion(d) < SCHEMA;
+      if (older) await keepBeforeDrive(tok, id, d); else extra = unknownParts(d);
       return migrate(d); };
     // Drive's version number of the file goes up with every change, and asking for it is a tiny request. So an idle check
     // costs one small call, and the whole file is downloaded only when it changed. Instead of downloading the file again
@@ -1935,7 +2011,7 @@ async function sync(interactive) {
       const remote = await read();
       for (const k of SYNCED) S[k] = mergeList(S[k], remote[k]);
       persist();
-      if (coveredBy(S, remote)) { ok = true; break; }
+      if (coveredBy(S, remote) && !older) { ok = true; break; } // an older Drive log is always written back upgraded
       if (round === 0) try { await snapshot(tok, id, remote); } catch {}
       if (await version() !== ver) continue; // another phone wrote while this one was merging: read it first
       ver = (await (await gapi(tok, `${UP}/${id}?uploadType=media&fields=version`, { method: 'PATCH', headers: JSON_H, body: JSON.stringify({ ...extra, ...shareable() }) })).json()).version;
@@ -2187,10 +2263,10 @@ document.addEventListener('click', async ev => {
   if (b.dataset.card) { cardKidId = b.dataset.card; cardFrom = tab === 'more' ? 'more' : 'today'; closeSheet(); tab = 'card'; render(); return window.scrollTo(0, 0); }
   if (b.dataset.vxitem) return vaxItemSheet(b.dataset.vxitem);
   if (b.dataset.vxdose) return vaxSheet(b.dataset.vxdose);
-  if (b.dataset.vxpage) return pageSheet('vax', b.dataset.vxpage);
+  if (b.dataset.pg) return pageSheet(b.dataset.pg);
+  if (b.dataset.docid) return docSheet(b.dataset.docid);
   if (b.dataset.uitem) return uItemSheet(b.dataset.uitem);
   if (b.dataset.uexam) return uSheet(b.dataset.uexam);
-  if (b.dataset.upage) return pageSheet('u', b.dataset.upage);
   if (b.dataset.tooth) return growthSheet('tooth', b.dataset.tooth);
   if (b.dataset.ms) return growthSheet('milestone', b.dataset.ms === 'new' ? null : b.dataset.ms);
   if (b.dataset.track) {
@@ -2293,23 +2369,20 @@ document.addEventListener('click', async ev => {
       touch(e); if (!sheetCtx.uexam) S.checkups.push(e); closeSheet(); commit(); return toast('Checkup saved');
     }
     case 'del-u': { const e = S.checkups.find(x => x.id === sheetCtx.uexam); e.deleted = true; touch(e); closeSheet(); commit(); return toast(e.measId ? 'Deleted. Its measurements stay under Growth.' : 'Deleted'); }
-    case 'scan': return scanSheet(b.dataset.for);
-    case 'scan-pick': {
-      if (!aiKeySet() || !$('#scanRead')?.checked) return $(sheetCtx.scan === 'vax' ? '#vaxPage' : '#uPage').click();
-      const ok = $('#scanOk'); if (!ok.checked) return toast('Tick the box first, so you know where the photos go.');
-      if (!S.settings.scanOk) { S.settings.scanOk = true; persist(); }
-      return $('#scanFiles').click();
-    }
-    case 'page-go': return pageSheet(sheetCtx.book, b.dataset.for);
+    case 'doc-add': return pickPages(b.dataset.doc ? { doc: b.dataset.doc } : { type: b.dataset.type });
+    case 'doc-new': return docSheet('new');
+    case 'doc-save': return saveDoc();
+    case 'doc-del': return deleteDoc();
+    case 'doc-setup': closeSheet(); tab = 'more'; render(); $('#aiStatus')?.scrollIntoView({ block: 'center' }); return;
+    case 'page-go': return pageSheet(b.dataset.for);
     case 'page-move': return movePage(+b.dataset.for);
     case 'page-replace': return $('#pageFile').click();
-    case 'page-del': {
-      const { book, page } = sheetCtx, pages = bookPages(kid(), book), i = pages.findIndex(x => x.id === page), next = pages[i + 1] || pages[i - 1];
-      pages[i].deleted = true; touch(pages[i]); commit(); toast('Page deleted');
-      return next ? pageSheet(book, next.id) : closeSheet();
+    case 'page-del': return deletePage();
+    case 'page-read': {
+      const ok = $('#scanOk'); if (ok && !ok.checked) return toast('Tick the box first, so you know where the photo goes.');
+      if (!S.settings.scanOk) { S.settings.scanOk = true; persist(); }
+      return readPages(sheetCtx.fresh || [sheetCtx.page]);
     }
-    case 'scan-hand': { const bk = sheetCtx.scan; scanned = null; closeSheet(); return bk === 'vax' ? vaxSheet() : uSheet(); }
-    case 'scan-setup': closeSheet(); tab = 'more'; render(); $('#aiStatus')?.scrollIntoView({ block: 'center' }); return;
     case 'scan-add': return scanAdd();
     case 'scan-discard': scanned = null; $('#scanOut').innerHTML = ''; return;
     case 'cal-u': return calSheet([uEvent(kid(), U_PLAN.find(u => u.k === b.dataset.for))]);
@@ -2377,13 +2450,11 @@ document.addEventListener('change', ev => {
   if (t.id === 'apiKey' || t.id === 'aiBase' || t.id === 'aiModel') { S.settings[t.id] = t.value.trim(); persist(); renderMore(); if (t.id === 'aiBase' && t.value && !okBase(t.value.trim())) toast('Use an https:// address, or http://localhost for a model on this computer.'); }
   if (t.id === 'clientId' || t.id === 'pickerKey') { S.settings[t.id] = t.value.trim(); persist(); }
   if (t.id === 'meName') { S.settings.me = t.value.trim(); persist(); }
-  if ((t.id === 'vaxPage' || t.id === 'uPage') && t.files.length) { const c = kid();
-    Promise.all([...t.files].map(f => shrink(f, 1600))).then(imgs => { addPages(c, t.id === 'vaxPage' ? 'vax' : 'u', imgs); closeSheet(); commit(); toast(imgs.length > 1 ? `${imgs.length} pages kept` : 'Page kept'); }).catch(e => toast(e.message)); t.value = ''; }
-  if (t.id === 'scanRead') { S.settings.scanRead = t.checked; persist(); $('#scanAi').hidden = !t.checked; }
-  if (t.id === 'pg_note' && sheetCtx?.page) { const p = BOOK[sheetCtx.book].list().find(x => x.id === sheetCtx.page); p.note = t.value.trim(); touch(p); commit(); }
-  if (t.id === 'pageFile' && t.files[0]) { const { book, page } = sheetCtx, p = BOOK[book].list().find(x => x.id === page);
-    shrink(t.files[0], 1600).then(img => { Object.assign(p, { img, t: Date.now() }); touch(p); commit(); pageSheet(book, page); toast('Page replaced'); }).catch(e => toast(e.message)); t.value = ''; }
-  if (t.id === 'scanFiles' && t.files.length) { scanRun([...t.files]); t.value = ''; }
+  if (t.id === 'docFiles' && t.files.length) { pagesChosen([...t.files]); t.value = ''; }
+  if (t.id === 'scanRead') { S.settings.scanRead = t.checked; persist(); }
+  if (t.id === 'pg_note' && sheetCtx?.page) { const p = S.pages.find(x => x.id === sheetCtx.page); p.note = t.value.trim(); touch(p); commit(); }
+  if (t.id === 'pageFile' && t.files[0]) { const id = sheetCtx.page, p = S.pages.find(x => x.id === id);
+    shrink(t.files[0], 1600).then(img => { Object.assign(p, { img, t: Date.now() }); touch(p); commit(); toast('Page replaced'); pageSheet(id, [id]); }).catch(e => toast(e.message)); t.value = ''; }
   if (t.id === 'restoreFile' && t.files[0]) t.files[0].text().then(x => { mergeIn(JSON.parse(x)); commit(); toast('Backup restored'); }).catch(e => toast(e instanceof SyntaxError ? "That file isn't an Aura backup." : e.message));
 });
 function markTags() { const t = $('#f_symtext')?.value; document.querySelectorAll('#symTags [data-tag]').forEach(x => x.classList.toggle('on', hasTag(t, x.dataset.tag))); }
