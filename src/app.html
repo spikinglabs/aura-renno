@@ -269,6 +269,7 @@ tr:last-child td { border-bottom: 0 }
   <section class="view" id="view-vax" hidden></section>
   <section class="view" id="view-card" hidden></section>
   <section class="view" id="view-checkups" hidden></section>
+  <section class="view" id="view-dental" hidden></section>
   <section class="view" id="view-docs" hidden></section>
   <section class="view" id="view-more" hidden></section>
 </div>
@@ -295,7 +296,7 @@ const DRIVE_FILE = 'aura-log.json', DRIVE_FOLDER = 'Aura';
 const built = v => /^__/.test(v) ? '' : v;
 const GOOGLE_CLIENT_ID = built('__GOOGLE_CLIENT_ID__'), GOOGLE_PICKER_KEY = built('__GOOGLE_PICKER_KEY__');
 const gClient = () => S.settings.clientId || GOOGLE_CLIENT_ID, gPickerKey = () => S.settings.pickerKey || GOOGLE_PICKER_KEY;
-const FEVER_C = 38.0, EXAMPLE_V = 9;
+const FEVER_C = 38.0, EXAMPLE_V = 10;
 const H = 3600e3, DAY = 24 * H;
 const reEsc = s => s.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
 // Symptoms are free text; preset tags found in the text are also kept as a list for reminders and the doctor summary.
@@ -352,9 +353,9 @@ const icon = k => `<span class="ic t-${k}"><svg viewBox="0 0 24 24" aria-hidden=
 
 /* ---------- State ---------- */
 function emptyState() {
-  return { app: 'aura', v: SCHEMA, example: false, children: [], episodes: [], entries: [], measurements: [], growth: [], products: [], vaccines: [], checkups: [], emergency: [], docs: [], pages: [],
+  return { app: 'aura', v: SCHEMA, example: false, children: [], episodes: [], entries: [], measurements: [], growth: [], products: [], vaccines: [], checkups: [], dental: [], emergency: [], docs: [], pages: [],
     meds: [{ id: 'm1', name: 'Paracetamol (acetaminophen)', gapH: 4, updatedAt: 0 }, { id: 'm2', name: 'Ibuprofen', gapH: 6, updatedAt: 0 }],
-    settings: { unit: 'C', clientId: '', pickerKey: '', apiKey: '', aiKind: 'anthropic', aiBase: '', aiModel: '', theme: 'auto', me: '', recallCountries: null, docLang: 'en', vaxPlan: 'de', uPlan: 'de' }, child: null, drive: {}, recalls: {}, docTr: {} };
+    settings: { unit: 'C', clientId: '', pickerKey: '', apiKey: '', aiKind: 'anthropic', aiBase: '', aiModel: '', theme: 'auto', me: '', recallCountries: null, docLang: 'en', vaxPlan: 'de', uPlan: 'de', zPlan: 'de' }, child: null, drive: {}, recalls: {}, docTr: {} };
 }
 function readLS(k) { try { const r = localStorage.getItem(k); return r ? JSON.parse(r) : null; } catch { return null; } }
 // The log's format version. To change the format, raise SCHEMA and add the step MIGRATIONS[old version], which turns a
@@ -472,6 +473,8 @@ function exampleState() {
     insurer: 'Techniker Krankenkasse', insuranceNo: 'M123456789', contacts: 'Anna (mum) 0171 2345678\nJonas (dad) 0172 3456789\nGrandma Ute 030 7654321', notes: 'Comforter: the blue rabbit.', updatedAt: 0 });
   [['U1', 0, 'Klinikum, Dr. Brandt'], ['U2', 4, 'Klinikum, Dr. Brandt'], ['U3', 32, 'Dr. Weber'], ['U4', 100, 'Dr. Weber'], ['U5', 195, 'Dr. Weber'], ['U6', 335, 'Dr. Weber'], ['U7', 690, 'Dr. Weber']]
     .forEach(([u, d, by]) => s.checkups.push({ id: uid(), childId: kid.id, kind: 'exam', u, t: startOfDay(born + d * DAY) + 10 * H, by, note: u === 'U6' ? 'All fine. Hearing test again at the U7.' : u === 'U7' ? 'Hearing fine. Speaks many single words.' : '', updatedAt: 0 }));
+  [['Z1', 8, 2, false, 'Brush twice a day with a rice-grain of fluoride toothpaste.'], ['Z2', 15, 11, true, ''], ['Z3', 24.5, 16, true, 'All fine. Next time in a year.']]
+    .forEach(([z, m, teeth, fluoride, note]) => s.dental.push({ id: uid(), childId: kid.id, kind: 'exam', z, t: startOfDay(atAge(m)) + 9 * H, by: 'Zahnarztpraxis Kleine Zähne', note, fluoride, teeth, updatedAt: 0 }));
   const start = now - 2.6 * DAY;
   s.episodes.push({ id: 'ep-ex', childId: kid.id, title: 'Fever and cough', start, end: null, updatedAt: 0 });
   const at = h => start + h * H;
@@ -621,14 +624,14 @@ function applyTheme() {
 
 /* ---------- Rendering ---------- */
 // Screens without a tab of their own light up the tab they belong to.
-const tabOf = t => ({ sick: 'today', vax: 'docs', checkups: 'docs' })[t] || t;
+const tabOf = t => ({ sick: 'today', vax: 'docs', checkups: 'docs', dental: 'docs' })[t] || t;
 let tab = 'today', sickTab = 'overview', aiParsed = null, narrative = '', showDays = 3;
 function render() {
   applyTheme();
   document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === tabOf(tab === 'card' ? cardFrom : tab))));
-  for (const v of ['today', 'sick', 'growth', 'vax', 'checkups', 'docs', 'more', 'card']) $('#view-' + v).hidden = v !== tab;
+  for (const v of ['today', 'sick', 'growth', 'vax', 'checkups', 'dental', 'docs', 'more', 'card']) $('#view-' + v).hidden = v !== tab;
   $('#fab').hidden = !['today', 'sick', 'growth'].includes(tab) || !kid();
-  ({ today: renderToday, sick: renderSick, growth: renderGrowth, vax: renderVax, checkups: renderCheckups, docs: renderDocs, more: renderMore, card: renderCard })[tab]();
+  ({ today: renderToday, sick: renderSick, growth: renderGrowth, vax: renderVax, checkups: renderCheckups, dental: renderDental, docs: renderDocs, more: renderMore, card: renderCard })[tab]();
 }
 const exampleBanner = () => S.example ? `<div class="banner"><p>This is example data so you can see how it works. Nothing here is real.</p><button class="btn primary sm" data-act="clear-example">Start with my child</button></div>` : '';
 function greeting() { const h = new Date().getHours(); return h < 5 ? 'Late night' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; }
@@ -678,7 +681,7 @@ function renderToday() {
     <div class="row between"><h3>Log</h3><button class="btn sm" data-act="track-sheet">What to track</button></div>
     <div class="quick">${quick.map(k => `<button class="qb" data-add="${k}">${icon(k)}${TYPES[k].label}</button>`).join('')}</div>
     ${ep ? '' : `<button class="linkish" data-act="new-episode">${esc(c.name)} is sick? Start sick mode</button>`}
-    ${recallFeedLine()}${vaxLine(c)}${uLine(c)}
+    ${recallFeedLine()}${vaxLine(c)}${uLine(c)}${zLine(c)}
     <div>${timelineHtml(es.filter(e => shownType(e.type)), showDays)}</div>`;
 }
 function timelineHtml(es, days) {
@@ -1013,13 +1016,14 @@ const JAW_ORDER = ['G', 'E', 'I', 'C', 'A', '|', 'B', 'D', 'J', 'F', 'H']; // fa
 const MILESTONES = [['smile', 'First smile'], ['laugh', 'First laugh'], ['head', 'Holds head up'], ['roll', 'Rolls over'], ['sit', 'Sits without help'], ['crawl', 'Crawls'], ['stand', 'Pulls up to stand'], ['walk', 'First steps'], ['word', 'First word'], ['wave', 'Waves bye-bye'], ['phrase', 'Two-word phrases'], ['night', 'Sleeps through the night']];
 const growthOf = c => live(S.growth || []).filter(g => g.childId === c.id);
 const msLabel = g => g.label || (MILESTONES.find(([k]) => k === g.key) || [, 'Milestone'])[1];
-function teethHtml(c) {
+function teethHtml(c, onDental) {
   const teeth = Object.fromEntries(growthOf(c).filter(g => g.kind === 'tooth').map(g => [g.key, g]));
   const jaw = j => `<div class="jaw ${j === 'L' ? 'lower' : ''}">${JAW_ORDER.map(l => l === '|' ? '<span class="gap"></span>' : `<button class="tooth ${'EFGH'.includes(l) ? 'm' : ''} ${teeth[j + '-' + l] ? 'in' : ''}" data-tooth="${j}-${l}" aria-label="${toothName(j + '-' + l)}${teeth[j + '-' + l] ? ', came in ' + fmtDay(teeth[j + '-' + l].t) : ''}"></button>`).join('')}</div>`;
   const list = Object.values(teeth).sort((a, b) => b.t - a.t);
   return `<div class="card set"><div class="row between"><h2>Teeth</h2><span class="muted small">${list.length} of 20</span></div>
     <div class="mouth"><span class="jaw-label">Upper</span>${jaw('U')}${jaw('L')}<span class="jaw-label">Lower</span></div>
-    <p class="small muted" style="margin:0">Tap a tooth when it comes in.${list.length ? ` Latest: ${toothName(list[0].key).toLowerCase()}, ${fmtDay(list[0].t)}${c.dob ? ' (' + ageText(c, list[0].t) + ')' : ''}.` : ''}</p></div>`;
+    <p class="small muted" style="margin:0">Tap a tooth when it comes in.${list.length ? ` Latest: ${toothName(list[0].key).toLowerCase()}, ${fmtDay(list[0].t)}${c.dob ? ' (' + ageText(c, list[0].t) + ')' : ''}.` : ''}</p>
+    ${onDental ? '' : zPlanOn() || zExams(c).length ? `<button class="vx-row ${zOpen(c).length ? 'due' : ''}" data-tab="dental"><span><b>Dental checkups</b><small>${esc(zSummary(c))}</small></span><span class="muted" aria-hidden="true">›</span></button>` : ''}</div>`;
 }
 function milestonesHtml(c) {
   const done = growthOf(c).filter(g => g.kind === 'milestone'), byKey = Object.fromEntries(done.filter(g => g.key).map(g => [g.key, g]));
@@ -1246,8 +1250,9 @@ const uOf = c => live(S.checkups || []).filter(x => x.childId === c.id);
 const uExams = c => uOf(c).filter(x => x.kind === 'exam').sort((a, b) => b.t - a.t);
 const uName = k => k === 'other' ? 'Other checkup' : k + ' checkup';
 // Where a child stands with one checkup: done, due now, soon (time to book), later, or its period is over.
-function uStatus(c, u) {
-  const given = uExams(c).filter(e => e.u === u.k), base = { given };
+const uStatus = (c, u) => planStatus(c, u, uExams(c).filter(e => e.u === u.k));
+function planStatus(c, u, given) {
+  const base = { given };
   if (given.length) return { ...base, st: 'done', text: `Done · ${fmtDate(given[0].t)}` };
   if (!c.dob) return { ...base, st: 'open', text: 'Usually ' + u.ages };
   const now = Date.now(), [as, ae] = span(c.dob, u.at), [ws, we] = span(c.dob, u.win), best = u.k === 'U1' ? u.ages : `${fmtDate(as)} to ${fmtDate(lastDay(ae))}`;
@@ -1271,7 +1276,7 @@ function vaxEvent(c, v) {
   return { uid: `${c.id}-vax-${v.k}-${s.n + 1}`, t: Math.max(startOfDay(atMonths(c.dob, v.at[s.n])), startOfDay(Date.now())), title: `${v.s} vaccination · ${c.name}`,
     details: `${v.l}${s.of > 1 ? `, dose ${s.n + 1} of ${s.of}` : ''}: usually ${v.ages[s.n]}, as in the STIKO schedule. Your pediatrician decides what your child gets and when. Bring the vaccination book. From Aura.` };
 }
-const nextEvents = c => [...(uPlanOn() ? U_PLAN.map(u => uEvent(c, u)) : []), ...(planOn() ? VAX_PLAN.filter(v => !(c.vaxSkip || []).includes(v.k)).map(v => vaxEvent(c, v)) : [])]
+const nextEvents = c => [...(uPlanOn() ? U_PLAN.map(u => uEvent(c, u)) : []), ...(zPlanOn() ? Z_PLAN.map(z => zEvent(c, z)) : []), ...(planOn() ? VAX_PLAN.filter(v => !(c.vaxSkip || []).includes(v.k)).map(v => vaxEvent(c, v)) : [])]
   .filter(e => e && e.t < Date.now() + 365 * DAY).sort((a, b) => a.t - b.t);
 function renderCheckups() {
   const el = $('#view-checkups'), c = kid();
@@ -1315,6 +1320,98 @@ function uItemSheet(k) {
     <div class="sheet-actions">${ev ? `<button class="btn" data-act="cal-u" data-for="${k}">Add to calendar</button>` : '<span></span>'}<button class="btn primary" data-act="add-u" data-for="${k}">${s.given.length ? 'Add another visit' : 'Record it'}</button></div>`, { uItem: k });
 }
 
+/* ---------- Dental checkups (Z1 to Z6) ---------- */
+// The German dental checkups for small children (G-BA, zahnärztliche Früherkennung, as of 2026): Z1 to Z3 at the
+// dentist's between the 6th and the 33rd month of life, Z4 to Z6 between the 34th and the 72nd month, each in its own
+// period. Many families have a dental pass for them (Zahnärztlicher Kinderpass); since 2026 the dentist can also write
+// them into the U-Heft, and the pediatrician refers to the dentist at the U5 to U9. Fluoride varnish can be put on twice
+// per calendar half-year from 6 months to 6 years. Visits are `dental` ({ id, childId, kind: 'exam', z, t, by, note,
+// fluoride, teeth }): `z` is Z1 to Z6 or 'other' (any other visit to the dentist), `teeth` how many teeth had come in by
+// then. Teeth the dentist saw that weren't marked yet are added to the tooth map under Growth, dated that day.
+// A reminder of the published schedule only; the dentist decides.
+const Z_PLAN = [
+  { k: 'Z1', at: [6, 9, 'm'], win: [6, 9, 'm'], ages: 'month 6 to 9', note: 'The first visit, usually around the first tooth. The dentist also shows how to brush baby teeth.' },
+  { k: 'Z2', at: [10, 20, 'm'], win: [10, 20, 'm'], ages: 'month 10 to 20' },
+  { k: 'Z3', at: [21, 33, 'm'], win: [21, 33, 'm'], ages: 'month 21 to 33' },
+  { k: 'Z4', at: [34, 48, 'm'], win: [34, 48, 'm'], ages: 'month 34 to 48' },
+  { k: 'Z5', at: [49, 60, 'm'], win: [49, 60, 'm'], ages: 'month 49 to 60' },
+  { k: 'Z6', at: [61, 72, 'm'], win: [61, 72, 'm'], ages: 'month 61 to 72', note: 'The last of these checkups. From 6 years the dentist checks the teeth every half year.' }];
+const zPlanOn = () => S.settings.zPlan !== 'none';
+const zExams = c => live(S.dental || []).filter(x => x.childId === c.id).sort((a, b) => b.t - a.t);
+const zName = k => k === 'other' ? 'Visit to the dentist' : k + ' dental checkup';
+const zStatus = (c, z) => planStatus(c, z, zExams(c).filter(e => e.z === z.k));
+const zOpen = c => zPlanOn() && c?.dob ? Z_PLAN.filter(z => ['due', 'soon'].includes(zStatus(c, z).st)) : [];
+const zLineText = (c, z) => { const s = zStatus(c, z); return `${z.k} dental checkup ${s.st === 'due' ? 'due until ' + fmtDate(lastDay(s.we)) : 'from ' + fmtDate(s.ws) + ': time to book'}`; };
+const zLine = c => { const z = zOpen(c)[0]; return z ? `<button class="linkish vax-line" data-tab="dental">${zLineText(c, z)}</button>` : ''; };
+// One line about the dental checkups, for the Documents tab and the teeth on Growth.
+function zSummary(c) {
+  const o = zOpen(c), last = zExams(c)[0], next = zPlanOn() && c.dob ? Z_PLAN.find(z => zStatus(c, z).st === 'later') : null;
+  if (o.length) return zLineText(c, o[0]);
+  return [last ? `Last: ${last.z === 'other' ? 'dentist' : last.z} on ${fmtDate(last.t)}` : 'None recorded', next ? `next ${next.k} from ${fmtDate(zStatus(c, next).ws)}` : ''].filter(Boolean).join(' · ');
+}
+function zEvent(c, z) {
+  const s = zStatus(c, z); if (!['due', 'soon', 'later'].includes(s.st)) return null;
+  return { uid: `${c.id}-${z.k}`, t: Math.max(s.ws, startOfDay(Date.now())), title: `${z.k} dental checkup · ${c.name}`,
+    details: `${z.k} dental checkup, ${z.ages}: from ${fmtDate(s.ws)} until ${fmtDate(lastDay(s.we))}. Book it with a dentist for children and bring the dental pass or the U-Heft. From Aura.` };
+}
+const teethIn = c => growthOf(c).filter(g => g.kind === 'tooth');
+function renderDental() {
+  const el = $('#view-dental'), c = kid();
+  if (!c) { el.innerHTML = header('Dental checkups', 'Dental pass') + `<div class="card empty"><p class="muted">Add your child to keep their dental checkups here.</p><button class="btn primary" data-kid="new">Add your child</button></div>`; return; }
+  const exams = zExams(c), fl = exams.find(e => e.fluoride);
+  const row = z => { const s = zStatus(c, z);
+    return `<button class="vx-row ${s.st}" data-zitem="${z.k}"><span><b>${z.k}</b><small>${esc(s.text)}</small></span><span class="vx-dots" aria-label="${s.st === 'done' ? 'recorded' : 'not recorded'}"><i class="${s.st === 'done' ? 'on' : ''}"></i></span></button>`; };
+  const evs = c.dob ? Z_PLAN.map(z => zEvent(c, z)).filter(e => e && e.t < Date.now() + 365 * DAY) : [];
+  el.innerHTML = header('Dental checkups', `${esc(c.name)}${c.dob ? ' · ' + ageText(c) : ''}`) + exampleBanner() + `
+    <div class="row"><button class="btn primary" data-act="doc-add" data-type="z">Add a page of the dental pass</button><button class="btn" data-act="add-z">Add a visit</button></div>
+    ${zPlanOn() ? `<div class="card set"><div class="row between"><h2>Dental checkups</h2><span class="muted small">Germany</span></div>
+      ${!c.dob ? '<p class="small muted" style="margin:0">Add a birth date to see when each checkup is due.</p>' : ''}
+      <div>${Z_PLAN.map(row).join('')}</div>
+      ${evs.length ? `<div><button class="btn sm" data-act="cal-z">Add the next ${evs.length > 1 ? 'dates' : 'date'} to my calendar</button></div>` : ''}
+      <p class="small muted" style="margin:0">Ages from the German dental checkup rules for children (zahnärztliche Früherkennung). The dentist can also put fluoride varnish on the teeth twice every half year until 6. Dentists write these checkups in the dental pass, or since 2026 in the U-Heft.</p></div>` : ''}
+    ${teethHtml(c, true)}
+    <div class="card set"><h2>Recorded</h2>
+      ${exams.length ? `<div>${exams.map(e => `<button class="vx-dose" data-zexam="${e.id}"><span><b>${esc(zName(e.z))}</b> <span class="muted small num">${fmtDate(e.t)}${c.dob ? ' · ' + ageText(c, e.t) : ''}</span></span>${e.by || e.teeth || e.fluoride ? `<small>${esc([e.by, e.teeth ? e.teeth + (e.teeth === 1 ? ' tooth' : ' teeth') : '', e.fluoride ? 'fluoride varnish' : ''].filter(Boolean).join(' · '))}</small>` : ''}${e.note ? `<small>${esc(e.note)}</small>` : ''}</button>`).join('')}</div>${fl ? `<p class="small muted" style="margin:0">Fluoride varnish last put on ${fmtDate(fl.t)}.</p>` : ''}`
+        : '<p class="muted small" style="margin:0">Nothing recorded yet. Add the pages of the dental pass (with AI reading on, Aura reads the checkups from them), or add each visit by hand with what the dentist said, in your own words.</p>'}</div>
+    ${docCard(c, 'z')}
+    <div class="card set"><h2>Schedule to show</h2>
+      <div class="chips">${[['de', 'Germany (Z1 to Z6)'], ['none', 'None, just my records']].map(([k, l]) => `<button data-zplan="${k}" class="${(S.settings.zPlan || 'de') === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>`;
+}
+// A visit to the dentist. The tooth map shows the teeth already marked; tapping others adds them as seen that day.
+function zSheet(id, preset) {
+  const c = kid(), e = id ? S.dental.find(x => x.id === id) : { z: preset || (zOpen(c)[0]?.k) || '' }, have = new Set(teethIn(c).map(g => g.key));
+  const jaw = j => `<div class="jaw ${j === 'L' ? 'lower' : ''}">${JAW_ORDER.map(l => l === '|' ? '<span class="gap"></span>' : `<button type="button" class="tooth ${'EFGH'.includes(l) ? 'm' : ''} ${have.has(j + '-' + l) ? 'in' : ''}" ${have.has(j + '-' + l) ? 'disabled' : `data-zt="${j}-${l}"`} aria-label="${toothName(j + '-' + l)}${have.has(j + '-' + l) ? ', already in' : ''}"></button>`).join('')}</div>`;
+  openSheet(`<div class="hd"><h2>${id ? 'Edit visit' : 'Add a visit to the dentist'}</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+    <div class="field"><span>Which checkup</span><div class="chips" data-k="z">${[...Z_PLAN.map(z => z.k), 'other'].map(k => `<button type="button" data-v="${k}" class="${e.z === k ? 'on' : ''}">${k === 'other' ? 'Other visit' : k}</button>`).join('')}</div></div>
+    <label class="field"><span>Date</span><input id="z_date" type="date" value="${toLocalInput(e.t || Date.now()).slice(0, 10)}" max="${toLocalInput(Date.now()).slice(0, 10)}"></label>
+    <label class="field"><span>Dentist or practice (optional)</span><input id="z_by" value="${esc(e.by || '')}" autocomplete="off"></label>
+    <label class="scan-ok small"><input type="checkbox" id="z_fl" ${e.fluoride ? 'checked' : ''}><span>Fluoride varnish was put on the teeth</span></label>
+    <label class="field"><span>Notes (optional)</span><textarea id="z_note" style="min-height:80px" placeholder="What the dentist said, in your own words">${esc(e.note || '')}</textarea></label>
+    <div class="field"><span>Teeth (${have.size} of 20 marked)</span><div class="mouth"><span class="jaw-label">Upper</span>${jaw('U')}${jaw('L')}<span class="jaw-label">Lower</span></div>
+      <p class="small muted" style="margin:0">Tap any tooth the dentist saw that isn't marked yet. It is added under Growth, dated this visit.</p></div>
+    <div class="sheet-actions">${id ? '<button class="btn ghost danger" data-act="del-z">Delete</button>' : '<span></span>'}<button class="btn primary" data-act="save-z">Save</button></div>`, { zexam: id || null, childId: c.id });
+}
+function zItemSheet(k) {
+  const c = kid(), z = Z_PLAN.find(x => x.k === k), s = zStatus(c, z), ev = c.dob && zEvent(c, z);
+  openSheet(`<div class="hd"><h2>${z.k} dental checkup</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+    <p class="small muted" style="margin:0">In months ${z.at[0]} to ${z.at[1]} of life${s.ws ? `: from ${fmtDate(s.ws)} until ${fmtDate(lastDay(s.we))}` : ''}.${z.note ? ' ' + esc(z.note) : ''}</p>
+    <div>${s.given.map(e => `<button class="vx-dose" data-zexam="${e.id}"><span><b>${fmtDate(e.t)}</b>${c.dob ? ` <span class="muted small num">${ageText(c, e.t)}</span>` : ''}</span>${e.by ? `<small>${esc(e.by)}</small>` : ''}${e.note ? `<small>${esc(e.note)}</small>` : ''}</button>`).join('') || '<p class="muted small" style="margin:0">Not recorded yet.</p>'}</div>
+    <div class="sheet-actions">${ev ? `<button class="btn" data-act="cal-z" data-for="${k}">Add to calendar</button>` : '<span></span>'}<button class="btn primary" data-act="add-z" data-for="${k}">${s.given.length ? 'Add another visit' : 'Record it'}</button></div>`, { zItem: k });
+}
+function saveZ() {
+  const z = readChips('z'), day = $('#z_date').value, noon = day ? new Date(day + 'T12:00').getTime() : NaN;
+  if (!z) return toast('Tap which checkup it was.');
+  if (!noon) return toast('Enter the date of the visit.');
+  if (startOfDay(noon) > Date.now()) return toast('That date is in the future.');
+  const t = Math.min(noon, Date.now()), e = sheetCtx.zexam ? S.dental.find(x => x.id === sheetCtx.zexam) : { id: uid(), childId: sheetCtx.childId, kind: 'exam' };
+  const seen = [...document.querySelectorAll('#sheet [data-zt].in')].map(b => b.dataset.zt);
+  for (const key of seen) S.growth.push(touch({ id: uid(), childId: e.childId, kind: 'tooth', key, t, note: `Seen at the ${zName(z).replace('Visit to the dentist', 'dentist')}` }));
+  const c = S.children.find(k => k.id === e.childId);
+  Object.assign(e, { z, t, by: $('#z_by').value.trim(), note: $('#z_note').value.trim(), fluoride: $('#z_fl').checked, teeth: teethIn(c).filter(g => startOfDay(g.t) <= startOfDay(t)).length });
+  touch(e); if (!sheetCtx.zexam) S.dental.push(e); closeSheet(); commit();
+  toast(seen.length ? `Visit saved, ${seen.length} ${seen.length > 1 ? 'teeth' : 'tooth'} added` : 'Visit saved');
+}
+
 /* ---------- Calendar ---------- */
 // Dates Aura already knows (checkups, vaccinations) go into the parent's own calendar without signing in to it:
 // Google Calendar gets a prefilled event, other calendars (Apple, Outlook) a calendar file. All-day events, so a
@@ -1346,7 +1443,7 @@ function calSheet(evs) {
 
 /* ---------- Documents tab ---------- */
 // Everything that describes the child rather than their day, in one tab: the emergency card, the vaccination book and the
-// U-Heft (their own screens, with schedules and reminders), and any other paper document kept page by page.
+// U-Heft and the dental pass (their own screens, with schedules and reminders), and any other paper document kept page by page.
 const pagesText = n => n ? ` · ${n} page${n === 1 ? '' : 's'}` : '';
 function renderDocs() {
   const el = $('#view-docs'), c = kid();
@@ -1360,7 +1457,8 @@ function renderDocs() {
     <div class="card set">
       <button class="vx-row" data-card="${c.id}"><span><b>Emergency card</b><small>${card?.allergies ? 'Allergies: ' + esc(oneLine(card.allergies)) : card ? 'No allergies written down' : 'Not filled in yet'}</small></span><span class="muted" aria-hidden="true">›</span></button>
       <button class="vx-row ${vo.length ? 'due' : ''}" data-tab="vax"><span><b>Vaccinations</b><small>${esc(vaxText)}${pagesText(docPages(typedDoc(c, 'vax')).length)}</small></span><span class="muted" aria-hidden="true">›</span></button>
-      <button class="vx-row ${uo.length ? 'due' : ''}" data-tab="checkups"><span><b>Checkups (U-Heft)</b><small>${esc(uText)}${pagesText(docPages(typedDoc(c, 'u')).length)}</small></span><span class="muted" aria-hidden="true">›</span></button></div>
+      <button class="vx-row ${uo.length ? 'due' : ''}" data-tab="checkups"><span><b>Checkups (U-Heft)</b><small>${esc(uText)}${pagesText(docPages(typedDoc(c, 'u')).length)}</small></span><span class="muted" aria-hidden="true">›</span></button>
+      <button class="vx-row ${zOpen(c).length ? 'due' : ''}" data-tab="dental"><span><b>Dental checkups</b><small>${esc(zSummary(c))}${pagesText(docPages(typedDoc(c, 'z')).length)}</small></span><span class="muted" aria-hidden="true">›</span></button></div>
     <div class="card set"><h2>Other documents</h2>
       <p class="small muted" style="margin:0">Digital copies of ${esc(c.name)}'s other papers, page by page: an allergy pass, a hospital letter, the daycare contract.</p>
       ${others.length ? `<div>${others.map(d => `<button class="vx-dose" data-docid="${d.id}"><span><b>${esc(docTitle(d))}</b> <span class="muted small">${docPages(d).length} page${docPages(d).length === 1 ? '' : 's'}</span></span>${d.note ? `<small>${esc(d.note)}</small>` : ''}</button>`).join('')}</div>` : ''}
@@ -1676,7 +1774,9 @@ const aiKeySet = () => { const st = S.settings; return st.aiKind === 'openai' ? 
 const VAX_SCAN_SCHEMA = { type: 'object', additionalProperties: false, required: ['doses'], properties: { doses: { type: 'array', items: { type: 'object', additionalProperties: false,
   required: ['date', 'against', 'name', 'batch', 'by'], properties: { date: nul('string'), against: { type: 'array', items: { type: 'string', enum: VAX_KINDS.map(([k]) => k) } }, name: nul('string'), batch: nul('string'), by: nul('string') } } } } };
 const U_SCAN_SCHEMA = { type: 'object', additionalProperties: false, required: ['checkups'], properties: { checkups: { type: 'array', items: { type: 'object', additionalProperties: false,
-  required: ['u', 'date', 'by', 'weightKg', 'heightCm', 'headCm'], properties: { u: { type: 'string', enum: [...U_PLAN.map(u => u.k), 'other'] }, date: nul('string'), by: nul('string'), weightKg: nul('number'), heightCm: nul('number'), headCm: nul('number') } } } } };
+  required: ['u', 'date', 'by', 'weightKg', 'heightCm', 'headCm'], properties: { u: { type: 'string', enum: [...U_PLAN.map(u => u.k), ...Z_PLAN.map(z => z.k), 'other'] }, date: nul('string'), by: nul('string'), weightKg: nul('number'), heightCm: nul('number'), headCm: nul('number') } } } } };
+const Z_SCAN_SCHEMA = { type: 'object', additionalProperties: false, required: ['checkups'], properties: { checkups: { type: 'array', items: { type: 'object', additionalProperties: false,
+  required: ['u', 'date', 'by', 'fluoride'], properties: { u: { type: 'string', enum: [...Z_PLAN.map(z => z.k), 'other'] }, date: nul('string'), by: nul('string'), fluoride: nul('boolean') } } } } };
 const SCAN_RULES = 'Dates are written like 12.03.25 or 12.03.2025 (day first); answer YYYY-MM-DD, and two-digit years are 20YY. Read only what is written. If a value is missing or you cannot read it with confidence, use null; never guess a date, number or name. Skip empty rows, printed headings and example text. Do not interpret anything and do not give medical advice.';
 const VAX_SCAN_SYSTEM = `You read photos of pages from a child's vaccination record, such as the German yellow Impfpass or an international certificate of vaccination. List every vaccination entry you can read, one item per dose (one row or sticker with a date). ` +
   `"against" holds the keys of what the dose protects against, from this list: ${JSON.stringify(Object.fromEntries(VAX_KINDS))}. A combined shot against diphtheria, tetanus, whooping cough (pertussis), polio, Hib and hepatitis B (for example Hexyon, Infanrix hexa, Vaxelis) is "6in1", also when those diseases are ticked one by one on the same row. ` +
@@ -1684,10 +1784,15 @@ const VAX_SCAN_SYSTEM = `You read photos of pages from a child's vaccination rec
   `Use "other" only when nothing else fits, and then always give the name. "name": the vaccine's trade name as written or on the sticker. "batch": the batch number (Ch.-B., Lot) exactly as printed. "by": the doctor or practice from the stamp. ${SCAN_RULES}`;
 const U_SCAN_SYSTEM = `You read photos of pages from the German child health booklet (gelbes Kinderuntersuchungsheft, U-Heft). List each checkup that was done: U1, U2, U3, U4, U5, U6, U7, U7a, U8, U9, U10 or J1 ("other" for anything else). ` +
   `A checkup counts as done only when a date is written for it, usually with a practice stamp or signature, for example on the attendance card (Teilnahmekarte) or at the end of that checkup's section. ` +
-  `"by": the doctor or practice from the stamp. weightKg, heightCm and headCm: body weight (Körpergewicht, convert grams to kg), length or height (Körperlänge/Größe) and head circumference (Kopfumfang) if written in that checkup's section, else null. Ignore ticked findings and the rest of the examination. ${SCAN_RULES}`;
+  `"by": the doctor or practice from the stamp. weightKg, heightCm and headCm: body weight (Körpergewicht, convert grams to kg), length or height (Körperlänge/Größe) and head circumference (Kopfumfang) if written in that checkup's section, else null. Ignore ticked findings and the rest of the examination. ` +
+  `Since 2026 the booklet also has the dental checkups Z1 to Z6 written in by a dentist: list each one with a date as Z1 to Z6, with weightKg, heightCm and headCm null. ${SCAN_RULES}`;
+const Z_SCAN_SYSTEM = `You read photos of pages from a child's dental pass (in Germany the Zahnärztlicher Kinderpass, or the dental pages of the U-Heft). List each dental checkup that was done: Z1, Z2, Z3, Z4, Z5 or Z6. ` +
+  `Older passes may call them FU1a, FU1b and FU1c (these are Z1, Z2 and Z3) or FU2 (Z4, Z5 or Z6 in the order they were done); use "other" for any other dated visit. A checkup counts as done only when a date is written for it, usually with a practice stamp or signature. ` +
+  `"by": the dentist or practice from the stamp. "fluoride": true if it is marked that fluoride varnish (Fluoridlack, Fluoridierung) was applied at that visit, false if marked as not, else null. Ignore the tooth chart and findings. ${SCAN_RULES}`;
 const DOC_TYPES = {
   vax: { title: 'Vaccination book', tab: 'vax', read: { system: VAX_SCAN_SYSTEM, user: 'Read the vaccinations on these pages.', schema: VAX_SCAN_SCHEMA } },
   u: { title: 'U-Heft', tab: 'checkups', read: { system: U_SCAN_SYSTEM, user: 'Read the checkups on these pages.', schema: U_SCAN_SCHEMA } },
+  z: { title: 'Dental pass', tab: 'dental', read: { system: Z_SCAN_SYSTEM, user: 'Read the dental checkups on these pages.', schema: Z_SCAN_SCHEMA } },
   other: { title: 'Document' } };
 const docTitle = d => d.title || DOC_TYPES[d.type]?.title || 'Document';
 const docsOf = c => live(S.docs || []).filter(d => d.childId === c.id).sort((a, b) => (a.type === 'other') - (b.type === 'other') || docTitle(a).localeCompare(docTitle(b)));
@@ -1708,7 +1813,7 @@ const pagesGrid = pages => pages.length ? `<div class="book">${pages.map((p, i) 
 const readOn = () => aiKeySet() && S.settings.scanRead !== false;
 // The card on the Vaccinations and Checkups screens (under Documents).
 function docCard(c, type) {
-  const d = typedDoc(c, type), pages = docPages(d), what = type === 'vax' ? 'vaccination book' : 'U-Heft';
+  const d = typedDoc(c, type), pages = docPages(d), what = { vax: 'vaccination book', u: 'U-Heft', z: 'dental pass' }[type];
   return `<div class="card set"><div class="row between"><h2>Pages of the ${what}</h2><span class="muted small">${pages.length ? pages.length + (pages.length > 1 ? ' pages' : ' page') : ''}</span></div>
     ${pagesGrid(pages)}
     <p class="small muted" style="margin:0">Keep the ${what} here page by page: add a page when a new one is filled in, and replace a page when more is written on it.${readOn() ? ' Aura then reads the new entries on that page and asks you to check them.' : aiKeySet() ? ' Reading the entries with AI is off.' : ' To have Aura read the entries for you, set up an AI service that understands pictures under More.'} Pages sync with your partner and go into Drive backups.</p>
@@ -1770,10 +1875,12 @@ async function readPages(ids) {
         if (t && (have.some(same) || items.some(y => y.day && same({ ...y, t: new Date(y.day + 'T12:00').getTime() })))) skipped.push(v); else items.push(v);
       }
     } else {
-      const have = uExams(c);
+      // Dental checkups can be on U-Heft pages too (since 2026); they go to the dental checkups.
+      const haveU = uExams(c).map(y => y.u), haveZ = zExams(c).map(y => y.z);
       for (const x of r.checkups || []) {
-        const e = { u: x.u, by: (x.by || '').trim(), day: scanDay(x.date), ...Object.fromEntries(MEAS.map(([k]) => [k, typeof x[k] === 'number' && x[k] > 0 ? x[k] : null])) };
-        if (e.u !== 'other' && (have.some(y => y.u === e.u) || items.some(y => y.u === e.u))) skipped.push(e); else items.push(e);
+        const dental = type === 'z' || Z_PLAN.some(z => z.k === x.u);
+        const e = { u: x.u, dental, by: (x.by || '').trim(), day: scanDay(x.date), ...(dental ? { fluoride: x.fluoride === true } : Object.fromEntries(MEAS.map(([k]) => [k, typeof x[k] === 'number' && x[k] > 0 ? x[k] : null]))) };
+        if (e.u !== 'other' && ((dental ? haveZ : haveU).includes(e.u) || items.some(y => y.u === e.u && y.dental === dental))) skipped.push(e); else items.push(e);
       }
     }
     scanned = { type, child: c.id, items, skipped, n: images.length };
@@ -1784,7 +1891,7 @@ async function readPages(ids) {
   }
 }
 const scanDesc = (type, x) => type === 'vax' ? `<b>${esc(vaxNames(x))}</b>${x.name || x.batch || x.by ? `<br><span class="small muted">${esc([x.name, x.batch && 'batch ' + x.batch, x.by].filter(Boolean).join(' · '))}</span>` : ''}`
-  : `<b>${esc(uName(x.u))}</b>${x.by || MEAS.some(([k]) => x[k] != null) ? `<br><span class="small muted">${esc([x.by, ...MEAS.filter(([k]) => x[k] != null).map(([k, l, u]) => `${l} ${x[k]} ${u}`)].filter(Boolean).join(' · '))}</span>` : ''}`;
+  : `<b>${esc(x.dental ? zName(x.u) : uName(x.u))}</b>${x.by || x.fluoride || MEAS.some(([k]) => x[k] != null) ? `<br><span class="small muted">${esc([x.by, x.fluoride && 'fluoride varnish', ...MEAS.filter(([k]) => x[k] != null).map(([k, l, u]) => `${l} ${x[k]} ${u}`)].filter(Boolean).join(' · '))}</span>` : ''}`;
 function scanHtml() {
   const { type, items, skipped, n } = scanned, max = toLocalInput(Date.now()).slice(0, 10), these = n > 1 ? 'these pages' : 'this page';
   if (!items.length) return `<div class="parsed"><p class="small muted" style="margin:0">${skipped.length ? `Everything on ${these} is already recorded (${skipped.length}).` : `I couldn't find any ${type === 'vax' ? 'vaccinations' : 'checkups with a date'} on ${these}. If it is hard to read, replace it with a sharper photo, in good light.`}</p>${sentHtml()}</div>`;
@@ -1806,6 +1913,7 @@ function scanAdd() {
   if (!pick.length) return toast('Tick what you want to add.');
   for (const x of pick) {
     if (type === 'vax') S.vaccines.push(touch({ id: uid(), childId: child, kind: 'dose', t: x.t, against: x.against, name: x.name, batch: x.batch, by: x.by, note: '' }));
+    else if (x.dental) S.dental.push(touch({ id: uid(), childId: child, kind: 'exam', z: x.u, t: x.t, by: x.by, note: '', fluoride: x.fluoride }));
     else {
       const e = { id: uid(), childId: child, kind: 'exam', u: x.u, t: x.t, by: x.by, note: '' };
       if (MEAS.some(([k]) => x[k] != null)) { const m = touch({ id: uid(), childId: child, t: x.t, note: uName(x.u), ...Object.fromEntries(MEAS.map(([k]) => [k, x[k]])) }); S.measurements.push(m); e.measId = m.id; }
@@ -1925,7 +2033,7 @@ async function token(interactive) {
 }
 async function gapi(tok, url, opts = {}) { const r = await fetch(url, { ...opts, headers: { Authorization: 'Bearer ' + tok, ...(opts.headers || {}) } }); if (!r.ok) throw new Error(`Drive error ${r.status}`); return r; }
 const DRIVE = 'https://www.googleapis.com/drive/v3/files', UP = 'https://www.googleapis.com/upload/drive/v3/files';
-const SYNCED = ['children', 'episodes', 'entries', 'meds', 'measurements', 'growth', 'products', 'vaccines', 'checkups', 'emergency', 'docs', 'pages'];
+const SYNCED = ['children', 'episodes', 'entries', 'meds', 'measurements', 'growth', 'products', 'vaccines', 'checkups', 'dental', 'emergency', 'docs', 'pages'];
 const shareable = () => ({ app: 'aura', v: SCHEMA, savedAt: Date.now(), ...Object.fromEntries(SYNCED.map(k => [k, S[k]])) });
 const enc = encodeURIComponent, JSON_H = { 'Content-Type': 'application/json' }, FOLDER_T = 'application/vnd.google-apps.folder';
 async function folderId(tok, name, parent) {
@@ -2327,6 +2435,7 @@ document.addEventListener('click', async ev => {
     if (b.dataset.themeSet) { S.settings.theme = b.dataset.themeSet; return commit(); }
     if (b.dataset.vaxplan) { S.settings.vaxPlan = b.dataset.vaxplan; persist(); return render(); }
     if (b.dataset.uplan) { S.settings.uPlan = b.dataset.uplan; persist(); return render(); }
+    if (b.dataset.zplan) { S.settings.zPlan = b.dataset.zplan; persist(); return render(); }
     if (box.hasAttribute('data-multi')) b.classList.toggle('on');
     else { const was = b.classList.contains('on'); box.querySelectorAll('button').forEach(x => x.classList.remove('on')); if (!was || box.dataset.k === 'kind') b.classList.add('on'); const c = box.querySelector('[data-custom]'); if (c) c.value = ''; }
     if (box.dataset.k === 'kind') syncShow();
@@ -2354,6 +2463,9 @@ document.addEventListener('click', async ev => {
   if (b.dataset.docid) return docSheet(b.dataset.docid);
   if (b.dataset.uitem) return uItemSheet(b.dataset.uitem);
   if (b.dataset.uexam) return uSheet(b.dataset.uexam);
+  if (b.dataset.zitem) return zItemSheet(b.dataset.zitem);
+  if (b.dataset.zexam) return zSheet(b.dataset.zexam);
+  if (b.dataset.zt) { b.classList.toggle('in'); b.setAttribute('aria-pressed', String(b.classList.contains('in'))); return; }
   if (b.dataset.tooth) return growthSheet('tooth', b.dataset.tooth);
   if (b.dataset.ms) return growthSheet('milestone', b.dataset.ms === 'new' ? null : b.dataset.ms);
   if (b.dataset.track) {
@@ -2456,6 +2568,10 @@ document.addEventListener('click', async ev => {
       touch(e); if (!sheetCtx.uexam) S.checkups.push(e); closeSheet(); commit(); return toast('Checkup saved');
     }
     case 'del-u': { const e = S.checkups.find(x => x.id === sheetCtx.uexam); e.deleted = true; touch(e); closeSheet(); commit(); return toast(e.measId ? 'Deleted. Its measurements stay under Growth.' : 'Deleted'); }
+    case 'add-z': return zSheet(null, b.dataset.for);
+    case 'save-z': return saveZ();
+    case 'del-z': { const e = S.dental.find(x => x.id === sheetCtx.zexam); e.deleted = true; touch(e); closeSheet(); commit(); return toast('Deleted. Teeth it added stay under Growth.'); }
+    case 'cal-z': { const c = kid(); return calSheet((b.dataset.for ? Z_PLAN.filter(z => z.k === b.dataset.for) : Z_PLAN).map(z => zEvent(c, z)).filter(e => e && (b.dataset.for || e.t < Date.now() + 365 * DAY))); }
     case 'doc-add': return pickPages(b.dataset.doc ? { doc: b.dataset.doc } : { type: b.dataset.type });
     case 'doc-new': return docSheet('new');
     case 'doc-save': return saveDoc();
