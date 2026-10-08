@@ -95,6 +95,7 @@ for (const theme of ['night', 'day']) {
   // Teeth and milestones on the Growth tab
   if (theme === 'night') {
     await page.click('.tabs [data-tab="growth"]');
+    if ((await page.locator('svg.curve').count()) < 2) fail('example child has no WHO percentile curves');
     const teeth = () => page.locator('.tooth.in').count(), before = await teeth();
     await page.locator('.tooth:not(.in)').first().click();
     await page.click('[data-act="save-growth"]');
@@ -516,6 +517,30 @@ for (const theme of ['night', 'day']) {
   if (calls !== 1) fail(`recalls: list fetched ${calls} times, expected once`);
   const st = await getState(page);
   if (!st.products.some(p => p.name === 'hipp' && p.updatedAt)) fail('recalls: product list not saved');
+  await page.close();
+}
+
+// WHO percentiles: shown once the child's sex is set, with values that match the WHO tables
+{
+  const page = await newPage();
+  page.on('pageerror', e => fail(`percentiles: ${e.message}`));
+  await page.goto(url); await page.waitForSelector('h1');
+  const st = await getState(page), at12 = Date.parse('2025-01-01') + 12 * 30.4375 * 864e5;
+  Object.assign(st, { example: false, child: 'k1', children: [{ id: 'k1', name: 'Ben', dob: '2025-01-01', updatedAt: 1 }], entries: [], episodes: [], growth: [], vaccines: [],
+    measurements: [{ id: 'm1', childId: 'k1', t: at12, weightKg: 8.6, heightCm: 75.7488, headCm: 46.1, updatedAt: 1 }, { id: 'm2', childId: 'k1', t: at12 - 90 * 864e5, weightKg: 8.4, heightCm: 72, updatedAt: 1 }] });
+  await setState(page, st); await reload(page); await page.waitForSelector('h1');
+  await page.click('.tabs [data-tab="growth"]');
+  if ((await page.locator('svg.curve').count()) !== 0 || (await page.locator('.tile .pct').count()) !== 0) fail('percentiles: shown without sex');
+  await page.click('#view-growth [data-kid="k1"]');
+  await page.selectOption('#k_sex', 'm');
+  await page.click('[data-act="save-kid"]');
+  if ((await page.locator('svg.curve').count()) !== 3) fail('percentiles: weight, height and head curves not all shown');
+  const tile = async l => page.locator('.tile', { hasText: l }).locator('.pct').innerText();
+  if ((await tile('Weight')) !== '15th percentile') fail(`percentiles: weight is ${await tile('Weight')}, WHO says 15th`);
+  if ((await tile('Height')) !== '50th percentile') fail(`percentiles: height is ${await tile('Height')}, WHO says 50th`);
+  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail('percentiles: Growth scrolls sideways');
+  await reload(page); await page.waitForSelector('h1');
+  if ((await getState(page)).children[0].sex !== 'm') fail('percentiles: sex not saved');
   await page.close();
 }
 

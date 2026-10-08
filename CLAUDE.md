@@ -12,3 +12,4 @@ Serverless baby and child log (PWA). Everything is in `src/app.html`; `sh build.
 - Design is "Night light": warm dark palette at night, warm cream by day, tokens on `:root` and `:root[data-mode="day"]`. Must work at 375 px width without sideways scrolling.
 - Run `npm test` before pushing (set `CHROMIUM_PATH` if Playwright's own browser is not installed). Pushes to `main` deploy to GitHub Pages.
 - Vaccinations (`vaccines`: doses as written in the book, and photos of its pages) have a Vaccines tab. The schedule (`VAX_PLAN`, German STIKO as of 2026) only reminds of the usual ages; the pediatrician decides. Update it when STIKO changes.
+- Growth percentiles use the WHO tables embedded as `WHO` (L, M, S per month: 2006 standards to 5 years, 2007 reference after; weight to 10 y, height to 19 y, head to 5 y). They need the child's `sex` (`f`/`m`) and birth date, and only describe; no wording that judges a percentile.
