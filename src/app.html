@@ -580,7 +580,7 @@ function renderToday() {
     const eps = epEntries(ep), lt = eps.find(e => e.type === 'temp'), al = alerts(eps, ep), lastMed = eps.find(e => e.type === 'med');
     const seg = `<div class="seg" role="tablist" aria-label="Today view"><button data-view="sick" class="${sickView ? 'on' : ''}">Sick · day ${dayNo(now, ep)}</button><button data-view="day" class="${sickView ? '' : 'on'}">Everyday</button></div>`;
     sick = seg + (sickView
-      ? `<div class="sick-card"><div><b>${esc(ep.title || 'Sick mode')}</b> <span class="muted small">since ${fmtDay(ep.start)}</span></div>
+      ? `<div class="sick-card"><div class="row between"><span><b>${esc(ep.title || 'Sick mode')}</b> <span class="muted small">since ${fmtDay(ep.start)}</span></span><button class="btn ghost sm" data-act="edit-episode" data-for="${ep.id}">Edit</button></div>
           <div class="small">${lt ? `Last temperature <b class="num">${showT(lt.tempC)}</b> at ${fmtTime(lt.t)}` : 'No temperature logged yet'}${lastMed ? `<br>Last medicine <b>${esc(lastMed.name)}</b> at ${fmtTime(lastMed.t)}` : ''}</div>
           ${al.length ? `<button class="linkish" data-act="open-sick" style="color:var(--wait)">${al.length} reminder${al.length > 1 ? 's' : ''} to look at</button>` : ''}
           <div class="row"><button class="btn sm" data-act="open-sick">Chart and doctor summary</button><button class="btn sm end" data-act="end-ask">${esc(c.name)} is better: end sick mode</button></div></div>`
@@ -647,9 +647,10 @@ function sickOverview(ep, es, el) {
       ${doses ? `<div class="tile wide-tile"><small>Last doses</small>${doses}</div>` : ''}
     </div>
     ${ep.end ? '' : `<div class="quick">${['temp', 'med', 'symptom'].map(k => `<button class="qb" data-add="${k}">${icon(k)}${TYPES[k].label}</button>`).join('')}</div>`}
+    ${ep.note ? `<div class="card"><h3>Notes</h3><div class="narrative" style="margin-top:4px">${esc(ep.note)}</div></div>` : ''}
     <div><h3 style="margin-bottom:4px">During this illness</h3><ul class="tl">${es.filter(e => ['temp', 'med', 'symptom', 'vomit', 'doctor', 'note', 'photo', 'sound'].includes(e.type)).map(entryRow).join('') || '<p class="muted">Nothing logged yet.</p>'}</ul>
       <p class="small muted">Feeds, sleep and diapers from these days are in the daily log and in the doctor summary.</p></div>
-    <div class="row">${ep.end ? `<button class="btn" data-act="reopen-episode">This illness isn't over</button>` : `<button class="btn primary" data-act="end-ask">${esc(childOf(ep)?.name || 'They')} is better: end sick mode</button>`}<button class="btn ghost" data-act="edit-episode">Rename or change start</button></div>
+    <div class="row">${ep.end ? `<button class="btn" data-act="reopen-episode">This illness isn't over</button>` : `<button class="btn primary" data-act="end-ask">${esc(childOf(ep)?.name || 'They')} is better: end sick mode</button>`}<button class="btn ghost" data-act="edit-episode">Edit dates and notes</button></div>
   </div>`;
 }
 function sickChart(ep, es, el) {
@@ -691,6 +692,7 @@ function summaryFacts(es, ep) {
   const c = childOf(ep), temps = es.filter(e => e.type === 'temp'), fevers = temps.filter(e => e.tempC >= FEVER_C), f = [], wt = weightOf(c);
   if (c) f.push(`${c.name}${c.dob ? ', ' + ageText(c) : ''}${wt ? `, ${wt.v} kg${wt.t ? ' (weighed ' + fmtDay(wt.t) + ')' : ''}` : ''}.`);
   f.push(`Illness started ${fmtDT(ep.start)}; ${ep.end ? 'better ' + fmtDay(ep.end) : 'today is day ' + dayNo(Date.now(), ep)}.`);
+  if (ep.note) f.push(`Notes: ${ep.note}`);
   if (fevers.length) { const mx = fevers.reduce((a, b) => (b.tempC > a.tempC ? b : a)); f.push(`Fever first recorded ${fmtDT(Math.min(...fevers.map(e => e.t)))}. Highest ${showT(mx.tempC)} on ${fmtDT(mx.t)}. Last fever reading ${ago(fevers[0].t)}.`); }
   else if (temps.length) f.push(`No temperature at or above ${showT(FEVER_C)} recorded (${temps.length} readings).`);
   if (temps.length) f.push(`Latest temperature ${showT(temps[0].tempC)} at ${fmtDT(temps[0].t)}${temps[0].method ? ' (' + lc(temps[0].method) + ')' : ''}.`);
@@ -814,7 +816,7 @@ function renderMore() {
       ${kids().map(c => `<div class="list-row"><span><b>${esc(c.name)}</b> <span class="muted small">${c.dob ? ageText(c) : 'no birth date'}${weightOf(c) ? ' · ' + weightOf(c).v + ' kg' : ''}</span></span><span class="row"><button class="btn sm ghost" data-act="track-sheet" data-for="${c.id}">Tracking</button><button class="btn sm" data-kid="${c.id}">Edit</button></span></div>`).join('') || '<p class="muted" style="margin:0">No children added yet.</p>'}
       <div><button class="btn sm" data-kid="new">Add a child</button></div></div>
     <div class="card set"><h2>Illnesses</h2>
-      ${eps.map(e => `<div class="list-row"><span><b>${esc(e.title || 'Illness')}</b> <span class="muted small">${esc(childOf(e)?.name || '')} · ${fmtDay(e.start)}${e.end ? ' – ' + fmtDay(e.end) : ' · ongoing'}</span></span><button class="btn sm" data-ep="${e.id}">Open</button></div>`).join('') || '<p class="muted small" style="margin:0">Past illnesses show up here, with their chart and doctor summary.</p>'}</div>
+      ${eps.map(e => `<div class="list-row"><span><b>${esc(e.title || 'Illness')}</b> <span class="muted small">${esc(childOf(e)?.name || '')} · ${fmtDay(e.start)}${e.end ? ' – ' + fmtDay(e.end) : ' · ongoing'}</span></span><span class="row"><button class="btn sm ghost" data-act="edit-episode" data-for="${e.id}">Edit</button><button class="btn sm" data-ep="${e.id}">Open</button></span></div>`).join('') || '<p class="muted small" style="margin:0">Past illnesses show up here, with their chart and doctor summary.</p>'}</div>
     ${recallCard()}
     <div class="card set"><h2>Look</h2>
       <div class="chips">${[['auto', 'Dim at night (7 pm – 7 am)'], ['night', 'Always dim'], ['day', 'Always light']].map(([k, l]) => `<button data-theme-set="${k}" class="${(st.theme || 'auto') === k ? 'on' : ''}">${l}</button>`).join('')}</div>
@@ -972,7 +974,10 @@ function episodeSheet(ep) {
   openSheet(`<div class="hd"><h2>${ep ? 'Edit illness' : `Start sick mode for ${esc(kid().name)}`}</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
     ${ep ? '' : '<p class="muted small" style="margin:0">Temperature, medicine and symptoms move to the top, and everything you log from now on also goes into the doctor summary.</p>'}
     <label class="field"><span>Short name (optional)</span><input id="f_title" value="${esc(ep?.title || '')}" placeholder="e.g. Fever and cough"></label>
-    <label class="field"><span>When did it start?</span><input id="f_start" type="datetime-local" value="${toLocalInput(ep?.start || Date.now())}"></label>
+    <label class="field"><span>When did it start?</span><input id="f_start" type="datetime-local" value="${toLocalInput(ep?.start || Date.now())}" max="${toLocalInput(Date.now())}"></label>
+    ${ep?.end ? `<label class="field"><span>When was ${esc(childOf(ep)?.name || 'your child')} better?</span><input id="f_epend" type="datetime-local" value="${toLocalInput(ep.end)}" max="${toLocalInput(Date.now())}"></label>` : ''}
+    <label class="field"><span>Notes (optional)</span><textarea id="f_epnote" rows="3" placeholder="e.g. Started after daycare, sister had it too">${esc(ep?.note || '')}</textarea></label>
+    ${ep ? '<p class="small muted" style="margin:0">Changing the dates only changes which entries count as part of this illness. Nothing you logged is deleted.</p>' : ''}
     <div class="sheet-actions">${ep ? '<button class="btn ghost danger" data-act="del-episode">Delete illness</button>' : '<span></span>'}<button class="btn primary" data-act="save-episode">${ep ? 'Save' : 'Start sick mode'}</button></div>`, { ep: ep?.id || null });
 }
 
@@ -1086,7 +1091,7 @@ async function aiSummary() {
   const ep = viewEp(), es = epEntries(ep).slice().reverse(), c = childOf(ep), wt = weightOf(c);
   const log = es.map(e => `${toLocalInput(e.t).replace('T', ' ')} (day ${dayNo(e.t, ep)}) ${TYPES[e.type]?.long || TYPES[e.type]?.label || e.type}: ${plain(e)}${e.note ? ' | note: ' + e.note : ''}`).join('\n');
   const system = `You help a parent hand over an accurate account of their child's illness to a doctor. Write from the log only; never add facts, diagnoses, or treatment or dose suggestions. Format: a 2-sentence overview, then 5 to 9 short bullet lines in time order covering the fever pattern, medicines with times and spacing, feeding, fluids and wet diapers, sleep, vomiting and stools, how symptoms changed, and what any doctor already said, ending with what changed most recently. Then "Questions you may want to ask:" with 3 brief questions. Plain text, no markdown headings. Match the language of the parent's notes.`;
-  const user = `Child: ${c ? `${c.name}${c.dob ? ', age ' + ageText(c) : ''}${wt ? ', ' + wt.v + ' kg' : ''}` : 'unknown'}. Illness started ${toLocalInput(ep.start).replace('T', ' ')}. Now: ${toLocalInput(Date.now()).replace('T', ' ')}. Temperatures in Celsius.\n\nLog:\n${log}`;
+  const user = `Child: ${c ? `${c.name}${c.dob ? ', age ' + ageText(c) : ''}${wt ? ', ' + wt.v + ' kg' : ''}` : 'unknown'}. Illness started ${toLocalInput(ep.start).replace('T', ' ')}.${ep.note ? ' Parent\'s notes about the illness: ' + ep.note : ''} Now: ${toLocalInput(Date.now()).replace('T', ' ')}. Temperatures in Celsius.\n\nLog:\n${log}`;
   narrative = 'Writing…'; render();
   try { narrative = (await ai(system, user, null, ep.childId)).trim(); } catch (err) { narrative = ''; toast(aiError(err)); }
   render();
@@ -1536,19 +1541,31 @@ document.addEventListener('click', async ev => {
     case 'more-days': showDays += 7; return render();
     case 'open-sick': viewEpId = activeEp()?.id; sickTab = 'overview'; narrative = ''; tab = 'sick'; render(); return window.scrollTo(0, 0);
     case 'new-episode': return episodeSheet(null);
-    case 'edit-episode': return episodeSheet(viewEp());
+    case 'edit-episode': return episodeSheet(b.dataset.for ? live(S.episodes).find(x => x.id === b.dataset.for) : viewEp());
     case 'save-episode': {
-      const start = new Date($('#f_start').value).getTime() || Date.now(), title = $('#f_title').value.trim();
-      if (sheetCtx.ep) { const e = S.episodes.find(x => x.id === sheetCtx.ep); Object.assign(e, { title, start }); touch(e); closeSheet(); return commit(); }
-      const e = touch({ id: uid(), childId: kid().id, title, start, end: null }); S.episodes.push(e);
+      const start = new Date($('#f_start').value).getTime(), title = $('#f_title').value.trim(), note = $('#f_epnote').value.trim();
+      if (!start) return toast('Enter when it started.');
+      if (start > Date.now() + 60e3) return toast('The start can\'t be in the future.');
+      if (sheetCtx.ep) {
+        const e = S.episodes.find(x => x.id === sheetCtx.ep), endIn = $('#f_epend'), end = endIn ? new Date(endIn.value).getTime() : e.end;
+        if (endIn && !end) return toast('Enter when it ended, or use "This illness isn\'t over".');
+        if (end && end > Date.now() + 60e3) return toast('The end can\'t be in the future.');
+        if (end && end < start) return toast('The end must be after the start.');
+        Object.assign(e, { title, start, end: end || null, note }); touch(e); closeSheet(); commit(); return toast('Illness updated.');
+      }
+      const e = touch({ id: uid(), childId: kid().id, title, start, end: null, note }); S.episodes.push(e);
       viewEpId = e.id; S.todayView = 'sick'; closeSheet(); tab = 'today'; commit(); return toast('Sick mode is on. Temperature and medicine are at the top.');
     }
     case 'del-episode': { const e = S.episodes.find(x => x.id === sheetCtx.ep); e.deleted = true; touch(e); closeSheet(); tab = 'today'; commit(); return toast('Illness deleted. Its entries stay in the daily log.'); }
     case 'end-ask': { const e = activeEp(); if (!e) return; viewEpId = e.id;
       return openSheet(`<div class="hd"><h2>End sick mode for ${esc(childOf(e)?.name || 'your child')}?</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
         <p class="muted" style="margin:0">Today goes back to everyday tracking. This illness and everything you logged stay saved under More → Illnesses, with its chart and doctor summary.</p>
+        <label class="field"><span>Better since</span><input id="f_better" type="datetime-local" value="${toLocalInput(Date.now())}" max="${toLocalInput(Date.now())}"></label>
         <div class="sheet-actions"><button class="btn ghost" data-act="close">Not yet</button><button class="btn primary" data-act="end-episode">Yes, end sick mode</button></div>`); }
-    case 'end-episode': { const e = viewEp(); e.end = Date.now(); touch(e); closeSheet(); tab = 'today'; commit(); return toast('Glad to hear it. Sick mode is off.'); }
+    case 'end-episode': { const e = viewEp(), w = $('#f_better')?.value, t = w && w !== toLocalInput(Date.now()) ? new Date(w).getTime() : Date.now();
+      if (!t || t > Date.now() + 60e3) return toast('Pick a time that isn\'t in the future.');
+      if (t < e.start) return toast(`That is before the illness started (${fmtDT(e.start)}).`);
+      e.end = t; touch(e); closeSheet(); tab = 'today'; commit(); return toast('Glad to hear it. Sick mode is off.'); }
     case 'reopen-episode': { const e = viewEp(); e.end = null; touch(e); return commit(); }
     case 'clear-example': { const st = S.settings; S = emptyState(); S.settings = { ...S.settings, ...st }; narrative = ''; aiParsed = null; tab = 'today'; commit(); return kidSheet('new'); }
     case 'save-kid': {

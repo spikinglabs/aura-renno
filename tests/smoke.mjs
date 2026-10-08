@@ -104,13 +104,48 @@ for (const theme of ['night', 'day']) {
   await page.click('[data-act="open-sick"]');
   for (const t of ['overview', 'chart', 'doctor']) { await page.click(`[data-sick="${t}"]`); if (await overflow()) fail(`${theme}: sick ${t} scrolls sideways`); }
   for (const t of ['growth', 'more']) { await page.click(`.tabs [data-tab="${t}"]`); if (await overflow()) fail(`${theme}: ${t} scrolls sideways`); }
-  // Ending sick mode asks first, then Today returns to everyday tracking
+  // The illness's name, start and notes can be changed from the sick card on Today
   if (theme === 'day') {
     await page.click('.tabs [data-tab="today"]');
+    await page.click('.sick-card [data-act="edit-episode"]');
+    const local = t => { const d = new Date(t), p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
+    const start = new Date(local(Date.now() - 4 * 864e5)).getTime();
+    await page.fill('#f_title', 'Ear infection');
+    await page.fill('#f_start', local(start));
+    await page.fill('#f_epnote', 'Started after daycare');
+    await page.click('[data-act="save-episode"]');
+    await page.reload();
+    const ep = (await getState(page)).episodes.find(e => !e.deleted && !e.end);
+    if (ep?.title !== 'Ear infection' || ep.start !== start || ep.note !== 'Started after daycare') fail(`illness edit not saved: ${JSON.stringify(ep)}`);
+    if (!(await page.locator('.sick-card').innerText()).includes('Ear infection')) fail('sick card does not show the new name');
+    // A start in the future is refused and nothing changes
+    await page.click('.sick-card [data-act="edit-episode"]');
+    await page.fill('#f_start', local(Date.now() + 2 * 864e5));
+    await page.click('[data-act="save-episode"]');
+    if ((await getState(page)).episodes.find(e => e.id === ep.id).start !== start) fail('future illness start was saved');
+    await page.click('[data-act="close"]');
+
+    // Ending sick mode asks first (and when they got better), then Today returns to everyday tracking
     await page.click('[data-act="end-ask"]');
+    await page.fill('#f_better', local(Date.now() - 864e5));
     await page.click('[data-act="end-episode"]');
     if ((await page.locator('.sick, .sick-card, [data-view]').count()) !== 0) fail('sick mode still shown after ending it');
     if ((await page.locator('[data-act="new-episode"]').count()) !== 1) fail('no way to start sick mode again');
+    const end = (await getState(page)).episodes.find(e => e.id === ep.id).end;
+    if (end !== new Date(local(Date.now() - 864e5)).getTime()) fail('chosen end time not saved');
+
+    // A past illness's end can be changed under More, but not to before its start
+    await page.click('.tabs [data-tab="more"]');
+    await page.click(`[data-act="edit-episode"][data-for="${ep.id}"]`);
+    await page.fill('#f_epend', local(start - 864e5));
+    await page.click('[data-act="save-episode"]');
+    if ((await getState(page)).episodes.find(e => e.id === ep.id).end !== end) fail('illness end before its start was saved');
+    const end2 = new Date(local(start + 2 * 864e5)).getTime();
+    await page.fill('#f_epend', local(end2));
+    await page.click('[data-act="save-episode"]');
+    const saved = (await getState(page)).episodes.find(e => e.id === ep.id);
+    if (saved.end !== end2 || saved.note !== 'Started after daycare') fail(`past illness edit not saved: ${JSON.stringify(saved)}`);
+    if (await overflow()) fail('More scrolls sideways with illness buttons');
   }
   await page.close();
 }
