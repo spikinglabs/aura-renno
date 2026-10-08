@@ -302,7 +302,7 @@ const icon = k => `<span class="ic t-${k}"><svg viewBox="0 0 24 24" aria-hidden=
 function emptyState() {
   return { app: 'aura', v: SCHEMA, example: false, children: [], episodes: [], entries: [], measurements: [], growth: [], products: [],
     meds: [{ id: 'm1', name: 'Paracetamol (acetaminophen)', gapH: 4, updatedAt: 0 }, { id: 'm2', name: 'Ibuprofen', gapH: 6, updatedAt: 0 }],
-    settings: { unit: 'C', clientId: '', pickerKey: '', apiKey: '', aiKind: 'anthropic', aiBase: '', aiModel: '', theme: 'auto', me: '', recallCountry: 'all' }, child: null, drive: {}, recalls: {} };
+    settings: { unit: 'C', clientId: '', pickerKey: '', apiKey: '', aiKind: 'anthropic', aiBase: '', aiModel: '', theme: 'auto', me: '', recallCountries: null }, child: null, drive: {}, recalls: {} };
 }
 function readLS(k) { try { const r = localStorage.getItem(k); return r ? JSON.parse(r) : null; } catch { return null; } }
 // The log's format version. To change the format, raise SCHEMA and add the step MIGRATIONS[old version], which turns a
@@ -1372,7 +1372,7 @@ const backupBanner = () => { const m = backupDue(); return m ? `<div class="bann
 // products a family uses are matched on the phone and never sent anywhere. The list is kept on the phone, not synced.
 const RECALL_URL = 'https://pub-f36c3831e82845e4af2d54940ea6c32d.r2.dev/baby/scraped_date%3Dlatest/processed.json';
 const RECALL_SITE = 'https://tracker.babybaras.com/';
-const RECALL_COUNTRIES = [['all', 'All countries'], ['DE', 'Germany'], ['US', 'USA']];
+const RECALL_COUNTRIES = [['DE', 'Germany'], ['US', 'USA']]; // always offered; other countries appear when the list has them
 let recallLoading = false, recallsShown = 5;
 const fold = s => String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/ß/g, 'ss');
 const words = s => fold(s).split(/[^\p{L}\p{N}]+/u).filter(w => w.length > 1);
@@ -1382,7 +1382,10 @@ function recallMatch(r, prods = live(S.products)) {
   return prods.find(p => { const w = words(p.name); return w.length && w.every(x => hay.has(x)); }) || null;
 }
 const inEnglish = v => !v ? '' : typeof v === 'string' ? v : String(v.en || Object.values(v)[0] || '');
-const recallList = () => { const c = S.settings.recallCountry || 'all'; return (S.recalls?.items || []).filter(r => c === 'all' || r.country === c); };
+// Countries the parent tracks (a setting on this phone). null means every country, including ones the list adds later.
+const recallCountryCodes = () => [...new Set([...RECALL_COUNTRIES.map(([k]) => k), ...(S.recalls?.items || []).map(r => r.country).filter(Boolean)])];
+const tracksCountry = c => !Array.isArray(S.settings.recallCountries) || S.settings.recallCountries.includes(c);
+const recallList = () => (S.recalls?.items || []).filter(r => tracksCountry(r.country));
 // New in the feed: recalls of the last 30 days the parent hasn't seen in the list yet (ids kept on this phone only).
 const recallNew = () => { const seen = new Set(S.recalls?.feedSeen || []), from = Date.now() - 30 * DAY; return recallList().filter(r => r.date >= from && !seen.has(r.id)); };
 const recallAlerts = () => { const seen = new Set(S.recalls?.seen || []); return recallList().map(r => ({ r, p: recallMatch(r) })).filter(x => x.p && !seen.has(x.r.id)); };
@@ -1404,10 +1407,16 @@ async function refreshRecalls(force) {
   }
   recallLoading = false; persist(); softRender();
 }
-const countryName = c => (RECALL_COUNTRIES.find(([k]) => k === c) || [c, c])[1];
+const countryName = c => { const k = RECALL_COUNTRIES.find(([x]) => x === c); if (k) return k[1]; try { return new Intl.DisplayNames(['en'], { type: 'region' }).of(c) || c; } catch { return c; } };
+function toggleRecallCountry(c) {
+  const all = recallCountryCodes(), on = new Set(all.filter(tracksCountry));
+  if (on.has(c)) on.delete(c); else on.add(c);
+  S.settings.recallCountries = all.every(x => on.has(x)) ? null : [...on];
+}
 const recallBanner = () => recallAlerts().slice(0, 3).map(({ r, p }) => `<div class="banner recall-due"><p><b>Recall: ${esc(r.title)}</b><br><span class="small">This may be something you use (“${esc(p.name)}” on your list).${r.reason ? ' Reason: ' + esc(r.reason) + '.' : ''} Check the details before using it again.</span></p>${r.url ? `<a class="btn primary sm" href="${esc(r.url)}" target="_blank" rel="noopener">Details</a>` : ''}<button class="btn ghost sm" data-seen="${esc(r.id)}">Seen</button></div>`).join('');
 const recallFeedLine = () => { const n = recallNew().length; return n ? `<button class="linkish recall-line" data-act="recall-feed">${n} new product recall${n > 1 ? 's' : ''} · see the list</button>` : ''; };
-const recallCountryChips = () => `<div class="chips">${RECALL_COUNTRIES.map(([k, l]) => `<button data-rcountry="${k}" class="${(S.settings.recallCountry || 'all') === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+const recallCountryChips = () => `<div class="field"><span>Countries to track</span><div class="chips" data-multi>${recallCountryCodes().map(k => `<button data-rcountry="${esc(k)}" class="${tracksCountry(k) ? 'on' : ''}" aria-pressed="${tracksCountry(k)}">${esc(countryName(k))}</button>`).join('')}</div></div>`;
+const trackedNames = () => { const on = recallCountryCodes().filter(tracksCountry); return on.length === recallCountryCodes().length ? 'all countries' : on.map(countryName).join(', ') || 'no countries'; };
 function recallRow(r, prods = live(S.products), isNew = false) {
   const m = recallMatch(r, prods);
   return `<div class="recall-row">${isNew ? '<span class="new">New</span>' : ''}<b>${esc(r.title)}</b><span class="small muted">${r.date ? fmtDay(r.date) : ''}${r.country ? ' · ' + esc(countryName(r.country)) : ''}${r.company ? ' · ' + esc(r.company.split(',')[0]) : ''}${r.reason ? ' · ' + esc(r.reason) : ''}</span>${m ? `<span class="small hit">May match “${esc(m.name)}” on your list</span>` : ''}${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">Details at ${esc(r.source || 'the source')}</a>` : ''}</div>`;
@@ -1416,8 +1425,8 @@ function recallRow(r, prods = live(S.products), isNew = false) {
 function recallFeedSheet() {
   const fresh = sheetCtx?.fresh || new Set(recallNew().map(r => r.id)), list = recallList().sort((a, b) => b.date - a.date);
   openSheet(`<div class="hd"><h2>Product recalls</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
-    ${recallCountryChips()}
-    <div>${list.slice(0, recallsShown).map(r => recallRow(r, undefined, fresh.has(r.id))).join('') || '<p class="small muted" style="margin:0">No recalls in the list for this country.</p>'}</div>
+    <p class="small muted" style="margin:0">Showing ${esc(trackedNames())}. Change this under More → Product recalls.</p>
+    <div>${list.slice(0, recallsShown).map(r => recallRow(r, undefined, fresh.has(r.id))).join('') || '<p class="small muted" style="margin:0">No recalls for the countries you track.</p>'}</div>
     ${list.length > recallsShown ? `<div><button class="btn sm ghost" data-act="recalls-more">Show ${Math.min(10, list.length - recallsShown)} more</button></div>` : ''}
     <p class="small muted" style="margin:0">Add the brands you use under More → Product recalls to get a warning when one is recalled.</p>`, { feed: true, fresh });
   if (S.recalls) { S.recalls.feedSeen = [...new Set([...(S.recalls.feedSeen || []), ...fresh])]; persist(); }
@@ -1434,7 +1443,7 @@ function recallCard() {
       ${prods.map(p => `<div class="list-row"><span>${esc(p.name)}</span><button class="btn ghost danger" data-delprod="${p.id}" aria-label="Remove ${esc(p.name)}">✕</button></div>`).join('') || '<p class="small muted" style="margin:0">Nothing listed yet.</p>'}
       <div class="row"><input id="newProd" placeholder="Brand or product, e.g. Hipp" style="flex:1" autocomplete="off"><button class="btn sm" data-act="add-prod">Add</button></div></div>
       ${recallCountryChips()}
-      <div>${list.slice(0, recallsShown).map(row).join('') || (R.at ? '<p class="small muted" style="margin:0">No recalls in the list for this country.</p>' : '')}</div>
+      <div>${list.slice(0, recallsShown).map(row).join('') || (R.at ? '<p class="small muted" style="margin:0">No recalls for the countries you track.</p>' : '')}</div>
       ${list.length > recallsShown ? `<div><button class="btn sm ghost" data-act="recalls-more">Show ${Math.min(10, list.length - recallsShown)} more</button></div>` : ''}
       <div class="row between"><p class="small muted" style="margin:0;flex:1">${status}</p><button class="btn sm" data-act="recalls-check" ${recallLoading ? 'disabled' : ''}>Check now</button></div></div>`;
 }
@@ -1481,7 +1490,7 @@ document.addEventListener('click', async ev => {
     if (b.dataset.unit) { S.settings.unit = b.dataset.unit; return commit(); }
     if (b.dataset.aikind) { S.settings.aiKind = b.dataset.aikind; S.settings.aiModel = ''; persist(); return renderMore(); }
     if (b.dataset.aibase) { S.settings.aiBase = b.dataset.aibase; persist(); return renderMore(); }
-    if (b.dataset.rcountry) { S.settings.recallCountry = b.dataset.rcountry; recallsShown = 5; persist(); return sheetCtx?.feed ? recallFeedSheet() : renderMore(); }
+    if (b.dataset.rcountry) { toggleRecallCountry(b.dataset.rcountry); recallsShown = 5; persist(); return renderMore(); }
     if (b.dataset.themeSet) { S.settings.theme = b.dataset.themeSet; return commit(); }
     if (box.hasAttribute('data-multi')) b.classList.toggle('on');
     else { const was = b.classList.contains('on'); box.querySelectorAll('button').forEach(x => x.classList.remove('on')); if (!was || box.dataset.k === 'kind') b.classList.add('on'); const c = box.querySelector('[data-custom]'); if (c) c.value = ''; }

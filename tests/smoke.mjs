@@ -355,9 +355,6 @@ for (const theme of ['night', 'day']) {
   if (!(await page.innerText('.recall-line')).startsWith('2 new')) fail('recalls: Today line does not count 2 new');
   await page.click('.recall-line');
   if ((await page.locator('#sheet .recall-row .new').count()) !== 2) fail('recalls: feed does not mark new recalls');
-  await page.click('#sheet [data-rcountry="US"]');
-  if ((await page.locator('#sheet .recall-row').count()) !== 1 || (await page.locator('#sheet .recall-row .new').count()) !== 1) fail('recalls: feed country filter');
-  await page.click('#sheet [data-rcountry="all"]');
   await page.click('#sheet [data-act="close"]');
   if ((await page.locator('.recall-line').count()) !== 0) fail('recalls: Today line still shown after opening the feed');
   await page.reload(); await page.waitForSelector('h1');
@@ -365,8 +362,12 @@ for (const theme of ['night', 'day']) {
   await page.click('.tabs [data-tab="more"]');
   await page.waitForSelector('#recalls .recall-row');
   if ((await page.locator('#recalls .recall-row').count()) !== 2) fail('recalls: list not shown');
-  await page.click('[data-rcountry="DE"]');
+  // Countries to track: turning the USA off leaves the German recall, and the choice is kept
+  await page.click('[data-rcountry="US"]');
   if ((await page.locator('#recalls .recall-row').count()) !== 1) fail('recalls: country filter not applied');
+  await page.reload(); await page.waitForSelector('h1'); await page.click('.tabs [data-tab="more"]');
+  if ((await page.locator('[data-rcountry="US"].on').count()) !== 0 || (await page.locator('[data-rcountry="DE"].on').count()) !== 1) fail('recalls: country choice not saved');
+  if ((await page.locator('#recalls .recall-row').count()) !== 1) fail('recalls: country filter lost after reload');
   await page.fill('#newProd', 'hipp');
   await page.click('[data-act="add-prod"]');
   if ((await page.locator('#recalls .hit').count()) !== 1) fail('recalls: product not matched');
