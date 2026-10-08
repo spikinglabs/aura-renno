@@ -530,6 +530,58 @@ for (const theme of ['night', 'day']) {
   await page.close();
 }
 
+// Appointments screen: every booked appointment in one list, any other appointment, linked to a document
+{
+  const page = await newPage();
+  page.on('pageerror', e => fail(`appointments screen: ${e.message}`));
+  const day = n => { const d = new Date(Date.now() + n * 864e5); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  await page.goto(url);
+  await page.waitForSelector('h1');
+  { const st = await getState(page); st.docs.push({ id: 'd1', childId: st.child, type: 'other', title: 'Allergy pass', note: '', updatedAt: Date.now() }); await setState(page, st); }
+  await reload(page); await page.waitForSelector('h1');
+  // From a document: the appointment is linked to it
+  await page.click('.tabs [data-tab="docs"]');
+  await page.click('#view-docs [data-docid="d1"]');
+  await page.click('#sheet [data-act="appt"][data-plan="other"]');
+  if ((await page.inputValue('#a_doc')) !== 'd1') fail('appointments screen: appointment from a document not linked to it');
+  await page.click('[data-act="save-appt"]');
+  if (await page.isHidden('#scrim')) fail('appointments screen: saved without saying what for');
+  await page.fill('#a_title', 'Allergy test'); await page.fill('#a_date', day(4)); await page.fill('#a_time', '08:15'); await page.fill('#a_note', 'Dr. Haut');
+  await page.click('[data-act="save-appt"]');
+  let st = await getState(page);
+  const a = st.appts.find(x => x.plan === 'other');
+  if (!a || a.title !== 'Allergy test' || a.docId !== 'd1' || a.date !== day(4) || a.time !== '08:15') fail('appointments screen: other appointment not saved');
+  if (!(await page.innerText('#view-docs [data-tab="appts"]')).includes('Allergy test')) fail('appointments screen: Documents row does not show the next appointment');
+  await page.click('#view-docs [data-tab="appts"]');
+  if (await page.isHidden('#view-appts') || (await page.locator('.tabs [data-tab="docs"][aria-selected="true"]').count()) !== 1) fail('appointments screen: does not open under Documents');
+  // A checkup booked from here shows in the same list
+  await page.click('[data-act="appt-new"]');
+  await page.click('[data-act="appt-pick"][data-plan="u"]');
+  await page.click('#sheet [data-act="appt"][data-for="U7a"]');
+  await page.fill('#a_date', day(20));
+  await page.click('[data-act="save-appt"]');
+  await page.click('#sheet [data-act="close"]');
+  const list = await page.innerText('#view-appts');
+  if (!list.includes('Allergy test') || !list.includes('Allergy pass') || !list.includes('U7a checkup') || list.indexOf('Allergy test') > list.indexOf('U7a checkup')) fail('appointments screen: list wrong or not in date order');
+  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail('appointments screen: scrolls sideways');
+  await page.click('[data-act="cal-appts"]');
+  if ((await page.locator('#sheet .vx-dose').count()) !== 2) fail('appointments screen: calendar does not have both appointments');
+  await page.click('#sheet [data-act="close"]');
+  await page.click(`#view-appts [data-appt="${a.id}"]`);
+  await page.click('#sheet [data-act="cal-appt"]');
+  if (new URL(await page.getAttribute('[data-gcal]', 'href')).searchParams.get('dates') !== `${day(4).replace(/-/g, '')}T081500/${day(4).replace(/-/g, '')}T091500`) fail('appointments screen: calendar link wrong');
+  await page.click('#sheet [data-act="close"]');
+  await page.click('.tabs [data-tab="today"]');
+  if ((await page.locator('.vax-line', { hasText: 'Allergy test: appointment' }).count()) !== 1) fail('appointments screen: Today does not show it');
+  // Once its day has passed it moves to Past
+  st = await getState(page); st.appts.find(x => x.id === a.id).date = day(-1); await setState(page, st);
+  await reload(page); await page.waitForSelector('h1');
+  if ((await page.locator('.vax-line', { hasText: 'Allergy test' }).count()) !== 0) fail('appointments screen: Today still shows a past appointment');
+  await page.click('.tabs [data-tab="docs"]'); await page.click('#view-docs [data-tab="appts"]');
+  if (!(await page.innerText('#view-appts details')).includes('Past (1)')) fail('appointments screen: past appointment not under Past');
+  await page.close();
+}
+
 // Emergency card: shown from Today, in English or German, edited, merged when two phones each started one, and in the doctor summary
 {
   const page = await newPage();

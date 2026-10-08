@@ -275,6 +275,7 @@ tr:last-child td { border-bottom: 0 }
   <section class="view" id="view-card" hidden></section>
   <section class="view" id="view-checkups" hidden></section>
   <section class="view" id="view-dental" hidden></section>
+  <section class="view" id="view-appts" hidden></section>
   <section class="view" id="view-docs" hidden></section>
   <section class="view" id="view-more" hidden></section>
 </div>
@@ -629,14 +630,14 @@ function applyTheme() {
 
 /* ---------- Rendering ---------- */
 // Screens without a tab of their own light up the tab they belong to.
-const tabOf = t => ({ sick: 'today', vax: 'docs', checkups: 'docs', dental: 'docs' })[t] || t;
+const tabOf = t => ({ sick: 'today', vax: 'docs', checkups: 'docs', dental: 'docs', appts: 'docs' })[t] || t;
 let tab = 'today', sickTab = 'overview', aiParsed = null, narrative = '', showDays = 3;
 function render() {
   applyTheme();
   document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === tabOf(tab === 'card' ? cardFrom : tab))));
-  for (const v of ['today', 'sick', 'growth', 'vax', 'checkups', 'dental', 'docs', 'more', 'card']) $('#view-' + v).hidden = v !== tab;
+  for (const v of ['today', 'sick', 'growth', 'vax', 'checkups', 'dental', 'appts', 'docs', 'more', 'card']) $('#view-' + v).hidden = v !== tab;
   $('#fab').hidden = !['today', 'sick', 'growth'].includes(tab) || !kid();
-  ({ today: renderToday, sick: renderSick, growth: renderGrowth, vax: renderVax, checkups: renderCheckups, dental: renderDental, docs: renderDocs, more: renderMore, card: renderCard })[tab]();
+  ({ today: renderToday, sick: renderSick, growth: renderGrowth, vax: renderVax, checkups: renderCheckups, dental: renderDental, appts: renderAppts, docs: renderDocs, more: renderMore, card: renderCard })[tab]();
 }
 const exampleBanner = () => S.example ? `<div class="banner"><p>This is example data so you can see how it works. Nothing here is real.</p><button class="btn primary sm" data-act="clear-example">Start with my child</button></div>` : '';
 function greeting() { const h = new Date().getHours(); return h < 5 ? 'Late night' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; }
@@ -686,7 +687,7 @@ function renderToday() {
     <div class="row between"><h3>Log</h3><button class="btn sm" data-act="track-sheet">What to track</button></div>
     <div class="quick">${quick.map(k => `<button class="qb" data-add="${k}">${icon(k)}${TYPES[k].label}</button>`).join('')}</div>
     ${ep ? '' : `<button class="linkish" data-act="new-episode">${esc(c.name)} is sick? Start sick mode</button>`}
-    ${recallFeedLine()}${vaxLine(c)}${uLine(c)}${zLine(c)}
+    ${recallFeedLine()}${vaxLine(c)}${uLine(c)}${zLine(c)}${otherLine(c)}
     <div>${timelineHtml(es.filter(e => shownType(e.type)), showDays)}</div>`;
 }
 function timelineHtml(es, days) {
@@ -1094,7 +1095,8 @@ function atMonths(dob, m) { const d = new Date(dob + 'T12:00'); if (m % 1) retur
 // matters more than the usual time, so it shows in its place until the visit is recorded. Synced `appts`
 // ({ id, childId, plan: 'u' | 'z' | 'vax', k, date 'YYYY-MM-DD', time 'HH:MM' or '', note }). A vaccination appointment
 // can be for several vaccines at once: `ks` and `doses` ({ k: which dose of the schedule }; none for vaccines outside it
-// or already complete). The first version kept one vaccine as `k` and `dose`; apptKs/apptDose read both.
+// or already complete). The first version kept one vaccine as `k` and `dose`; apptKs/apptDose read both. Any other
+// appointment (a specialist, the hospital, therapy) is `plan: 'other'` with a `title` and an optional linked `docId`.
 // Once the date has passed and nothing is recorded, Aura asks to record it; it never reminds by itself (calendar only).
 const apptsOf = c => live(S.appts || []).filter(a => a.childId === c.id);
 const apptKs = a => a.ks || [a.k];
@@ -1116,9 +1118,10 @@ const apptBlock = (s, plan, k, dose) => s.appt
   ? `<div class="appt"><span><b>${s.st === 'went' ? 'Appointment was' : 'Appointment'} ${esc(apptWhen(s.appt))}</b>${s.appt.note ? `<small>${esc(s.appt.note)}</small>` : ''}</span><button class="btn sm" data-act="appt" data-appt="${s.appt.id}" data-for="${k}">Edit</button></div>`
   : `<div><button class="btn sm" data-act="appt" data-plan="${plan}" data-for="${k}"${dose ? ` data-dose="${dose}"` : ''}>Add an appointment</button></div>`;
 const apptName = (plan, k, dose) => plan === 'u' ? uName(k) : plan === 'z' ? zName(k) : (v => `${v.l}${v.at.length > 1 ? `, dose ${dose} of ${v.at.length}` : ''}`)(VAX_PLAN.find(v => v.k === k));
-function apptSheet(id, plan, k, dose) {
+function apptSheet(id, plan, k, dose, docId) {
   const c = kid(), a = id ? S.appts.find(x => x.id === id) : { plan, k, dose };
   if (a.plan === 'vax') return vaxApptSheet(id, k);
+  if (a.plan === 'other') return otherApptSheet(id, docId);
   openSheet(`<div class="hd"><h2>${id ? 'Edit appointment' : 'Add an appointment'}</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
     <p class="small muted" style="margin:0">${esc(apptName(a.plan, a.k, a.dose))}</p>
     <div class="row"><label class="field" style="flex:1 1 150px"><span>Date</span><input id="a_date" type="date" value="${esc(a.date || '')}"></label><label class="field" style="flex:1 1 110px"><span>Time (optional)</span><input id="a_time" type="time" value="${esc(a.time || '')}"></label></div>
@@ -1129,6 +1132,7 @@ function apptSheet(id, plan, k, dose) {
 const itemSheet = (plan, k) => plan === 'u' ? uItemSheet(k) : plan === 'z' ? zItemSheet(k) : vaxItemSheet(k);
 function saveAppt() {
   if (sheetCtx.plan === 'vax') return saveVaxAppt();
+  if (sheetCtx.plan === 'other') return saveOtherAppt();
   const date = $('#a_date').value; if (!date) return toast('Enter the date of the appointment.');
   const { plan, k, dose, childId } = sheetCtx, a = sheetCtx.appt ? S.appts.find(x => x.id === sheetCtx.appt) : { id: uid(), childId, plan, k, ...(dose ? { dose } : {}) };
   Object.assign(a, { date, time: $('#a_time').value || '', note: $('#a_note').value.trim() }); touch(a);
@@ -1164,6 +1168,71 @@ function saveVaxAppt() {
   delete a.k; delete a.dose; Object.assign(a, { ks, doses, date, time: $('#a_time').value || '', note: $('#a_note').value.trim() }); touch(a);
   if (!sheetCtx.appt) S.appts.push(a); closeSheet(); commit(); if (k) vaxItemSheet(k); toast('Appointment saved');
 }
+// Any other appointment, optionally linked to one of the child's documents. It needs nothing recorded: once its day
+// has passed it moves to Past.
+const otherAppts = c => apptsOf(c).filter(a => a.plan === 'other').sort((a, b) => apptT(a) - apptT(b));
+const upcoming = a => startOfDay(apptT(a)) >= startOfDay(Date.now());
+const linkedDoc = a => a.docId ? S.docs.find(d => d.id === a.docId && !d.deleted) : null;
+const otherEvent = (c, a) => ({ uid: `${c.id}-appt-${a.id}`, t: apptT(a), time: a.time || '', booked: true, title: `${a.title} · ${c.name}`,
+  details: [a.note, linkedDoc(a) ? `Bring: ${docTitle(linkedDoc(a))}.` : '', 'From Aura.'].filter(Boolean).join(' ') });
+const apptEvent = (c, a) => a.plan === 'vax' ? vaxApptEvent(c, a) : otherEvent(c, a);
+const otherLine = c => otherAppts(c).filter(a => upcoming(a) && apptT(a) < startOfDay(Date.now()) + 15 * DAY)
+  .map(a => `<button class="linkish vax-line" data-tab="appts">${esc(a.title)}: appointment ${esc(apptWhen(a))}</button>`).join('');
+function otherApptSheet(id, docId) {
+  const c = kid(), a = id ? S.appts.find(x => x.id === id) : { title: '', docId: docId || '', date: '', time: '', note: '' }, docs = docsOf(c), d = id && linkedDoc(a);
+  openSheet(`<div class="hd"><h2>${id ? 'Appointment' : 'Add an appointment'}</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+    <label class="field"><span>What for</span><input id="a_title" value="${esc(a.title || '')}" placeholder="e.g. Allergy test, eye doctor, physiotherapy" autocomplete="off"></label>
+    <div class="row"><label class="field" style="flex:1 1 150px"><span>Date</span><input id="a_date" type="date" value="${esc(a.date || '')}"></label><label class="field" style="flex:1 1 110px"><span>Time (optional)</span><input id="a_time" type="time" value="${esc(a.time || '')}"></label></div>
+    ${docs.length ? `<label class="field"><span>Linked document (optional)</span><select id="a_doc"><option value="">None</option>${docs.map(x => `<option value="${x.id}"${x.id === a.docId ? ' selected' : ''}>${esc(docTitle(x))}</option>`).join('')}</select></label>` : ''}
+    <label class="field"><span>Note (optional)</span><textarea id="a_note" style="min-height:64px" placeholder="e.g. Dr. Weber, bring the referral">${esc(a.note || '')}</textarea></label>
+    ${id && (upcoming(a) || d) ? `<div class="row">${upcoming(a) ? '<button class="btn sm" data-act="cal-appt">Add to calendar</button>' : ''}${d ? `<button class="btn sm" data-docid="${d.id}">Open ${esc(docTitle(d))}</button>` : ''}</div>` : ''}
+    <div class="sheet-actions">${id ? '<button class="btn ghost danger" data-act="del-appt">Delete</button>' : '<span></span>'}<button class="btn primary" data-act="save-appt">Save</button></div>`, { appt: id || null, plan: 'other', childId: c.id });
+}
+function saveOtherAppt() {
+  const title = $('#a_title').value.trim(), date = $('#a_date').value;
+  if (!title) return toast('Write what the appointment is for.');
+  if (!date) return toast('Enter the date of the appointment.');
+  const a = sheetCtx.appt ? S.appts.find(x => x.id === sheetCtx.appt) : { id: uid(), childId: sheetCtx.childId, plan: 'other' };
+  Object.assign(a, { title, date, time: $('#a_time').value || '', docId: $('#a_doc')?.value || '', note: $('#a_note').value.trim() }); touch(a);
+  if (!sheetCtx.appt) S.appts.push(a); closeSheet(); commit(); toast('Appointment saved');
+}
+// Starting a new appointment: what kind first, then which checkup.
+function apptNewSheet() {
+  openSheet(`<div class="hd"><h2>Add an appointment</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+    <button class="pick" data-act="appt-pick" data-plan="u"><b>Checkup (U-Heft)</b></button>
+    <button class="pick" data-act="appt-pick" data-plan="z"><b>Dental checkup</b></button>
+    <button class="pick" data-act="appt" data-plan="vax"><b>Vaccination</b><br><span class="small muted">One or several vaccines</span></button>
+    <button class="pick" data-act="appt" data-plan="other"><b>Something else</b><br><span class="small muted">A specialist, the hospital, therapy; it can be linked to a document</span></button>`);
+}
+function apptPickSheet(plan) {
+  const c = kid(), plans = plan === 'u' ? U_PLAN : Z_PLAN, st = x => plan === 'u' ? uStatus(c, x) : zStatus(c, x);
+  const open = plans.filter(x => !['done', 'booked', 'went'].includes(st(x).st) && (!c.dob || st(x).st !== 'missed'));
+  openSheet(`<div class="hd"><h2>Which ${plan === 'u' ? 'checkup' : 'dental checkup'}?</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+    <div>${open.map(x => `<button class="vx-row ${st(x).st}" data-act="appt" data-plan="${plan}" data-for="${x.k}"><span><b>${x.k}</b><small>${esc(st(x).text)}</small></span><span class="muted" aria-hidden="true">›</span></button>`).join('') || '<p class="small muted" style="margin:0">None left to book.</p>'}</div>`);
+}
+// Every booked appointment of the child in one list: checkups, dental checkups and vaccinations of the schedules (open
+// until recorded) and any other appointment (past ones move to Past).
+function apptList(c) {
+  const rows = [];
+  for (const u of U_PLAN) { const s = uStatus(c, u); if (s.appt) rows.push({ t: apptT(s.appt), s, title: `${u.k} checkup`, attr: `data-uitem="${u.k}"` }); }
+  for (const z of Z_PLAN) { const s = zStatus(c, z); if (s.appt) rows.push({ t: apptT(s.appt), s, title: `${z.k} dental checkup`, attr: `data-zitem="${z.k}"` }); }
+  for (const a of vaxApptOpen(c)) rows.push({ t: apptT(a), s: apptState(a), title: `Vaccination: ${vaxApptNames(c, a)}`, attr: `data-act="appt" data-appt="${a.id}"` });
+  for (const a of otherAppts(c).filter(upcoming)) rows.push({ t: apptT(a), s: { ...apptState(a), doc: linkedDoc(a) }, title: a.title, attr: `data-act="appt" data-appt="${a.id}"` });
+  return rows.sort((a, b) => a.t - b.t);
+}
+const apptRow = r => `<button class="vx-row ${r.s.st}" ${r.attr}><span><b>${esc(r.title)}</b><small>${esc(r.s.text)}</small>${apptNote(r.s)}${r.s.doc ? `<small class="appt-note">${esc(docTitle(r.s.doc))}</small>` : ''}</span><span class="muted" aria-hidden="true">›</span></button>`;
+function renderAppts() {
+  const el = $('#view-appts'), c = kid();
+  if (!c) { el.innerHTML = header('Appointments', 'Booked visits') + `<div class="card empty"><p class="muted">Add your child to keep their appointments here.</p><button class="btn primary" data-kid="new">Add your child</button></div>`; return; }
+  const rows = apptList(c), past = otherAppts(c).filter(a => !upcoming(a)).reverse(), evs = rows.filter(r => r.s.st === 'booked').length;
+  el.innerHTML = header('Appointments', `${esc(c.name)}${c.dob ? ' · ' + ageText(c) : ''}`) + exampleBanner() + `
+    <div class="row"><button class="btn primary" data-act="appt-new">Add an appointment</button>${evs ? '<button class="btn" data-act="cal-appts">Add to my calendar</button>' : ''}</div>
+    <div class="card set"><h2>Coming up</h2>
+      ${rows.length ? `<div>${rows.map(apptRow).join('')}</div>` : '<p class="small muted" style="margin:0">Nothing booked. Add an appointment once it is booked: a checkup, a vaccination, the dentist or anything else.</p>'}
+      <p class="small muted" style="margin:0">Aura doesn't remind you by itself. Add the appointments to your calendar for a reminder.</p></div>
+    ${past.length ? `<div class="card set"><details><summary class="small muted">Past (${past.length})</summary><div>${past.map(a => `<button class="vx-dose" data-act="appt" data-appt="${a.id}"><span><b>${esc(a.title)}</b> <span class="muted small num">${esc(apptWhen(a))}</span></span>${linkedDoc(a) ? `<small>${esc(docTitle(linkedDoc(a)))}</small>` : ''}${a.note ? `<small>${esc(a.note)}</small>` : ''}</button>`).join('')}</div></details></div>` : ''}`;
+}
+const apptsSummary = c => { const r = apptList(c)[0]; return r ? `Next: ${r.title}, ${r.s.st === 'went' ? 'was ' : ''}${apptWhen(r.s.appt)}` : 'None booked'; };
 // A recorded visit starts on the appointment's day when that day has come.
 const apptDay = (c, plan, k, dose) => { const a = c && k && apptFor(c, plan, k, dose); return a && startOfDay(apptT(a)) <= Date.now() ? Math.min(apptT(a), Date.now()) : null; };
 // Calendar event for a booked appointment: at its time (or all day), with the note.
@@ -1374,7 +1443,7 @@ function vaxEvent(c, v) {
     details: `${v.l}${s.of > 1 ? `, dose ${s.n + 1} of ${s.of}` : ''}: usually ${v.ages[s.n]}, as in the STIKO schedule. Your pediatrician decides what your child gets and when. Bring the vaccination book. From Aura.` };
 }
 const nextEvents = c => [...(uPlanOn() ? U_PLAN.map(u => uEvent(c, u)) : []), ...(zPlanOn() ? Z_PLAN.map(z => zEvent(c, z)) : []), ...(planOn() ? VAX_PLAN.filter(v => !(c.vaxSkip || []).includes(v.k)).map(v => vaxEvent(c, v)) : []),
-  ...vaxApptOpen(c).filter(a => apptState(a).st === 'booked').map(a => vaxApptEvent(c, a))]
+  ...vaxApptOpen(c).filter(a => apptState(a).st === 'booked').map(a => vaxApptEvent(c, a)), ...otherAppts(c).filter(upcoming).map(a => otherEvent(c, a))]
   .filter((e, i, all) => e && e.t < Date.now() + 365 * DAY && all.findIndex(x => x?.uid === e.uid) === i).sort((a, b) => a.t - b.t);
 function renderCheckups() {
   const el = $('#view-checkups'), c = kid();
@@ -1562,6 +1631,7 @@ function renderDocs() {
   el.innerHTML = header('Documents', `${esc(c.name)}${c.dob ? ' · ' + ageText(c) : ''}`) + exampleBanner() + `
     <div class="card set">
       <button class="vx-row" data-card="${c.id}"><span><b>Emergency card</b><small>${card?.allergies ? 'Allergies: ' + esc(oneLine(card.allergies)) : card ? 'No allergies written down' : 'Not filled in yet'}</small></span><span class="muted" aria-hidden="true">›</span></button>
+      <button class="vx-row" data-tab="appts"><span><b>Appointments</b><small>${esc(apptsSummary(c))}</small></span><span class="muted" aria-hidden="true">›</span></button>
       <button class="vx-row ${vo.length ? 'due' : ''}" data-tab="vax"><span><b>Vaccinations</b><small>${esc(vaxText)}${pagesText(docPages(typedDoc(c, 'vax')).length)}</small></span><span class="muted" aria-hidden="true">›</span></button>
       <button class="vx-row ${uo.length ? 'due' : ''}" data-tab="checkups"><span><b>Checkups (U-Heft)</b><small>${esc(uText)}${pagesText(docPages(typedDoc(c, 'u')).length)}</small></span><span class="muted" aria-hidden="true">›</span></button>
       <button class="vx-row ${zOpen(c).length ? 'due' : ''}" data-tab="dental"><span><b>Dental checkups</b><small>${esc(zSummary(c))}${pagesText(docPages(typedDoc(c, 'z')).length)}</small></span><span class="muted" aria-hidden="true">›</span></button></div>
@@ -2051,6 +2121,7 @@ function docSheet(id) {
     ${typed ? `<p class="small muted" style="margin:0">Its entries are under Documents → ${d.type === 'vax' ? 'Vaccinations' : 'Checkups'}.</p>` : `<label class="field"><span>Name</span><input id="doc_title" value="${esc(d.title)}" autocomplete="off"></label>`}
     ${pagesGrid(pages) || '<p class="small muted" style="margin:0">No pages yet.</p>'}
     <div><button class="btn sm" data-act="doc-add" data-doc="${d.id}">Add a page</button></div>
+    <div class="field"><span>Appointments</span>${otherAppts(c).filter(a => a.docId === d.id).reverse().map(a => `<button class="vx-dose" data-act="appt" data-appt="${a.id}"><span><b>${esc(a.title)}</b> <span class="muted small num">${esc(apptWhen(a))}</span></span></button>`).join('')}<div><button class="btn sm" data-act="appt" data-plan="other" data-doc="${d.id}">Add an appointment</button></div></div>
     <label class="field"><span>Note (optional)</span><textarea id="doc_note" style="min-height:64px" placeholder="e.g. where the paper is kept">${esc(d.note || '')}</textarea></label>
     <div class="sheet-actions">${typed ? '<span></span>' : `<button class="btn ghost danger" data-act="doc-del">Delete document</button>`}<button class="btn primary" data-act="doc-save">Save</button></div>`, { docEdit: d.id });
 }
@@ -2697,10 +2768,13 @@ document.addEventListener('click', async ev => {
     case 'cal-u': return calSheet([uEvent(kid(), U_PLAN.find(u => u.k === b.dataset.for))]);
     case 'cal-vax': return calSheet([vaxEvent(kid(), VAX_PLAN.find(v => v.k === b.dataset.for))]);
     case 'cal-next': return calSheet(nextEvents(kid()));
-    case 'appt': return apptSheet(b.dataset.appt || null, b.dataset.plan, b.dataset.for, b.dataset.dose ? +b.dataset.dose : undefined);
+    case 'appt': return apptSheet(b.dataset.appt || null, b.dataset.plan, b.dataset.for, b.dataset.dose ? +b.dataset.dose : undefined, b.dataset.doc);
+    case 'appt-new': return apptNewSheet();
+    case 'appt-pick': return apptPickSheet(b.dataset.plan);
+    case 'cal-appts': { const c = kid(); return calSheet(apptList(c).filter(r => r.s.st === 'booked').map(r => r.s.appt.plan === 'u' ? uEvent(c, U_PLAN.find(u => u.k === r.s.appt.k)) : r.s.appt.plan === 'z' ? zEvent(c, Z_PLAN.find(z => z.k === r.s.appt.k)) : apptEvent(c, r.s.appt))); }
     case 'save-appt': return saveAppt();
     case 'del-appt': { const a = S.appts.find(x => x.id === sheetCtx.appt), k = sheetCtx.k; a.deleted = true; touch(a); closeSheet(); commit(); if (k) itemSheet(a.plan, k); return toast('Appointment deleted'); }
-    case 'cal-appt': return calSheet([vaxApptEvent(kid(), S.appts.find(x => x.id === sheetCtx.appt))]);
+    case 'cal-appt': return calSheet([apptEvent(kid(), S.appts.find(x => x.id === sheetCtx.appt))]);
     case 'appt-record': { const c = kid(), a = S.appts.find(x => x.id === sheetCtx.appt); return vaxSheet(null, null, { against: vaxApptKs(c, a), t: Math.min(apptT(a), Date.now()), note: '' }); }
     case 'cal-ics': saveIcs(sheetCtx.cal); closeSheet(); return toast('Calendar file saved. Open it to add the dates.');
     case 'save-growth': {
