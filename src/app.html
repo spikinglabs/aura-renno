@@ -76,8 +76,9 @@ a.btn { color: inherit; text-decoration: none; display: inline-block }
 .recall-row a { color: var(--accent-ink); font-size: .86rem; align-self: flex-start }
 .recall-row .hit { color: var(--alert); font-weight: 700 }
 .recall-row .new { color: var(--accent-ink); font-weight: 700; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em }
-.recall-line { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: .86rem; font-weight: 600 }
-.recall-line::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none }
+.recall-line, .vax-line { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: .86rem; font-weight: 600 }
+.recall-line::before, .vax-line::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none }
+.vax-line::before { background: var(--wait) }
 .alerts { border-radius: var(--r); padding: 12px 14px; background: var(--card); box-shadow: inset 0 0 0 1.5px var(--wait) }
 .alerts h3 { color: var(--wait); font-size: .98rem }
 .alerts ul { margin: 6px 0 0; padding-left: 20px } .alerts li { margin: 3px 0 }
@@ -185,9 +186,25 @@ tr:last-child td { border-bottom: 0 }
 .ms-row.done .ms-dot { background: var(--accent); border-color: var(--accent) }
 .ms-row small { display: block; color: var(--muted); font-size: .84rem; overflow-wrap: anywhere }
 
+/* Vaccinations */
+.vx-row { width: 100%; text-align: left; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 0; background: none; border: 0; border-top: 1px solid var(--line) }
+.vx-row:first-of-type { border-top: 0 }
+.vx-row small { display: block; color: var(--muted); font-size: .84rem; overflow-wrap: anywhere }
+.vx-row.due small, .vx-row.late small { color: var(--wait); font-weight: 700 }
+.vx-row.skip b, .vx-row.missed b { color: var(--muted) }
+.vx-dots { display: flex; gap: 4px }
+.vx-dots i { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--muted) }
+.vx-dots i.on { background: var(--accent); border-color: var(--accent) }
+.vx-dose { width: 100%; text-align: left; background: none; border: 0; border-top: 1px solid var(--line); padding: 9px 0; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere }
+.vx-dose:first-of-type { border-top: 0 }
+.vx-dose small { color: var(--muted); font-size: .84rem }
+.book { display: flex; gap: 8px; flex-wrap: wrap }
+.book button { padding: 0; border: 0; background: none; border-radius: 10px; overflow: hidden; width: 96px; height: 96px }
+.book img { width: 100%; height: 100%; object-fit: cover; display: block }
+
 /* Tabs */
 .tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--card); padding-bottom: env(safe-area-inset-bottom, 0px) }
-.tabs .in { max-width: 600px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr) }
+.tabs .in { max-width: 600px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr) }
 .tabs button { background: none; border: 0; padding: 8px 4px 14px; font-size: .8rem; font-weight: 800; color: var(--muted) }
 .tabs button::before { content: ""; display: block; width: 24px; height: 4px; border-radius: 4px; margin: 0 auto 6px; background: transparent }
 .tabs button[aria-selected="true"] { color: var(--ink) }
@@ -227,11 +244,13 @@ tr:last-child td { border-bottom: 0 }
   <section class="view" id="view-today"></section>
   <section class="view" id="view-sick" hidden></section>
   <section class="view" id="view-growth" hidden></section>
+  <section class="view" id="view-vax" hidden></section>
   <section class="view" id="view-more" hidden></section>
 </div>
 <nav class="tabs"><div class="in" role="tablist">
   <button role="tab" data-tab="today" aria-selected="true">Today</button>
   <button role="tab" data-tab="growth" aria-selected="false">Growth</button>
+  <button role="tab" data-tab="vax" aria-selected="false">Vaccines</button>
   <button role="tab" data-tab="more" aria-selected="false">More</button>
 </div></nav>
 <div class="scrim" id="scrim" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
@@ -250,7 +269,7 @@ const DRIVE_FILE = 'aura-log.json', DRIVE_FOLDER = 'Aura';
 const built = v => /^__/.test(v) ? '' : v;
 const GOOGLE_CLIENT_ID = built('__GOOGLE_CLIENT_ID__'), GOOGLE_PICKER_KEY = built('__GOOGLE_PICKER_KEY__');
 const gClient = () => S.settings.clientId || GOOGLE_CLIENT_ID, gPickerKey = () => S.settings.pickerKey || GOOGLE_PICKER_KEY;
-const FEVER_C = 38.0, EXAMPLE_V = 5;
+const FEVER_C = 38.0, EXAMPLE_V = 6;
 const H = 3600e3, DAY = 24 * H;
 const reEsc = s => s.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
 // Symptoms are free text; preset tags found in the text are also kept as a list for reminders and the doctor summary.
@@ -299,15 +318,16 @@ const ICONS = {
   note: '<path d="M5 4h10l4 4v12H5z"/><path d="M9 12h6M9 16h4"/>',
   say: '<path d="M12 3a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
   sound: '<path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/>',
+  vax: '<path d="M18 2l4 4M20 4l-9.5 9.5M14 4l6 6M15 9l-8.5 8.5H3.5v-3L12 6"/><path d="M7 13l2 2M10 10l2 2M3.5 20.5l3-3"/>',
 };
 ICONS.food = ICONS.solids; ICONS.drink = ICONS.feed;
 const icon = k => `<span class="ic t-${k}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[k] || ICONS.note}</svg></span>`;
 
 /* ---------- State ---------- */
 function emptyState() {
-  return { app: 'aura', v: SCHEMA, example: false, children: [], episodes: [], entries: [], measurements: [], growth: [], products: [],
+  return { app: 'aura', v: SCHEMA, example: false, children: [], episodes: [], entries: [], measurements: [], growth: [], products: [], vaccines: [],
     meds: [{ id: 'm1', name: 'Paracetamol (acetaminophen)', gapH: 4, updatedAt: 0 }, { id: 'm2', name: 'Ibuprofen', gapH: 6, updatedAt: 0 }],
-    settings: { unit: 'C', clientId: '', pickerKey: '', apiKey: '', aiKind: 'anthropic', aiBase: '', aiModel: '', theme: 'auto', me: '', recallCountries: null, docLang: 'en' }, child: null, drive: {}, recalls: {}, docTr: {} };
+    settings: { unit: 'C', clientId: '', pickerKey: '', apiKey: '', aiKind: 'anthropic', aiBase: '', aiModel: '', theme: 'auto', me: '', recallCountries: null, docLang: 'en', vaxPlan: 'de' }, child: null, drive: {}, recalls: {}, docTr: {} };
 }
 function readLS(k) { try { const r = localStorage.getItem(k); return r ? JSON.parse(r) : null; } catch { return null; } }
 // The log's format version. To change the format, raise SCHEMA and add the step MIGRATIONS[old version], which turns a
@@ -405,6 +425,10 @@ function exampleState() {
     .forEach(([k, m]) => s.growth.push({ id: uid(), childId: kid.id, kind: 'tooth', key: k, t: atAge(m), note: '', updatedAt: 0 }));
   [['smile', 1.6, ''], ['laugh', 3.5, 'At the dog'], ['roll', 4.5, ''], ['sit', 6.5, ''], ['crawl', 8.5, 'Backwards first!'], ['stand', 10, ''], ['walk', 12.5, 'Three steps to grandma'], ['word', 12, '"Dada"'], ['phrase', 21, '"More milk"']]
     .forEach(([k, m, note]) => s.growth.push({ id: uid(), childId: kid.id, kind: 'milestone', key: k, t: atAge(m), note, updatedAt: 0 }));
+  [[1.6, ['rota'], 'Rotarix'], [2, ['rota'], 'Rotarix'], [2, ['6in1', 'pcv', 'menb'], 'Vaxelis, Prevenar 20, Bexsero'], [4, ['6in1', 'pcv', 'menb'], 'Vaxelis, Prevenar 20, Bexsero'],
+    [11, ['6in1', 'pcv'], 'Vaxelis, Prevenar 20'], [11.2, ['mmr', 'var'], 'Priorix-Tetra'], [15, ['mmr', 'var'], 'Priorix-Tetra']]
+    .forEach(([m, against, name], i) => s.vaccines.push({ id: uid(), childId: kid.id, kind: 'dose', t: startOfDay(atAge(m)) + 10 * H, against, name, batch: 'AB' + (4127 + i * 37), by: 'Dr. Weber', note: '', updatedAt: 0 }));
+  kid.vaxSkip = ['rsv'];
   const start = now - 2.6 * DAY;
   s.episodes.push({ id: 'ep-ex', childId: kid.id, title: 'Fever and cough', start, end: null, updatedAt: 0 });
   const at = h => start + h * H;
@@ -557,9 +581,9 @@ let tab = 'today', sickTab = 'overview', aiParsed = null, narrative = '', showDa
 function render() {
   applyTheme();
   document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === (tab === 'sick' ? 'today' : tab))));
-  for (const v of ['today', 'sick', 'growth', 'more']) $('#view-' + v).hidden = v !== tab;
-  $('#fab').hidden = tab === 'more' || !kid();
-  ({ today: renderToday, sick: renderSick, growth: renderGrowth, more: renderMore })[tab]();
+  for (const v of ['today', 'sick', 'growth', 'vax', 'more']) $('#view-' + v).hidden = v !== tab;
+  $('#fab').hidden = tab === 'more' || tab === 'vax' || !kid();
+  ({ today: renderToday, sick: renderSick, growth: renderGrowth, vax: renderVax, more: renderMore })[tab]();
 }
 const exampleBanner = () => S.example ? `<div class="banner"><p>This is example data so you can see how it works. Nothing here is real.</p><button class="btn primary sm" data-act="clear-example">Start with my child</button></div>` : '';
 function greeting() { const h = new Date().getHours(); return h < 5 ? 'Late night' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; }
@@ -607,7 +631,7 @@ function renderToday() {
     <div class="row between"><h3>Log</h3><button class="btn sm" data-act="track-sheet">What to track</button></div>
     <div class="quick">${quick.map(k => `<button class="qb" data-add="${k}">${icon(k)}${TYPES[k].label}</button>`).join('')}</div>
     ${ep ? '' : `<button class="linkish" data-act="new-episode">${esc(c.name)} is sick? Start sick mode</button>`}
-    ${recallFeedLine()}
+    ${recallFeedLine()}${vaxLine(c)}
     <div>${timelineHtml(es.filter(e => shownType(e.type)), showDays)}</div>`;
 }
 function timelineHtml(es, days) {
@@ -703,6 +727,8 @@ function summaryFacts(es, ep) {
   if (temps.length) f.push(dt('latest', showT(temps[0].tempC), fmtDT(temps[0].t), dvl(temps[0].method)));
   const byName = {}; es.filter(e => e.type === 'med').forEach(m => (byName[m.name] = byName[m.name] || []).push(m));
   for (const [n, list] of Object.entries(byName)) f.push(dt('doses', n, list.length, dnum(list[0].amount ?? ''), dv(list[0].unit ?? ''), fmtDT(list[0].t)).replace(/\s+/g, ' '));
+  const shots = c ? vaxAround(c, ep) : [];
+  if (shots.length) f.push(dt('vaccinated', shots.map(d => `${fmtDay(d.t)} (${vaxDocNames(d)})`).join(', ')));
   const docs = es.filter(e => e.type === 'doctor');
   if (docs.length) f.push(dt('doctors', docs.length, fmtDT(docs[0].t)));
   return f;
@@ -763,6 +789,7 @@ const DOC_TEXT = {
     latest: (v, at, how) => `Latest temperature ${v} at ${at}${how ? ' (' + how + ')' : ''}.`,
     doses: (name, n, amount, unit, at) => `${name}: ${n} doses, last ${amount} ${unit} at ${at}.`,
     doctors: (n, at) => `Seen or called a doctor ${n} time${n > 1 ? 's' : ''}, last ${at}. See the doctor's notes below.`,
+    vaccinated: list => `Vaccinated ${list}.`,
     day: 'day', readings: n => n + ' readings', stool: 'stool',
     fluidsIs: ml => `fluids ${ml} ml`, ateIs: a => `ate ${a}`, sleepIs: s => `sleep ${s}`, wetIs: n => `wet ${n}`, stoolsIs: s => `stools ${s || 'none'}`,
     dayLine: (n, date, max, meds, cols, vomit, sym) => `Day ${n} (${date}): max temp ${max}; meds ${meds || 'none'}; ${cols}vomited ${vomit}×${sym ? '; new: ' + sym : ''}`,
@@ -780,6 +807,7 @@ const DOC_TEXT = {
     latest: (v, at, how) => `Letzte Temperatur ${v} am ${at}${how ? ' (' + how + ')' : ''}.`,
     doses: (name, n, amount, unit, at) => `${name}: ${n} ${n === 1 ? 'Gabe' : 'Gaben'}, zuletzt ${amount} ${unit} am ${at}.`,
     doctors: (n, at) => `Ärztlicher Kontakt (Praxis oder Telefon): ${n}×, zuletzt ${at}. Siehe die ärztlichen Hinweise unten.`,
+    vaccinated: list => `Geimpft: ${list}.`, Vaccination: 'Impfung',
     Notes: 'Notizen', Day: 'Tag', day: 'Tag', 'Max temp': 'Max. Temp.', Medicines: 'Medikamente', Fluids: 'Trinkmenge', Ate: 'Gegessen', Sleep: 'Schlaf', Wet: 'Nasse Windeln', Stools: 'Stuhl', Vomit: 'Erbrochen', 'New symptoms': 'Neue Symptome',
     readings: n => n + (n === 1 ? ' Messung' : ' Messungen'), stool: 'Stuhl',
     fluidsIs: ml => `Trinkmenge ${ml} ml`, ateIs: a => `gegessen ${a}`, sleepIs: s => `Schlaf ${s}`, wetIs: n => `nasse Windeln ${n}`, stoolsIs: s => `Stuhl ${s || 'keiner'}`,
@@ -801,6 +829,9 @@ const DOC_VALUES = {
     Normal: 'normal', Soft: 'weich', Watery: 'wässrig', Hard: 'hart', 'Blood or mucus': 'Blut oder Schleim',
     'A taste': 'probiert', 'A little': 'wenig', 'About half': 'etwa die Hälfte', 'All of it': 'alles', Nothing: 'nichts',
     tablet: 'Tablette', drops: 'Tropfen', puffs: 'Hübe', sachet: 'Beutel',
+    'RSV antibody': 'RSV-Antikörper', Rotavirus: 'Rotaviren', '6-in-1': '6-fach-Impfung', Pneumococcus: 'Pneumokokken', 'Meningococcus B': 'Meningokokken B', Chickenpox: 'Windpocken (Varizellen)',
+    'Tdap booster': 'Auffrischung Tdap', 'Tdap-polio booster': 'Auffrischung Tdap-IPV', 'Meningococcus ACWY': 'Meningokokken ACWY', 'Meningococcus C': 'Meningokokken C', Flu: 'Influenza', 'TBE (FSME)': 'FSME',
+    Typhoid: 'Typhus', Rabies: 'Tollwut', 'Yellow fever': 'Gelbfieber', 'Japanese encephalitis': 'Japanische Enzephalitis', Other: 'Andere',
   },
 };
 const dt = (k, ...a) => { const v = DOC_TEXT[dLang]?.[k] ?? DOC_TEXT.en[k] ?? k; return typeof v === 'function' ? v(...a) : v; };
@@ -904,6 +935,107 @@ function measSheet(id) {
     <label class="field"><span>Note (optional)</span><input id="m_note" value="${esc(m.note || '')}" placeholder="e.g. 12-month checkup, clothes on"></label>
     <div class="sheet-actions">${id ? '<button class="btn ghost danger" data-act="del-meas">Delete</button>' : '<span></span>'}<button class="btn primary" data-act="save-meas">Save</button></div>`, { meas: id || null, childId: c.id });
 }
+
+/* ---------- Vaccinations ---------- */
+// Doses as written in the vaccination book (in Germany the yellow Impfpass), photos of its pages, and the usual
+// schedule so parents see what is next. The schedule is a reminder of the published recommendation, never advice:
+// the child's doctor decides. Germany: STIKO standard vaccinations for children, as of 2026 (MenC at 12 months
+// was dropped in 2026; MenACWY at 12 to 14 years was added). Ages are in months.
+const VAX_PLAN = [
+  { k: 'rsv', l: 'RSV protection (antibody)', s: 'RSV antibody', at: [0], ages: ['before or in the first RSV season'], upto: 12, until: 12, note: 'One dose of nirsevimab. Babies born April to September get it in the autumn before their first RSV season, babies born October to March in their first days.' },
+  { k: 'rota', l: 'Rotavirus', s: 'Rotavirus', at: [1.5, 2], ages: ['at 6 weeks', 'at 2 months'], until: 8, note: 'Drops by mouth from 6 weeks. Some vaccines have a third dose at 3 to 4 months. The series has to be finished by 24 to 32 weeks.' },
+  { k: '6in1', l: '6-in-1 (diphtheria, tetanus, whooping cough, polio, Hib, hepatitis B)', s: '6-in-1', at: [2, 4, 11], ages: ['at 2 months', 'at 4 months', 'at 11 months'], note: 'Babies born early get an extra dose at 3 months.' },
+  { k: 'pcv', l: 'Pneumococcus', s: 'Pneumococcus', at: [2, 4, 11], ages: ['at 2 months', 'at 4 months', 'at 11 months'], note: 'Babies born early get an extra dose at 3 months.' },
+  { k: 'menb', l: 'Meningococcus B', s: 'Meningococcus B', at: [2, 4, 12], ages: ['at 2 months', 'at 4 months', 'at 12 months'], note: 'Missed doses can be caught up until the 5th birthday, with a different number of doses.' },
+  { k: 'mmr', l: 'Measles, mumps, rubella (MMR)', s: 'MMR', at: [11, 15], ages: ['at 11 months', 'at 15 months'], note: 'Often given together with chickenpox as one shot (MMRV). Daycare and school ask for proof of measles vaccination.' },
+  { k: 'var', l: 'Chickenpox (varicella)', s: 'Chickenpox', at: [11, 15], ages: ['at 11 months', 'at 15 months'], note: 'Often given together with MMR as one shot (MMRV).' },
+  { k: 'tdap', l: 'Booster: tetanus, diphtheria, whooping cough', s: 'Tdap booster', at: [60], ages: ['at 5 to 6 years'], upto: 84 },
+  { k: 'tdapipv', l: 'Booster: tetanus, diphtheria, whooping cough, polio', s: 'Tdap-polio booster', at: [108], ages: ['at 9 to 16 years'], upto: 204 },
+  { k: 'hpv', l: 'HPV', s: 'HPV', at: [108, 113], ages: ['at 9 to 14 years', 'at least 5 months after the first'], upto: 180, note: 'Two doses between 9 and 14 years; started later, three doses.' },
+  { k: 'menacwy', l: 'Meningococcus ACWY', s: 'Meningococcus ACWY', at: [144], ages: ['at 12 to 14 years'], upto: 180, note: 'Catch-up is possible up to 24 years.' }];
+// Vaccines outside the childhood schedule: older or single-disease shots, and the common travel vaccines.
+const VAX_MORE = [['menc', 'Meningococcus C'], ['flu', 'Flu'], ['covid', 'COVID-19'], ['fsme', 'TBE (FSME)'], ['hepa', 'Hepatitis A'], ['hepb', 'Hepatitis B'], ['polio', 'Polio'],
+  ['typhoid', 'Typhoid'], ['rabies', 'Rabies'], ['yellow', 'Yellow fever'], ['je', 'Japanese encephalitis'], ['cholera', 'Cholera'], ['other', 'Other']];
+const VAX_KINDS = [...VAX_PLAN.map(v => [v.k, v.s]), ...VAX_MORE];
+const vaxLabel = k => (VAX_KINDS.find(([x]) => x === k) || [, k])[1];
+// In the doctor summary, in the language it is shown in.
+const vaxDocNames = d => (d.against || []).map(k => k === 'other' && d.name ? d.name : dv(vaxLabel(k))).join(', ') || d.name || dt('Vaccination');
+const vaxNames = d => (d.against || []).map(k => k === 'other' && d.name ? d.name : vaxLabel(k)).join(', ') || d.name || 'Vaccination';
+const fmtDate = t => new Date(t).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+const vaxOf = c => live(S.vaccines || []).filter(v => v.childId === c.id);
+const vaxDoses = c => vaxOf(c).filter(v => v.kind === 'dose').sort((a, b) => b.t - a.t);
+const planOn = () => S.settings.vaxPlan !== 'none';
+function atMonths(dob, m) { const d = new Date(dob + 'T12:00'); if (m % 1) return d.getTime() + m * 30.44 * DAY; d.setMonth(d.getMonth() + m); return d.getTime(); }
+// Where a child stands with one vaccine of the schedule: done, due, not recorded past the usual age, later, or over.
+function vaxStatus(c, v) {
+  const given = vaxDoses(c).filter(d => (d.against || []).includes(v.k)).reverse(), n = given.length, of = v.at.length;
+  const dose = of > 1 ? `Dose ${Math.min(n + 1, of)} of ${of} · ` : '', base = { given, n, of };
+  if ((c.vaxSkip || []).includes(v.k)) return { ...base, st: 'skip', text: n ? `${n} recorded · not planned` : 'Not planned' };
+  if (n >= of) return { ...base, st: 'done', text: `Done · ${fmtDate(given[n - 1].t)}` };
+  const m = ageMonths(c), due = v.at[n];
+  if (m == null) return { ...base, st: 'open', text: dose + 'usually ' + v.ages[n] };
+  if (v.until != null && m > v.until) return { ...base, st: 'missed', text: `The usual age is over${n ? ` · ${n} of ${of} recorded` : ''}` };
+  if (m > (v.upto ?? due + 2)) return { ...base, st: 'late', text: `${dose}not recorded yet · usually ${v.ages[n]}` };
+  if (m >= due - 0.5) return { ...base, st: 'due', text: `${dose}due · ${v.ages[n]}` };
+  return { ...base, st: 'later', text: `${dose}from ${fmtDate(atMonths(c.dob, due))} · ${v.ages[n]}` };
+}
+const vaxOpen = c => planOn() && c?.dob ? VAX_PLAN.filter(v => ['due', 'late'].includes(vaxStatus(c, v).st)) : [];
+const vaxLine = c => { const o = vaxOpen(c); return o.length ? `<button class="linkish vax-line" data-tab="vax">Vaccination${o.length > 1 ? 's' : ''} to check: ${esc(o.map(v => v.s).join(', '))}</button>` : ''; };
+// Doses from two weeks before an illness until it ended, for the doctor summary (a fever can follow a vaccination).
+const vaxAround = (c, ep) => vaxDoses(c).filter(d => d.t >= startOfDay(ep.start) - 14 * DAY && d.t <= (ep.end || Date.now())).reverse();
+function renderVax() {
+  const el = $('#view-vax'), c = kid();
+  if (!c) { el.innerHTML = header('Vaccines', 'Vaccination record') + `<div class="card empty"><p class="muted">Add your child to keep their vaccinations here.</p><button class="btn primary" data-kid="new">Add your child</button></div>`; return; }
+  const doses = vaxDoses(c), pages = vaxOf(c).filter(v => v.kind === 'page').sort((a, b) => a.t - b.t), m = ageMonths(c);
+  const row = v => { const s = vaxStatus(c, v);
+    return `<button class="vx-row ${s.st}" data-vxitem="${v.k}"><span><b>${esc(v.l)}</b><small>${esc(s.text)}</small></span><span class="vx-dots" aria-label="${s.n} of ${s.of} recorded">${v.at.map((_, i) => `<i class="${i < s.n ? 'on' : ''}"></i>`).join('')}</span></button>`; };
+  const soon = VAX_PLAN.filter(v => m == null || v.at[0] <= m + 12 || vaxStatus(c, v).n), later = VAX_PLAN.filter(v => !soon.includes(v));
+  const open = vaxOpen(c);
+  el.innerHTML = header('Vaccines', `${esc(c.name)}${c.dob ? ' · ' + ageText(c) : ''}`) + exampleBanner() + `
+    <div class="row"><button class="btn primary" data-act="add-vax">Add a vaccination</button><button class="btn" data-act="vax-photo">Photo of the book</button><input id="vaxPage" type="file" accept="image/*" hidden></div>
+    ${planOn() ? `<div class="card set"><div class="row between"><h2>Schedule</h2><span class="muted small">Germany · STIKO</span></div>
+      ${!c.dob ? '<p class="small muted" style="margin:0">Add a birth date to see when each vaccination is usually given.</p>' : open.length ? `<p class="small" style="margin:0;color:var(--wait)"><b>${open.length} to check with your pediatrician.</b> If one was given, tap it and add the date from the book.</p>` : ''}
+      <div>${soon.map(row).join('')}</div>
+      ${later.length ? `<details><summary class="small muted">Later in childhood (${later.length})</summary><div>${later.map(row).join('')}</div></details>` : ''}
+      <p class="small muted" style="margin:0">The usual ages from the STIKO recommendations (as of 2026), as a reminder only. Your pediatrician decides what your child gets and when. Plans differ for babies born early, for health conditions and for catch-up doses.</p></div>` : ''}
+    <div class="card set"><div class="row between"><h2>Recorded</h2>${doses.length ? '<button class="btn sm" data-act="copy-vax">Copy list</button>' : ''}</div>
+      ${doses.length ? `<div>${doses.map(d => `<button class="vx-dose" data-vxdose="${d.id}"><span><b>${esc(vaxNames(d))}</b> <span class="muted small num">${fmtDate(d.t)}${c.dob ? ' · ' + ageText(c, d.t) : ''}</span></span>${d.name || d.batch || d.by ? `<small>${esc([d.name, d.batch && 'batch ' + d.batch, d.by].filter(Boolean).join(' · '))}</small>` : ''}${d.note ? `<small>${esc(d.note)}</small>` : ''}</button>`).join('')}</div>`
+        : '<p class="muted small" style="margin:0">Nothing recorded yet. Copy each line from the vaccination book: the date, what it protects against, and the vaccine name and batch number if you like.</p>'}</div>
+    <div class="card set"><div class="row between"><h2>Pages of the book</h2><span class="muted small">${pages.length}</span></div>
+      ${pages.length ? `<div class="book">${pages.map(p => `<button data-vxpage="${p.id}" aria-label="Photo from ${fmtDate(p.t)}"><img src="${p.img}" alt=""></button>`).join('')}</div>` : ''}
+      <p class="small muted" style="margin:0">A photo of each filled page is a backup if the book gets lost. It syncs with your partner like other photos.</p></div>
+    <div class="card set"><h2>Schedule to show</h2>
+      <div class="chips">${[['de', 'Germany (STIKO)'], ['none', 'None, just my records']].map(([k, l]) => `<button data-vaxplan="${k}" class="${(S.settings.vaxPlan || 'de') === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>`;
+}
+function vaxSheet(id, preset) {
+  const c = kid(), d = id ? S.vaccines.find(x => x.id === id) : { against: preset ? [preset] : [] };
+  openSheet(`<div class="hd"><h2>${id ? 'Edit vaccination' : 'Add a vaccination'}</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+    <label class="field"><span>Date</span><input id="v_date" type="date" value="${toLocalInput(d.t || Date.now()).slice(0, 10)}" max="${toLocalInput(Date.now()).slice(0, 10)}"></label>
+    <div class="field"><span>Protects against (tap all that apply)</span><div class="chips" data-k="against" data-multi>${VAX_KINDS.map(([k, l]) => `<button type="button" data-v="${k}" class="${(d.against || []).includes(k) ? 'on' : ''}">${esc(l)}</button>`).join('')}</div></div>
+    <p class="small muted" style="margin:0">One shot can cover several: an MMRV shot is MMR and chickenpox.</p>
+    <label class="field"><span>Vaccine name, as in the book (optional)</span><input id="v_name" value="${esc(d.name || '')}" placeholder="e.g. Vaxelis" autocomplete="off"></label>
+    <label class="field"><span>Batch number (Ch.-B., optional)</span><input id="v_batch" value="${esc(d.batch || '')}" autocomplete="off"></label>
+    <label class="field"><span>Doctor or practice (optional)</span><input id="v_by" value="${esc(d.by || '')}" autocomplete="off"></label>
+    <label class="field"><span>Note (optional)</span><textarea id="v_note" style="min-height:64px" placeholder="e.g. a bit of fever that evening">${esc(d.note || '')}</textarea></label>
+    <div class="sheet-actions">${id ? '<button class="btn ghost danger" data-act="del-vax">Delete</button>' : '<span></span>'}<button class="btn primary" data-act="save-vax">Save</button></div>`, { vax: id || null, childId: c.id });
+}
+function vaxItemSheet(k) {
+  const c = kid(), v = VAX_PLAN.find(x => x.k === k), s = vaxStatus(c, v), skip = (c.vaxSkip || []).includes(k);
+  openSheet(`<div class="hd"><h2>${esc(v.l)}</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+    <p class="small muted" style="margin:0">Usually ${v.at.length > 1 ? v.at.length + ' doses: ' : ''}${esc(v.ages.join(', '))}.${v.note ? ' ' + esc(v.note) : ''}</p>
+    <div>${s.given.map((d, i) => `<button class="vx-dose" data-vxdose="${d.id}"><span><b>Dose ${i + 1}</b> <span class="muted small num">${fmtDate(d.t)}${c.dob ? ' · ' + ageText(c, d.t) : ''}</span></span>${d.name || d.batch ? `<small>${esc([d.name, d.batch && 'batch ' + d.batch].filter(Boolean).join(' · '))}</small>` : ''}</button>`).join('') || '<p class="muted small" style="margin:0">None recorded yet.</p>'}</div>
+    <div class="sheet-actions"><button class="btn ghost" data-act="vax-skip" data-for="${k}">${skip ? 'Show as planned again' : 'Not planned for us'}</button><button class="btn primary" data-act="add-vax" data-for="${k}">Add a dose</button></div>`, { vaxItem: k });
+}
+function vaxPageSheet(id) {
+  const p = S.vaccines.find(x => x.id === id);
+  openSheet(`<div class="hd"><h2>Page of the book</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+    <img src="${p.img}" alt="Vaccination book page" style="width:100%;border-radius:10px">
+    <label class="field"><span>Note (optional)</span><input id="vp_note" value="${esc(p.note || '')}" placeholder="e.g. pages 4 and 5"></label>
+    <p class="small muted" style="margin:0">Added ${fmtDate(p.t)}</p>
+    <div class="sheet-actions"><button class="btn ghost danger" data-act="del-vxpage">Delete photo</button><button class="btn primary" data-act="save-vxpage">Save</button></div>`, { vxpage: id });
+}
+const vaxListText = c => [`VACCINATIONS: ${c.name}${c.dob ? ', born ' + fmtDate(new Date(c.dob + 'T12:00').getTime()) : ''}`,
+  ...vaxDoses(c).slice().reverse().map(d => `${fmtDate(d.t)}: ${vaxNames(d)}${d.name ? ' (' + d.name + ')' : ''}${d.batch ? ', batch ' + d.batch : ''}${d.by ? ', ' + d.by : ''}`)].join('\n');
 
 /* ---------- More ---------- */
 function renderMore() {
@@ -1188,7 +1320,7 @@ async function aiSummary() {
   const ep = viewEp(), es = epEntries(ep).slice().reverse(), c = childOf(ep), wt = weightOf(c), lang = S.settings.docLang !== 'en' && DOC_LANGS.find(l => l[0] === S.settings.docLang)?.[3];
   const log = es.map(e => `${toLocalInput(e.t).replace('T', ' ')} (day ${dayNo(e.t, ep)}) ${TYPES[e.type]?.long || TYPES[e.type]?.label || e.type}: ${plain(e)}${e.note ? ' | note: ' + e.note : ''}`).join('\n');
   const system = `You help a parent hand over an accurate account of their child's illness to a doctor. Write from the log only; never add facts, diagnoses, or treatment or dose suggestions. Format: a 2-sentence overview, then 5 to 9 short bullet lines in time order covering the fever pattern, medicines with times and spacing, feeding, fluids and wet diapers, sleep, vomiting and stools, how symptoms changed, and what any doctor already said, ending with what changed most recently. Then "Questions you may want to ask:" with 3 brief questions. Plain text, no markdown headings. ${lang ? `Write everything in ${lang}, for a doctor who reads ${lang}.` : "Match the language of the parent's notes."}`;
-  const user = `Child: ${c ? `${c.name}${c.dob ? ', age ' + ageText(c) : ''}${wt ? ', ' + wt.v + ' kg' : ''}` : 'unknown'}. Illness started ${toLocalInput(ep.start).replace('T', ' ')}.${ep.note ? ' Parent\'s notes about the illness: ' + ep.note : ''} Now: ${toLocalInput(Date.now()).replace('T', ' ')}. Temperatures in Celsius.\n\nLog:\n${log}`;
+  const user = `Child: ${c ? `${c.name}${c.dob ? ', age ' + ageText(c) : ''}${wt ? ', ' + wt.v + ' kg' : ''}` : 'unknown'}. Illness started ${toLocalInput(ep.start).replace('T', ' ')}.${ep.note ? ' Parent\'s notes about the illness: ' + ep.note : ''}${c && vaxAround(c, ep).length ? ' Vaccinations shortly before or during: ' + vaxAround(c, ep).map(d => `${toLocalInput(d.t).slice(0, 10)} ${vaxNames(d)}`).join('; ') + '.' : ''} Now: ${toLocalInput(Date.now()).replace('T', ' ')}. Temperatures in Celsius.\n\nLog:\n${log}`;
   narrative = 'Writing…'; render();
   try { narrative = (await ai(system, user, null, ep.childId)).trim(); } catch (err) { narrative = ''; toast(aiError(err)); }
   render();
@@ -1260,7 +1392,7 @@ async function token(interactive) {
 }
 async function gapi(tok, url, opts = {}) { const r = await fetch(url, { ...opts, headers: { Authorization: 'Bearer ' + tok, ...(opts.headers || {}) } }); if (!r.ok) throw new Error(`Drive error ${r.status}`); return r; }
 const DRIVE = 'https://www.googleapis.com/drive/v3/files', UP = 'https://www.googleapis.com/upload/drive/v3/files';
-const SYNCED = ['children', 'episodes', 'entries', 'meds', 'measurements', 'growth', 'products'];
+const SYNCED = ['children', 'episodes', 'entries', 'meds', 'measurements', 'growth', 'products', 'vaccines'];
 const shareable = () => ({ app: 'aura', v: SCHEMA, savedAt: Date.now(), ...Object.fromEntries(SYNCED.map(k => [k, S[k]])) });
 const enc = encodeURIComponent, JSON_H = { 'Content-Type': 'application/json' }, FOLDER_T = 'application/vnd.google-apps.folder';
 async function folderId(tok, name, parent) {
@@ -1594,6 +1726,7 @@ document.addEventListener('click', async ev => {
     if (b.dataset.aibase) { S.settings.aiBase = b.dataset.aibase; persist(); return renderMore(); }
     if (b.dataset.rcountry) { toggleRecallCountry(b.dataset.rcountry); recallsShown = 5; persist(); return renderMore(); }
     if (b.dataset.themeSet) { S.settings.theme = b.dataset.themeSet; return commit(); }
+    if (b.dataset.vaxplan) { S.settings.vaxPlan = b.dataset.vaxplan; persist(); return render(); }
     if (box.hasAttribute('data-multi')) b.classList.toggle('on');
     else { const was = b.classList.contains('on'); box.querySelectorAll('button').forEach(x => x.classList.remove('on')); if (!was || box.dataset.k === 'kind') b.classList.add('on'); const c = box.querySelector('[data-custom]'); if (c) c.value = ''; }
     if (box.dataset.k === 'kind') syncShow();
@@ -1614,6 +1747,9 @@ document.addEventListener('click', async ev => {
   if (b.dataset.ep) { const e = S.episodes.find(x => x.id === b.dataset.ep); S.child = e.childId; viewEpId = e.id; sickTab = 'overview'; narrative = ''; tab = 'sick'; persist(); render(); return window.scrollTo(0, 0); }
   if (b.dataset.pickkid) { S.child = b.dataset.pickkid; closeSheet(); return commit(); }
   if (b.dataset.kid) return kidSheet(b.dataset.kid);
+  if (b.dataset.vxitem) return vaxItemSheet(b.dataset.vxitem);
+  if (b.dataset.vxdose) return vaxSheet(b.dataset.vxdose);
+  if (b.dataset.vxpage) return vaxPageSheet(b.dataset.vxpage);
   if (b.dataset.tooth) return growthSheet('tooth', b.dataset.tooth);
   if (b.dataset.ms) return growthSheet('milestone', b.dataset.ms === 'new' ? null : b.dataset.ms);
   if (b.dataset.track) {
@@ -1675,6 +1811,23 @@ document.addEventListener('click', async ev => {
     }
     case 'del-kid': { const c = S.children.find(k => k.id === sheetCtx.kid); c.deleted = true; touch(c); if (S.child === c.id) S.child = kids()[0]?.id || null; closeSheet(); return commit(); }
     case 'add-meas': return measSheet();
+    case 'add-vax': return vaxSheet(null, b.dataset.for);
+    case 'save-vax': {
+      const day = $('#v_date').value, noon = day ? new Date(day + 'T12:00').getTime() : NaN, against = readChips('against'), name = $('#v_name').value.trim();
+      if (!noon) return toast('Enter the date from the book.');
+      if (startOfDay(noon) > Date.now()) return toast('That date is in the future.');
+      const t = Math.min(noon, Date.now());
+      if (!against.length && !name) return toast('Tap what it protects against, or write the vaccine name.');
+      const d = sheetCtx.vax ? S.vaccines.find(x => x.id === sheetCtx.vax) : { id: uid(), childId: sheetCtx.childId, kind: 'dose' };
+      Object.assign(d, { t, against, name, batch: $('#v_batch').value.trim(), by: $('#v_by').value.trim(), note: $('#v_note').value.trim() }); touch(d);
+      if (!sheetCtx.vax) S.vaccines.push(d); closeSheet(); commit(); return toast('Vaccination saved');
+    }
+    case 'del-vax': { const d = S.vaccines.find(x => x.id === sheetCtx.vax); d.deleted = true; touch(d); closeSheet(); commit(); return toast('Deleted'); }
+    case 'vax-skip': { const c = kid(), k = b.dataset.for, sk = new Set(c.vaxSkip || []); sk.has(k) ? sk.delete(k) : sk.add(k); c.vaxSkip = [...sk]; touch(c); closeSheet(); return commit(); }
+    case 'vax-photo': return $('#vaxPage').click();
+    case 'save-vxpage': { const p = S.vaccines.find(x => x.id === sheetCtx.vxpage); p.note = $('#vp_note').value.trim(); touch(p); closeSheet(); return commit(); }
+    case 'del-vxpage': { const p = S.vaccines.find(x => x.id === sheetCtx.vxpage); p.deleted = true; touch(p); closeSheet(); commit(); return toast('Photo deleted'); }
+    case 'copy-vax': return copyText(vaxListText(kid()));
     case 'save-growth': {
       const ctx = sheetCtx.growth, label = $('#g_label')?.value.trim();
       if (ctx.kind === 'milestone' && !ctx.key && !label) return toast('Write what happened first.');
@@ -1736,6 +1889,7 @@ document.addEventListener('change', ev => {
   if (t.id === 'apiKey' || t.id === 'aiBase' || t.id === 'aiModel') { S.settings[t.id] = t.value.trim(); persist(); renderMore(); if (t.id === 'aiBase' && t.value && !okBase(t.value.trim())) toast('Use an https:// address, or http://localhost for a model on this computer.'); }
   if (t.id === 'clientId' || t.id === 'pickerKey') { S.settings[t.id] = t.value.trim(); persist(); }
   if (t.id === 'meName') { S.settings.me = t.value.trim(); persist(); }
+  if (t.id === 'vaxPage' && t.files[0]) { const c = kid(); shrink(t.files[0], 1600).then(img => { S.vaccines.push(touch({ id: uid(), childId: c.id, kind: 'page', t: Date.now(), img, note: '' })); commit(); toast('Photo saved'); }).catch(e => toast(e.message)); t.value = ''; }
   if (t.id === 'restoreFile' && t.files[0]) t.files[0].text().then(x => { mergeIn(JSON.parse(x)); commit(); toast('Backup restored'); }).catch(e => toast(e instanceof SyntaxError ? "That file isn't an Aura backup." : e.message));
 });
 function markTags() { const t = $('#f_symtext')?.value; document.querySelectorAll('#symTags [data-tag]').forEach(x => x.classList.toggle('on', hasTag(t, x.dataset.tag))); }
