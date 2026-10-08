@@ -1,5 +1,6 @@
 // Opens the built app at phone width and checks the main screens render without errors or sideways scrolling.
 import { chromium } from 'playwright';
+import { readFileSync } from 'node:fs';
 
 const url = new URL('../app/index.html', import.meta.url).href;
 const browser = await chromium.launch({ ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}), args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] });
@@ -113,7 +114,7 @@ for (const theme of ['night', 'day']) {
   // Sick view tabs, Growth and More
   await page.click('[data-act="open-sick"]');
   for (const t of ['overview', 'chart', 'doctor']) { await page.click(`[data-sick="${t}"]`); if (await overflow()) fail(`${theme}: sick ${t} scrolls sideways`); }
-  for (const t of ['growth', 'vax', 'more']) { await page.click(`.tabs [data-tab="${t}"]`); if (await overflow()) fail(`${theme}: ${t} scrolls sideways`); }
+  for (const t of ['growth', 'vax', 'checkups', 'more']) { await page.click(`.tabs [data-tab="${t}"]`); if (await overflow()) fail(`${theme}: ${t} scrolls sideways`); }
   // The illness's name, start and notes can be changed from the sick card on Today
   if (theme === 'day') {
     await page.click('.tabs [data-tab="today"]');
@@ -290,6 +291,82 @@ for (const theme of ['night', 'day']) {
   await page.close();
 }
 
+// Checkups (U-Heft): recorded ones, a due one on Today, recording it (with measurements for Growth), and calendar dates
+{
+  const page = await newPage();
+  page.on('pageerror', e => fail(`checkups: ${e.message}`));
+  await page.goto(url);
+  await page.waitForSelector('h1');
+  if ((await page.locator('.vax-line', { hasText: 'checkup' }).count()) !== 0) fail('checkups: Today shows a checkup for the example child, whose next one is months away');
+  await page.click('.tabs [data-tab="checkups"]');
+  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail('checkups: tab scrolls sideways');
+  if ((await page.locator('[data-uitem].done').count()) !== 7) fail(`checkups: expected U1 to U7 done, got ${await page.locator('[data-uitem].done').count()}`);
+  if ((await page.locator('[data-uitem="U7a"].later').count()) !== 1) fail('checkups: U7a not shown as later');
+  const icsOf = async click => { const [dl] = await Promise.all([page.waitForEvent('download'), page.click(click)]); return readFileSync(await dl.path(), 'utf8'); };
+  // One checkup: a Google Calendar link and a calendar file with one all-day event
+  await page.click('[data-uitem="U7a"]');
+  await page.click('[data-act="cal-u"]');
+  const g = new URL(await page.getAttribute('[data-gcal]', 'href'));
+  if (g.searchParams.get('action') !== 'TEMPLATE' || !g.searchParams.get('text').startsWith('U7a checkup · Mia') || !/^\d{8}\/\d{8}$/.test(g.searchParams.get('dates'))) fail('checkups: Google Calendar link is wrong');
+  let ics = await icsOf('[data-act="cal-ics"]');
+  if ((ics.match(/BEGIN:VEVENT/g) || []).length !== 1 || !/DTSTART;VALUE=DATE:\d{8}/.test(ics) || !ics.includes('SUMMARY:U7a checkup · Mia') || !ics.includes('\r\n')) fail('checkups: calendar file for one checkup is wrong');
+  if (ics.split('\r\n').some(l => l.length > 75)) fail('checkups: calendar file has lines that are too long');
+  // The next dates together: the U7a and the open meningococcus B dose
+  await page.click('[data-act="cal-next"]');
+  if ((await page.locator('[data-gcal]').count()) !== 0) fail('checkups: Google link offered for several dates');
+  ics = await icsOf('[data-act="cal-ics"]');
+  if ((ics.match(/BEGIN:VEVENT/g) || []).length !== 2 || !ics.includes('Meningococcus B vaccination')) fail('checkups: calendar file of the next dates is wrong');
+  // A vaccination due later can go into the calendar too
+  await page.click('.tabs [data-tab="vax"]');
+  await page.click('[data-vxitem="menb"]');
+  await page.click('[data-act="cal-vax"]');
+  if (!(await page.getAttribute('[data-gcal]', 'href')).includes('Meningococcus')) fail('checkups: vaccination calendar link is wrong');
+  await page.click('[data-act="close"]');
+  // A baby of six months: the U5 is due, Today says so, and recording it closes it
+  const dob = new Date(Date.now() - 6.3 * 30.44 * 864e5).toISOString().slice(0, 10);
+  { const st = await getState(page); st.example = false; st.children.push({ id: 'kid-b', name: 'Ben', dob, updatedAt: Date.now() }); st.child = 'kid-b'; await setState(page, st); }
+  await reload(page); await page.waitForSelector('h1');
+  const uLine = page.locator('.vax-line', { hasText: 'U5 checkup due' });
+  if ((await uLine.count()) !== 1) fail('checkups: Today does not show the due U5');
+  await uLine.click();
+  if (await page.isHidden('#view-checkups')) fail('checkups: Today line does not open the Checkups tab');
+  if ((await page.locator('[data-uitem].missed').count()) !== 4) fail(`checkups: expected U1 to U4 as not recorded, got ${await page.locator('[data-uitem].missed').count()}`);
+  await page.click('[data-uitem="U5"]');
+  await page.click('#sheet [data-act="add-u"]');
+  if ((await page.locator('.chips[data-k="u"] [data-v="U5"].on').count()) !== 1) fail('checkups: sheet not set to the checkup tapped');
+  await page.fill('#u_date', '2999-01-01');
+  await page.click('[data-act="save-u"]');
+  if (await page.isHidden('#scrim')) fail('checkups: a future date was saved');
+  await page.fill('#u_date', new Date().toISOString().slice(0, 10));
+  await page.fill('#u_by', 'Dr. Weber'); await page.fill('#u_note', 'All fine'); await page.fill('#u_weightKg', '7.4');
+  await page.click('[data-act="save-u"]');
+  if ((await page.locator('[data-uitem="U5"].done').count()) !== 1) fail('checkups: recording the U5 did not close it');
+  await page.click('.tabs [data-tab="today"]');
+  if ((await page.locator('.vax-line', { hasText: 'checkup' }).count()) !== 0) fail('checkups: Today still shows the recorded U5');
+  let st = await getState(page);
+  const ex = st.checkups.find(x => x.childId === 'kid-b' && x.u === 'U5'), m = ex && st.measurements.find(x => x.id === ex.measId);
+  if (!ex || ex.by !== 'Dr. Weber' || ex.note !== 'All fine' || !ex.updatedAt) fail('checkups: checkup not saved');
+  if (!m || m.weightKg !== 7.4 || m.childId !== 'kid-b' || m.deleted) fail('checkups: weight from the checkup not saved for Growth');
+  // Clearing the weight again removes that measurement
+  await page.click('.tabs [data-tab="checkups"]');
+  await page.click(`[data-uexam="${ex.id}"]`);
+  await page.fill('#u_weightKg', '');
+  await page.click('[data-act="save-u"]');
+  st = await getState(page);
+  if (!st.measurements.find(x => x.id === ex.measId)?.deleted) fail('checkups: cleared weight still kept');
+  // A photo of a page of the U-Heft
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+  await page.setInputFiles('#uPage', { name: 'page.png', mimeType: 'image/png', buffer: png });
+  await page.waitForSelector('.book [data-upage]');
+  st = await getState(page);
+  if (!st.checkups.some(v => v.kind === 'page' && v.childId === 'kid-b' && v.img?.startsWith('data:image/'))) fail('checkups: U-Heft photo not saved');
+  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail('checkups: tab scrolls sideways with records');
+  // Without a schedule only the records show
+  await page.click('[data-uplan="none"]');
+  if ((await page.locator('[data-uitem]').count()) !== 0) fail('checkups: schedule shown with no schedule chosen');
+  await page.close();
+}
+
 // Backups are required: a new log asks for one and Today keeps reminding until a copy exists off the phone
 {
   const page = await newPage();
@@ -388,6 +465,7 @@ for (const theme of ['night', 'day']) {
   await page.goto(url);
   await page.waitForSelector('h1');
   const st = await getState(page); st.example = false; st.settings.clientId = 'x-y.apps.googleusercontent.com'; st.drive = { fileId: 'f1' };
+  st.checkups.push({ id: 'up1', childId: 'kid-ex', kind: 'page', t: 1000, img: 'data:image/jpeg;base64,/9j/UHEFT', note: '', updatedAt: Date.now() });
   st.vaccines.push({ id: 'vp1', childId: 'kid-ex', kind: 'page', t: 1000, img: 'data:image/jpeg;base64,/9j/BOOK', note: '', updatedAt: Date.now() });
   await setState(page, st); await reload(page); await page.waitForSelector('h1');
   await page.click('[data-act="sync-tap"]');
@@ -400,6 +478,8 @@ for (const theme of ['night', 'day']) {
   if (!drive.queries.some(q => q.includes("name='backups'") && q.includes("'logdir' in parents"))) fail('sync: backups not kept next to the log (so a moved or renamed folder would lose them)');
   if (!drive.file.vaccines?.some(v => v.kind === 'dose')) fail('sync: vaccinations not written to Drive');
   if (!drive.file.vaccines?.some(v => v.id === 'vp1' && v.img === 'data:image/jpeg;base64,/9j/BOOK')) fail('sync: photo of the vaccination book not written to Drive');
+  if (!drive.file.checkups?.some(v => v.id === 'up1' && v.img === 'data:image/jpeg;base64,/9j/UHEFT')) fail('sync: photo of the U-Heft not written to Drive');
+  if (!drive.file.checkups?.some(v => v.kind === 'exam' && v.u === 'U7')) fail('sync: checkups not written to Drive');
   if (drive.file.future?.[0] !== 'kept') fail('sync: a part of the Drive file this version does not know was dropped');
   // With nothing changed on either side, a sync only asks Drive for the version number and downloads nothing
   let downloads = drive.downloads, patches = drive.patches;
