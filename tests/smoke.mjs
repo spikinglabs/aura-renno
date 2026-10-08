@@ -427,6 +427,63 @@ for (const theme of ['night', 'day']) {
   await page.close();
 }
 
+// Appointments: a booked date and note show instead of the usual time, go to the calendar at their time, ask to be
+// recorded once passed, and start the recorded visit on that day
+{
+  const page = await newPage();
+  page.on('pageerror', e => fail(`appointments: ${e.message}`));
+  const day = n => { const d = new Date(Date.now() + n * 864e5); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  await page.goto(url);
+  await page.waitForSelector('h1');
+  await openTab(page, 'dental');
+  await page.click('[data-zitem="Z4"]');
+  await page.click('#sheet [data-act="appt"]');
+  await page.click('[data-act="save-appt"]');
+  if (await page.isHidden('#scrim') || (await page.locator('#a_date').count()) !== 1) fail('appointments: saved without a date');
+  await page.fill('#a_date', day(5)); await page.fill('#a_time', '09:30'); await page.fill('#a_note', 'Dr. Zahn, Hauptstr. 3');
+  await page.click('[data-act="save-appt"]');
+  if (!(await page.innerText('#sheet .appt')).includes('Dr. Zahn')) fail('appointments: the checkup sheet does not show the appointment');
+  await page.click('#sheet [data-act="cal-z"]');
+  const g = new URL(await page.getAttribute('[data-gcal]', 'href'));
+  if (g.searchParams.get('dates') !== `${day(5).replace(/-/g, '')}T093000/${day(5).replace(/-/g, '')}T103000` || !g.searchParams.get('details').includes('Dr. Zahn')) fail('appointments: Google Calendar link does not use the appointment');
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('[data-act="cal-ics"]')]);
+  const ics = readFileSync(await dl.path(), 'utf8');
+  if (!ics.includes(`DTSTART:${day(5).replace(/-/g, '')}T093000`) || !ics.includes('TRIGGER:-PT1H')) fail('appointments: calendar file does not use the appointment time');
+  const row = await page.innerText('[data-zitem="Z4"]');
+  if ((await page.locator('[data-zitem="Z4"].booked').count()) !== 1 || !row.includes('Appointment') || !row.includes('Dr. Zahn') || /month 34/.test(row)) fail('appointments: the row still shows the usual time');
+  let st = await getState(page), a = st.appts.find(x => x.k === 'Z4');
+  if (!a || a.plan !== 'z' || a.date !== day(5) || a.time !== '09:30' || a.childId !== st.child || !a.updatedAt) fail('appointments: not saved');
+  await page.click('.tabs [data-tab="today"]');
+  if ((await page.locator('.vax-line', { hasText: 'Z4 dental checkup: appointment' }).count()) !== 1) fail('appointments: Today does not show the coming appointment');
+  // A vaccination dose can be booked and the booking deleted again
+  await openTab(page, 'vax');
+  await page.click('[data-vxitem="menb"]');
+  await page.click('#sheet [data-act="appt"]');
+  await page.fill('#a_date', day(40));
+  await page.click('[data-act="save-appt"]');
+  if ((await page.locator('[data-vxitem="menb"].booked').count()) !== 1) fail('appointments: vaccination not shown as booked');
+  st = await getState(page);
+  if (!st.appts.some(x => x.plan === 'vax' && x.k === 'menb' && x.dose >= 1 && !x.deleted)) fail('appointments: vaccination appointment not saved for its dose');
+  await page.click('#sheet .appt [data-act="appt"]');
+  await page.click('[data-act="del-appt"]');
+  if ((await page.locator('[data-vxitem="menb"].booked').count()) !== 0) fail('appointments: deleted appointment still shown');
+  await page.click('#sheet [data-act="close"]');
+  // Once the day has passed, Aura asks to record it, and the visit starts on that day
+  st = await getState(page); st.appts.find(x => x.k === 'Z4').date = day(-3); await setState(page, st);
+  await reload(page); await page.waitForSelector('h1');
+  if ((await page.locator('.vax-line', { hasText: 'Z4 dental checkup: appointment was' }).count()) !== 1) fail('appointments: Today does not ask to record a passed appointment');
+  await openTab(page, 'dental');
+  if ((await page.locator('[data-zitem="Z4"].went').count()) !== 1) fail('appointments: passed appointment not shown');
+  await page.click('[data-zitem="Z4"]');
+  await page.click('#sheet [data-act="add-z"]');
+  if ((await page.inputValue('#z_date')) !== day(-3)) fail('appointments: the visit does not start on the appointment day');
+  await page.click('[data-act="save-z"]');
+  if ((await page.locator('[data-zitem="Z4"].done').count()) !== 1) fail('appointments: recording the visit did not close it');
+  await page.click('.tabs [data-tab="today"]');
+  if ((await page.locator('.vax-line', { hasText: 'Z4' }).count()) !== 0) fail('appointments: Today still shows the recorded visit');
+  await page.close();
+}
+
 // Emergency card: shown from Today, in English or German, edited, merged when two phones each started one, and in the doctor summary
 {
   const page = await newPage();
