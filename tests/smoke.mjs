@@ -367,6 +367,57 @@ for (const theme of ['night', 'day']) {
   await page.close();
 }
 
+// Emergency card: shown from Today, in English or German, edited, merged when two phones each started one, and in the doctor summary
+{
+  const page = await newPage();
+  page.on('pageerror', e => fail(`card: ${e.message}`));
+  await page.goto(url);
+  await page.waitForSelector('h1');
+  // The example child is allergic to penicillin; Today says so and opens the card
+  if (!(await page.innerText('.card-line')).includes('Penicillin')) fail('card: Today does not show the allergy');
+  await page.click('.card-line');
+  if (await page.isHidden('#view-card')) fail('card: Today line does not open the card');
+  if (!(await page.innerText('.ec-allergy')).includes('Penicillin')) fail('card: allergy missing on the card');
+  if ((await page.locator('#view-card a[href="tel:01712345678"]').count()) !== 1) fail('card: contact phone number is not a call link');
+  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail('card: scrolls sideways');
+  await page.click('#view-card [data-doclang="de"]');
+  const de = (await page.innerText('#view-card .ec')).toLowerCase();
+  if (!de.includes('allergien') || !de.includes('notfallkontakte') || !de.includes('blutgruppe')) fail('card: German labels missing');
+  await page.click('#view-card [data-doclang="en"]');
+  // Editing keeps what was there and saves the change
+  await page.click('[data-act="card-edit"]');
+  if ((await page.inputValue('#ec_insurer')) !== 'Techniker Krankenkasse') fail('card: edit form does not show the saved card');
+  await page.fill('#ec_allergies', 'Peanuts (hives)\nPenicillin');
+  await page.fill('#ec_conditions', 'Asthma');
+  await page.click('.chips[data-k="blood"] [data-v="O-"]');
+  await page.click('[data-act="save-card"]');
+  if (!(await page.innerText('#view-card .ec')).includes('O−')) fail('card: blood group not shown');
+  let st = await getState(page);
+  const live = st.emergency.filter(x => !x.deleted);
+  if (live.length !== 1 || live[0].allergies !== 'Peanuts (hives)\nPenicillin' || live[0].blood !== 'O-' || !live[0].updatedAt) fail('card: change not saved');
+  // The doctor summary lists allergies and conditions, in German too
+  await page.click('[data-tab="today"]');
+  await page.click('[data-act="open-sick"]');
+  await page.click('[data-sick="doctor"]');
+  if (!(await page.innerText('.facts')).includes('Allergies: Peanuts (hives); Penicillin.') || !(await page.innerText('.facts')).includes('Known conditions: Asthma.')) fail('card: doctor summary lacks allergies or conditions');
+  await page.click('[data-doclang="de"]');
+  if (!(await page.innerText('.facts')).includes('Allergien: Peanuts')) fail('card: German doctor summary lacks allergies');
+  await page.click('[data-doclang="en"]');
+  // A card started on another phone at the same time is shown merged, and the next save keeps one
+  st = await getState(page); st.example = false;
+  st.emergency.push({ id: 'other', childId: 'kid-ex', allergies: '', contacts: '', doctor: '', meds: 'Inhaler when wheezing', updatedAt: 1 });
+  await setState(page, st); await reload(page); await page.waitForSelector('h1');
+  await page.click('.card-line');
+  if (!(await page.innerText('#view-card .ec')).includes('Inhaler when wheezing') || !(await page.innerText('#view-card .ec')).includes('Peanuts')) fail('card: two cards for one child not merged');
+  await page.click('[data-act="card-edit"]');
+  await page.click('[data-act="save-card"]');
+  st = await getState(page);
+  const kept = st.emergency.filter(x => !x.deleted);
+  if (kept.length !== 1 || kept[0].meds !== 'Inhaler when wheezing' || !kept[0].allergies.includes('Peanuts')) fail('card: merged save lost something');
+  if (!st.emergency.some(x => x.id === 'other' && x.deleted)) fail('card: the merged card was not marked as replaced');
+  await page.close();
+}
+
 // Backups are required: a new log asks for one and Today keeps reminding until a copy exists off the phone
 {
   const page = await newPage();
@@ -477,6 +528,7 @@ for (const theme of ['night', 'day']) {
   if (!drive.uploads.some(b => b.includes('aura-backup-'))) fail('sync: no backup saved before overwriting');
   if (!drive.queries.some(q => q.includes("name='backups'") && q.includes("'logdir' in parents"))) fail('sync: backups not kept next to the log (so a moved or renamed folder would lose them)');
   if (!drive.file.vaccines?.some(v => v.kind === 'dose')) fail('sync: vaccinations not written to Drive');
+  if (!drive.file.emergency?.some(x => x.childId === 'kid-ex' && x.allergies)) fail('sync: emergency card not written to Drive');
   if (!drive.file.vaccines?.some(v => v.id === 'vp1' && v.img === 'data:image/jpeg;base64,/9j/BOOK')) fail('sync: photo of the vaccination book not written to Drive');
   if (!drive.file.checkups?.some(v => v.id === 'up1' && v.img === 'data:image/jpeg;base64,/9j/UHEFT')) fail('sync: photo of the U-Heft not written to Drive');
   if (!drive.file.checkups?.some(v => v.kind === 'exam' && v.u === 'U7')) fail('sync: checkups not written to Drive');

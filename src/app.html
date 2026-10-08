@@ -161,6 +161,15 @@ tr:last-child td { border-bottom: 0 }
 .r { text-align: right } td.hot { color: var(--alert); font-weight: 700 }
 .narrative { white-space: pre-wrap; line-height: 1.55; overflow-wrap: anywhere }
 .disclaimer { font-size: .84rem; color: var(--muted) }
+.ec { display: flex; flex-direction: column; gap: 12px }
+.ec dl { margin: 0; display: flex; flex-direction: column; gap: 12px }
+.ec dt { font-size: .76rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--muted) }
+.ec dd { margin: 2px 0 0; white-space: pre-wrap; overflow-wrap: anywhere }
+.ec dd a { color: var(--accent-ink); font-weight: 700; white-space: nowrap }
+.ec-allergy { background: var(--warm-soft); border-radius: 14px; padding: 10px 14px }
+.ec-allergy dt { color: var(--alert) }
+.ec-allergy dd { font-weight: 700; font-size: 1.05rem }
+.card-line { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
 .doc-said .item { border-left: 3px solid var(--accent); padding: 2px 0 2px 12px; margin-top: 10px }
 
 /* More */
@@ -247,6 +256,7 @@ tr:last-child td { border-bottom: 0 }
   <section class="view" id="view-sick" hidden></section>
   <section class="view" id="view-growth" hidden></section>
   <section class="view" id="view-vax" hidden></section>
+  <section class="view" id="view-card" hidden></section>
   <section class="view" id="view-checkups" hidden></section>
   <section class="view" id="view-more" hidden></section>
 </div>
@@ -273,7 +283,7 @@ const DRIVE_FILE = 'aura-log.json', DRIVE_FOLDER = 'Aura';
 const built = v => /^__/.test(v) ? '' : v;
 const GOOGLE_CLIENT_ID = built('__GOOGLE_CLIENT_ID__'), GOOGLE_PICKER_KEY = built('__GOOGLE_PICKER_KEY__');
 const gClient = () => S.settings.clientId || GOOGLE_CLIENT_ID, gPickerKey = () => S.settings.pickerKey || GOOGLE_PICKER_KEY;
-const FEVER_C = 38.0, EXAMPLE_V = 8;
+const FEVER_C = 38.0, EXAMPLE_V = 9;
 const H = 3600e3, DAY = 24 * H;
 const reEsc = s => s.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
 // Symptoms are free text; preset tags found in the text are also kept as a list for reminders and the doctor summary.
@@ -329,7 +339,7 @@ const icon = k => `<span class="ic t-${k}"><svg viewBox="0 0 24 24" aria-hidden=
 
 /* ---------- State ---------- */
 function emptyState() {
-  return { app: 'aura', v: SCHEMA, example: false, children: [], episodes: [], entries: [], measurements: [], growth: [], products: [], vaccines: [], checkups: [],
+  return { app: 'aura', v: SCHEMA, example: false, children: [], episodes: [], entries: [], measurements: [], growth: [], products: [], vaccines: [], checkups: [], emergency: [],
     meds: [{ id: 'm1', name: 'Paracetamol (acetaminophen)', gapH: 4, updatedAt: 0 }, { id: 'm2', name: 'Ibuprofen', gapH: 6, updatedAt: 0 }],
     settings: { unit: 'C', clientId: '', pickerKey: '', apiKey: '', aiKind: 'anthropic', aiBase: '', aiModel: '', theme: 'auto', me: '', recallCountries: null, docLang: 'en', vaxPlan: 'de', uPlan: 'de' }, child: null, drive: {}, recalls: {}, docTr: {} };
 }
@@ -433,6 +443,8 @@ function exampleState() {
     [11, ['6in1', 'pcv'], 'Vaxelis, Prevenar 20'], [11.2, ['mmr', 'var'], 'Priorix-Tetra'], [15, ['mmr', 'var'], 'Priorix-Tetra']]
     .forEach(([m, against, name], i) => s.vaccines.push({ id: uid(), childId: kid.id, kind: 'dose', t: startOfDay(atAge(m)) + 10 * H, against, name, batch: 'AB' + (4127 + i * 37), by: 'Dr. Weber', note: '', updatedAt: 0 }));
   kid.vaxSkip = ['rsv'];
+  s.emergency.push({ id: uid(), childId: kid.id, allergies: 'Penicillin (rash all over)', conditions: '', meds: '', blood: 'A+', doctor: 'Dr. Weber, Kinderarztpraxis am Park', doctorPhone: '030 1234567',
+    insurer: 'Techniker Krankenkasse', insuranceNo: 'M123456789', contacts: 'Anna (mum) 0171 2345678\nJonas (dad) 0172 3456789\nGrandma Ute 030 7654321', notes: 'Comforter: the blue rabbit.', updatedAt: 0 });
   [['U1', 0, 'Klinikum, Dr. Brandt'], ['U2', 4, 'Klinikum, Dr. Brandt'], ['U3', 32, 'Dr. Weber'], ['U4', 100, 'Dr. Weber'], ['U5', 195, 'Dr. Weber'], ['U6', 335, 'Dr. Weber'], ['U7', 690, 'Dr. Weber']]
     .forEach(([u, d, by]) => s.checkups.push({ id: uid(), childId: kid.id, kind: 'exam', u, t: startOfDay(born + d * DAY) + 10 * H, by, note: u === 'U6' ? 'All fine. Hearing test again at the U7.' : u === 'U7' ? 'Hearing fine. Speaks many single words.' : '', updatedAt: 0 }));
   const start = now - 2.6 * DAY;
@@ -586,10 +598,10 @@ function applyTheme() {
 let tab = 'today', sickTab = 'overview', aiParsed = null, narrative = '', showDays = 3;
 function render() {
   applyTheme();
-  document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === (tab === 'sick' ? 'today' : tab))));
-  for (const v of ['today', 'sick', 'growth', 'vax', 'checkups', 'more']) $('#view-' + v).hidden = v !== tab;
-  $('#fab').hidden = tab === 'more' || tab === 'vax' || tab === 'checkups' || !kid();
-  ({ today: renderToday, sick: renderSick, growth: renderGrowth, vax: renderVax, checkups: renderCheckups, more: renderMore })[tab]();
+  document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === (tab === 'sick' ? 'today' : tab === 'card' ? cardFrom : tab))));
+  for (const v of ['today', 'sick', 'growth', 'vax', 'checkups', 'more', 'card']) $('#view-' + v).hidden = v !== tab;
+  $('#fab').hidden = tab === 'more' || tab === 'vax' || tab === 'checkups' || tab === 'card' || !kid();
+  ({ today: renderToday, sick: renderSick, growth: renderGrowth, vax: renderVax, checkups: renderCheckups, more: renderMore, card: renderCard })[tab]();
 }
 const exampleBanner = () => S.example ? `<div class="banner"><p>This is example data so you can see how it works. Nothing here is real.</p><button class="btn primary sm" data-act="clear-example">Start with my child</button></div>` : '';
 function greeting() { const h = new Date().getHours(); return h < 5 ? 'Late night' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; }
@@ -637,7 +649,7 @@ function renderToday() {
     <div class="row between"><h3>Log</h3><button class="btn sm" data-act="track-sheet">What to track</button></div>
     <div class="quick">${quick.map(k => `<button class="qb" data-add="${k}">${icon(k)}${TYPES[k].label}</button>`).join('')}</div>
     ${ep ? '' : `<button class="linkish" data-act="new-episode">${esc(c.name)} is sick? Start sick mode</button>`}
-    ${recallFeedLine()}${vaxLine(c)}${uLine(c)}
+    ${recallFeedLine()}${vaxLine(c)}${uLine(c)}${cardLine(c)}
     <div>${timelineHtml(es.filter(e => shownType(e.type)), showDays)}</div>`;
 }
 function timelineHtml(es, days) {
@@ -726,6 +738,8 @@ function dailyRows(es, ep) {
 function summaryFacts(es, ep) {
   const c = childOf(ep), temps = es.filter(e => e.type === 'temp'), fevers = temps.filter(e => e.tempC >= FEVER_C), f = [], wt = weightOf(c);
   if (c) f.push(dt('child', c.name, c.dob ? ageText(c) : '', wt ? dnum(wt.v) : '', wt?.t ? fmtDay(wt.t) : ''));
+  const card = c && cardOf(c);
+  for (const k of EC_HEALTH) if (card?.[k]) f.push(`${dt(EC_LABEL[k])}: ${oneLine(ft(card[k]))}.`);
   f.push(dt('started', fmtDT(ep.start), ep.end ? fmtDay(ep.end) : '', dayNo(Date.now(), ep)));
   if (ep.note) f.push(`${dt('Notes')}: ${ft(ep.note)}`);
   if (fevers.length) { const mx = fevers.reduce((a, b) => (b.tempC > a.tempC ? b : a)); f.push(dt('fever', fmtDT(Math.min(...fevers.map(e => e.t))), showT(mx.tempC), fmtDT(mx.t), ago(fevers[0].t))); }
@@ -796,6 +810,9 @@ const DOC_TEXT = {
     doses: (name, n, amount, unit, at) => `${name}: ${n} doses, last ${amount} ${unit} at ${at}.`,
     doctors: (n, at) => `Seen or called a doctor ${n} time${n > 1 ? 's' : ''}, last ${at}. See the doctor's notes below.`,
     vaccinated: list => `Vaccinated ${list}.`,
+    EMERGENCY: n => `EMERGENCY CARD: ${n}`, notEntered: 'Not filled in', 'Insurance number': 'insurance number',
+    cardWho: (born, age, kg, on) => [born && `Born ${born}${age ? ' (' + age + ')' : ''}`, kg && `${kg} kg${on ? ' (weighed ' + on + ')' : ''}`].filter(Boolean).join('. ') + (born || kg ? '.' : ''),
+    cardNote: 'In an emergency call 112 (Europe) or your local emergency number. This card shows only what the family wrote down.',
     day: 'day', readings: n => n + ' readings', stool: 'stool',
     fluidsIs: ml => `fluids ${ml} ml`, ateIs: a => `ate ${a}`, sleepIs: s => `sleep ${s}`, wetIs: n => `wet ${n}`, stoolsIs: s => `stools ${s || 'none'}`,
     dayLine: (n, date, max, meds, cols, vomit, sym) => `Day ${n} (${date}): max temp ${max}; meds ${meds || 'none'}; ${cols}vomited ${vomit}×${sym ? '; new: ' + sym : ''}`,
@@ -814,6 +831,11 @@ const DOC_TEXT = {
     doses: (name, n, amount, unit, at) => `${name}: ${n} ${n === 1 ? 'Gabe' : 'Gaben'}, zuletzt ${amount} ${unit} am ${at}.`,
     doctors: (n, at) => `Ärztlicher Kontakt (Praxis oder Telefon): ${n}×, zuletzt ${at}. Siehe die ärztlichen Hinweise unten.`,
     vaccinated: list => `Geimpft: ${list}.`, Vaccination: 'Impfung',
+    'Emergency card': 'Notfallkarte', EMERGENCY: n => `NOTFALLKARTE: ${n}`, notEntered: 'Nicht angegeben',
+    Allergies: 'Allergien', 'Known conditions': 'Bekannte Erkrankungen', 'Regular medicines': 'Dauermedikation', 'Blood group': 'Blutgruppe', Pediatrician: 'Kinderarzt/Kinderärztin',
+    'Health insurance': 'Krankenkasse', 'Insurance number': 'Versichertennummer', 'Emergency contacts': 'Notfallkontakte',
+    cardWho: (born, age, kg, on) => [born && `Geboren am ${born}${age ? ' (' + age + ')' : ''}`, kg && `${kg} kg${on ? ' (gewogen am ' + on + ')' : ''}`].filter(Boolean).join('. ') + (born || kg ? '.' : ''),
+    cardNote: 'Im Notfall die 112 anrufen. Diese Karte zeigt nur, was die Familie eingetragen hat.',
     Notes: 'Notizen', Day: 'Tag', day: 'Tag', 'Max temp': 'Max. Temp.', Medicines: 'Medikamente', Fluids: 'Trinkmenge', Ate: 'Gegessen', Sleep: 'Schlaf', Wet: 'Nasse Windeln', Stools: 'Stuhl', Vomit: 'Erbrochen', 'New symptoms': 'Neue Symptome',
     readings: n => n + (n === 1 ? ' Messung' : ' Messungen'), stool: 'Stuhl',
     fluidsIs: ml => `Trinkmenge ${ml} ml`, ateIs: a => `gegessen ${a}`, sleepIs: s => `Schlaf ${s}`, wetIs: n => `nasse Windeln ${n}`, stoolsIs: s => `Stuhl ${s || 'keiner'}`,
@@ -846,7 +868,7 @@ const dvl = v => !v ? '' : dLang === 'en' ? lc(v) : dv(v);
 const dnum = s => dLang === 'en' ? s : String(s).replace(/(\d)\.(\d)/g, '$1' + dt('dec') + '$2');
 function inLang(l, f) { const was = dLang; dLang = DOC_LANGS.some(x => x[0] === l) ? l : 'en'; try { return f(); } finally { dLang = was; } }
 // Free text in the doctor summary, and its AI translation when there is one.
-const freeTexts = (ep, es) => [ep.note, ...es.filter(e => e.type === 'doctor').map(docText), ...es.filter(e => (e.type === 'photo' && e.img) || e.type === 'sound').map(e => e.note)].filter(Boolean);
+const freeTexts = (ep, es) => [ep.note, ...(c => EC_HEALTH.map(k => c?.[k]))(cardOf(childOf(ep))), ...es.filter(e => e.type === 'doctor').map(docText), ...es.filter(e => (e.type === 'photo' && e.img) || e.type === 'sound').map(e => e.note)].filter(Boolean);
 const ft = t => (dLang !== 'en' && S.docTr?.[dLang]?.[t]) || t;
 const ftHtml = t => ft(t) === t ? esc(t) : `${esc(ft(t))}<details class="small tr-orig"><summary class="muted">${dt('aiTr')}</summary>${esc(t)}</details>`;
 let translating = false;
@@ -1099,6 +1121,81 @@ function vaxPageSheet(id) {
 }
 const vaxListText = c => [`VACCINATIONS: ${c.name}${c.dob ? ', born ' + fmtDate(new Date(c.dob + 'T12:00').getTime()) : ''}`,
   ...vaxDoses(c).slice().reverse().map(d => `${fmtDate(d.t)}: ${vaxNames(d)}${d.name ? ' (' + d.name + ')' : ''}${d.batch ? ', batch ' + d.batch : ''}${d.by ? ', ' + d.by : ''}`)].join('\n');
+
+/* ---------- Emergency card ---------- */
+// Allergies, conditions, regular medicines, blood group, pediatrician, insurance and contacts on one screen, to show a
+// babysitter or the hospital. One record per child in the synced `emergency` collection (not on the child, so editing the
+// card and editing the child never overwrite each other). All free text, as the parent writes it; the fixed wording
+// follows the doctor-summary language. If two phones each started a card for the same child, both are shown merged and
+// the next save keeps one.
+const EC_KEYS = ['allergies', 'conditions', 'meds', 'blood', 'doctor', 'doctorPhone', 'insurer', 'insuranceNo', 'contacts', 'notes'];
+const EC_HEALTH = ['allergies', 'conditions', 'meds']; // also in the doctor summary and the AI handover
+const EC_LABEL = { allergies: 'Allergies', conditions: 'Known conditions', meds: 'Regular medicines' };
+const BLOOD = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+const oneLine = t => String(t || '').trim().split(/\s*\n+\s*/).join('; ').replace(/[.;,\s]+$/, '');
+const cardsOf = c => c ? live(S.emergency || []).filter(x => x.childId === c.id).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)) : [];
+function cardOf(c) {
+  const all = cardsOf(c); if (!all.length) return null;
+  const out = { ...all[0] }; for (const x of all.slice(1)) for (const k of EC_KEYS) if (!out[k] && x[k]) out[k] = x[k];
+  return out;
+}
+const bloodText = v => dLang === 'en' ? v.replace('-', '−') : v.replace('O', '0').replace('-', '−');
+// Phone numbers become tap-to-call links (only in the phone and contact fields, where numbers are phone numbers).
+const telHtml = t => esc(t).replace(/\+?\(?\d[\d ()\/-]{4,}\d/g, n => `<a href="tel:${n.replace(/[^\d+]/g, '')}">${n}</a>`);
+const cardLine = c => { const d = cardOf(c); return `<button class="linkish card-line" data-card="${c.id}">Emergency card${d?.allergies ? ' · allergies: ' + esc(oneLine(d.allergies)) : ''}</button>`; };
+let cardKidId = null, cardFrom = 'today';
+const cardKid = () => kids().find(k => k.id === cardKidId) || kid();
+function cardRows(c) { // [label, text, html] in the order shown; empty fields are left out
+  const d = cardOf(c) || {};
+  return [['Known conditions', d.conditions && ft(d.conditions), d.conditions && ftHtml(d.conditions)], ['Regular medicines', d.meds && ft(d.meds), d.meds && ftHtml(d.meds)], ['Blood group', d.blood && bloodText(d.blood)],
+    ['Pediatrician', [d.doctor, d.doctorPhone].filter(Boolean).join(', '), [esc(d.doctor), d.doctorPhone && telHtml(d.doctorPhone)].filter(Boolean).join(', ')],
+    ['Health insurance', [d.insurer, d.insuranceNo && dt('Insurance number') + ' ' + d.insuranceNo].filter(Boolean).join(', ')],
+    ['Emergency contacts', d.contacts, d.contacts && telHtml(d.contacts)], ['Notes', d.notes]].filter(r => r[1]);
+}
+function cardWho(c) {
+  const wt = weightOf(c), born = c.dob ? new Date(c.dob + 'T12:00').toLocaleDateString(dLocale(), { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+  return dt('cardWho', born, c.dob ? ageText(c) : '', wt ? dnum(wt.v) : '', wt?.t ? fmtDay(wt.t) : '');
+}
+const cardText = c => { const d = cardOf(c) || {};
+  return [dt('EMERGENCY', c.name), cardWho(c), `${dt('Allergies')}: ${d.allergies ? oneLine(ft(d.allergies)) : dt('notEntered')}`,
+    ...cardRows(c).map(([l, v]) => l === 'Emergency contacts' ? `${dt(l)}:\n${v}` : `${dt(l)}: ${oneLine(v)}`)].join('\n'); };
+function renderCard() {
+  const c = cardKid(); if (!c) { tab = 'today'; return render(); }
+  inLang(S.settings.docLang, () => cardView(c, $('#view-card')));
+}
+function cardView(c, el) {
+  const d = cardOf(c);
+  el.innerHTML = `<div class="head"><div><button class="linkish" data-tab="${cardFrom}">‹ Back</button><h1>${esc(c.name)}</h1><div class="hi" lang="${dLang}">${dt('Emergency card')}</div></div>${syncLabel()}</div>
+    ${exampleBanner()}
+    <div class="row between"><p class="muted small" style="margin:0">Show this to a babysitter or at the hospital.</p>
+      <div class="seg lang" role="group" aria-label="Language of the card">${DOC_LANGS.map(([k, n]) => `<button data-doclang="${k}" lang="${k}" class="${dLang === k ? 'on' : ''}" aria-pressed="${dLang === k}">${n}</button>`).join('')}</div></div>
+    <div class="card ec doc-lang" lang="${dLang}">
+      <div>${esc(cardWho(c))}</div>
+      <dl class="ec-allergy"><dt>${dt('Allergies')}</dt><dd>${d?.allergies ? ftHtml(d.allergies) : `<span class="muted">${dt('notEntered')}</span>`}</dd></dl>
+      ${(rows => rows.length ? `<dl>${rows.map(([l, v, html]) => `<div><dt>${dt(l)}</dt><dd>${html || esc(v)}</dd></div>`).join('')}</dl>` : '')(cardRows(c))}
+    </div>
+    ${d ? '' : '<p class="small muted" style="margin:0">Nothing written yet. Add allergies, the pediatrician and who to call, so anyone looking after your child has them.</p>'}
+    <div class="row"><button class="btn primary" data-act="card-edit">${d ? 'Edit' : 'Fill in the card'}</button>${d ? `<button class="btn" data-act="card-copy">Copy</button>${navigator.share ? '<button class="btn" data-act="card-share">Share</button>' : ''}` : ''}</div>
+    <p class="disclaimer" lang="${dLang}">${dt('cardNote')}</p>`;
+}
+function cardSheet(c) {
+  const d = cardOf(c) || {};
+  const area = (k, label, ph, h = 64) => `<label class="field"><span>${label}</span><textarea id="ec_${k}" style="min-height:${h}px" placeholder="${ph}">${esc(d[k] || '')}</textarea></label>`;
+  const line = (k, label, ph, type = 'text') => `<label class="field"><span>${label}</span><input id="ec_${k}" type="${type}" value="${esc(d[k] || '')}" placeholder="${ph}" autocomplete="off"></label>`;
+  openSheet(`<div class="hd"><h2>Emergency card for ${esc(c.name)}</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+    <p class="small muted" style="margin:0">Write it the way you would tell a babysitter or a nurse. Everything is optional. It syncs to your partner with the rest of the log.</p>
+    ${area('allergies', 'Allergies, and what happens', 'e.g. Peanuts: hives and swollen lips. Penicillin: rash.')}
+    ${area('conditions', 'Known conditions', 'e.g. Asthma. Born at 34 weeks.')}
+    ${area('meds', 'Regular medicines', 'e.g. Inhaler, as the pediatrician prescribed')}
+    <div class="field"><span>Blood group (if known)</span><div class="chips" data-k="blood">${BLOOD.map(v => `<button type="button" data-v="${v}" class="${d.blood === v ? 'on' : ''}">${v.replace('-', '−')}</button>`).join('')}</div></div>
+    ${line('doctor', 'Pediatrician or practice', 'e.g. Dr. Weber, Kinderarztpraxis am Park')}
+    ${line('doctorPhone', 'Practice phone', 'e.g. 030 1234567', 'tel')}
+    ${line('insurer', 'Health insurance', 'e.g. Techniker Krankenkasse')}
+    ${line('insuranceNo', 'Insurance number (on the card)', '')}
+    ${area('contacts', 'Emergency contacts, one per line', 'e.g. Anna (mum) 0171 2345678&#10;Grandma Ute 030 7654321', 80)}
+    ${area('notes', 'Anything else', 'e.g. Comforter is the blue rabbit. Speaks German and English.')}
+    <div class="sheet-actions"><span></span><button class="btn primary" data-act="save-card">Save</button></div>`, { card: c.id });
+}
 
 /* ---------- Checkups (U-Heft) ---------- */
 // The German child checkups as in the yellow U-Heft (G-BA Kinder-Richtlinie): what was recorded, photos of the
@@ -1399,7 +1496,7 @@ function kidSheet(id) {
     <label class="field"><span>Birth date (for age and baby reminders)</span><input id="k_dob" type="date" value="${esc(c.dob || '')}"></label>
     <label class="field"><span>Sex (for the WHO growth curves)</span><select id="k_sex"><option value="">Not set</option><option value="f"${c.sex === 'f' ? ' selected' : ''}>Girl</option><option value="m"${c.sex === 'm' ? ' selected' : ''}>Boy</option></select></label>
     <p class="small muted" style="margin:0">Weight and height are tracked over time in the Growth tab.</p>
-    ${id !== 'new' ? `<div><button class="btn sm" data-act="track-sheet" data-for="${c.id}">Choose what to track</button></div>` : ''}
+    ${id !== 'new' ? `<div class="row"><button class="btn sm" data-act="track-sheet" data-for="${c.id}">Choose what to track</button><button class="btn sm" data-card="${c.id}">Emergency card</button></div>` : ''}
     <div class="sheet-actions">${id !== 'new' ? '<button class="btn ghost danger" data-act="del-kid">Remove</button>' : '<span></span>'}<button class="btn primary" data-act="save-kid">Save</button></div>`, { kid: id });
 }
 function episodeSheet(ep) {
@@ -1523,7 +1620,7 @@ async function aiSummary() {
   const ep = viewEp(), es = epEntries(ep).slice().reverse(), c = childOf(ep), wt = weightOf(c), lang = S.settings.docLang !== 'en' && DOC_LANGS.find(l => l[0] === S.settings.docLang)?.[3];
   const log = es.map(e => `${toLocalInput(e.t).replace('T', ' ')} (day ${dayNo(e.t, ep)}) ${TYPES[e.type]?.long || TYPES[e.type]?.label || e.type}: ${plain(e)}${e.note ? ' | note: ' + e.note : ''}`).join('\n');
   const system = `You help a parent hand over an accurate account of their child's illness to a doctor. Write from the log only; never add facts, diagnoses, or treatment or dose suggestions. Format: a 2-sentence overview, then 5 to 9 short bullet lines in time order covering the fever pattern, medicines with times and spacing, feeding, fluids and wet diapers, sleep, vomiting and stools, how symptoms changed, and what any doctor already said, ending with what changed most recently. Then "Questions you may want to ask:" with 3 brief questions. Plain text, no markdown headings. ${lang ? `Write everything in ${lang}, for a doctor who reads ${lang}.` : "Match the language of the parent's notes."}`;
-  const user = `Child: ${c ? `${c.name}${c.dob ? ', age ' + ageText(c) : ''}${wt ? ', ' + wt.v + ' kg' : ''}` : 'unknown'}. Illness started ${toLocalInput(ep.start).replace('T', ' ')}.${ep.note ? ' Parent\'s notes about the illness: ' + ep.note : ''}${c && vaxAround(c, ep).length ? ' Vaccinations shortly before or during: ' + vaxAround(c, ep).map(d => `${toLocalInput(d.t).slice(0, 10)} ${vaxNames(d)}`).join('; ') + '.' : ''} Now: ${toLocalInput(Date.now()).replace('T', ' ')}. Temperatures in Celsius.\n\nLog:\n${log}`;
+  const user = `Child: ${c ? `${c.name}${c.dob ? ', age ' + ageText(c) : ''}${wt ? ', ' + wt.v + ' kg' : ''}` : 'unknown'}. Illness started ${toLocalInput(ep.start).replace('T', ' ')}.${(card => EC_HEALTH.filter(k => card?.[k]).map(k => ` ${EC_LABEL[k]}: ${oneLine(card[k])}.`).join(''))(cardOf(c))}${ep.note ? ' Parent\'s notes about the illness: ' + ep.note : ''}${c && vaxAround(c, ep).length ? ' Vaccinations shortly before or during: ' + vaxAround(c, ep).map(d => `${toLocalInput(d.t).slice(0, 10)} ${vaxNames(d)}`).join('; ') + '.' : ''} Now: ${toLocalInput(Date.now()).replace('T', ' ')}. Temperatures in Celsius.\n\nLog:\n${log}`;
   narrative = 'Writing…'; render();
   try { narrative = (await ai(system, user, null, ep.childId)).trim(); } catch (err) { narrative = ''; toast(aiError(err)); }
   render();
@@ -1595,7 +1692,7 @@ async function token(interactive) {
 }
 async function gapi(tok, url, opts = {}) { const r = await fetch(url, { ...opts, headers: { Authorization: 'Bearer ' + tok, ...(opts.headers || {}) } }); if (!r.ok) throw new Error(`Drive error ${r.status}`); return r; }
 const DRIVE = 'https://www.googleapis.com/drive/v3/files', UP = 'https://www.googleapis.com/upload/drive/v3/files';
-const SYNCED = ['children', 'episodes', 'entries', 'meds', 'measurements', 'growth', 'products', 'vaccines', 'checkups'];
+const SYNCED = ['children', 'episodes', 'entries', 'meds', 'measurements', 'growth', 'products', 'vaccines', 'checkups', 'emergency'];
 const shareable = () => ({ app: 'aura', v: SCHEMA, savedAt: Date.now(), ...Object.fromEntries(SYNCED.map(k => [k, S[k]])) });
 const enc = encodeURIComponent, JSON_H = { 'Content-Type': 'application/json' }, FOLDER_T = 'application/vnd.google-apps.folder';
 async function folderId(tok, name, parent) {
@@ -1951,6 +2048,7 @@ document.addEventListener('click', async ev => {
   if (b.dataset.ep) { const e = S.episodes.find(x => x.id === b.dataset.ep); S.child = e.childId; viewEpId = e.id; sickTab = 'overview'; narrative = ''; tab = 'sick'; persist(); render(); return window.scrollTo(0, 0); }
   if (b.dataset.pickkid) { S.child = b.dataset.pickkid; closeSheet(); return commit(); }
   if (b.dataset.kid) return kidSheet(b.dataset.kid);
+  if (b.dataset.card) { cardKidId = b.dataset.card; cardFrom = tab === 'more' ? 'more' : 'today'; closeSheet(); tab = 'card'; render(); return window.scrollTo(0, 0); }
   if (b.dataset.vxitem) return vaxItemSheet(b.dataset.vxitem);
   if (b.dataset.vxdose) return vaxSheet(b.dataset.vxdose);
   if (b.dataset.vxpage) return vaxPageSheet(b.dataset.vxpage);
@@ -2035,6 +2133,17 @@ document.addEventListener('click', async ev => {
     case 'save-vxpage': { const p = S.vaccines.find(x => x.id === sheetCtx.vxpage); p.note = $('#vp_note').value.trim(); touch(p); closeSheet(); return commit(); }
     case 'del-vxpage': { const p = S.vaccines.find(x => x.id === sheetCtx.vxpage); p.deleted = true; touch(p); closeSheet(); commit(); return toast('Photo deleted'); }
     case 'copy-vax': return copyText(vaxListText(kid()));
+    case 'card-edit': return cardSheet(cardKid());
+    case 'card-copy': return copyText(inLang(S.settings.docLang, () => cardText(cardKid())));
+    case 'card-share': { const c = cardKid(), text = inLang(S.settings.docLang, () => cardText(c)); try { await navigator.share({ title: inLang(S.settings.docLang, () => dt('Emergency card')) + ': ' + c.name, text }); } catch (e) { if (e?.name !== 'AbortError') copyText(text); } return; }
+    case 'save-card': {
+      const c = S.children.find(k => k.id === sheetCtx.card), all = cardsOf(c);
+      const vals = Object.fromEntries(EC_KEYS.map(k => [k, k === 'blood' ? readChips('blood') || '' : $('#ec_' + k).value.trim()]));
+      if (!all.length && EC_KEYS.every(k => !vals[k])) return closeSheet();
+      const d = all[0] || { id: uid(), childId: c.id }; Object.assign(d, vals); touch(d);
+      all.slice(1).forEach(x => { x.deleted = true; touch(x); }); // their contents were in the form, merged into this one
+      if (!all.length) S.emergency.push(d); closeSheet(); commit(); return toast('Emergency card saved');
+    }
     case 'add-u': return uSheet(null, b.dataset.for);
     case 'save-u': {
       const u = readChips('u'), day = $('#u_date').value, noon = day ? new Date(day + 'T12:00').getTime() : NaN;
