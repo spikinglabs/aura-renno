@@ -377,10 +377,14 @@ for (const theme of ['night', 'day']) {
   page.on('pageerror', e => fail(`card: ${e.message}`));
   await page.goto(url);
   await page.waitForSelector('h1');
-  // The example child is allergic to penicillin; Today says so and opens the card
-  if (!(await page.innerText('.card-line')).includes('Penicillin')) fail('card: Today does not show the allergy');
-  await page.click('.card-line');
-  if (await page.isHidden('#view-card')) fail('card: Today line does not open the card');
+  // The card button sits next to the child at the top of every main screen and the sick view
+  for (const t of ['growth', 'vax', 'checkups', 'more']) { await page.click(`.tabs [data-tab="${t}"]`); if ((await page.locator(`#view-${t} .head .sos`).count()) !== 1) fail(`card: no card button on ${t}`); }
+  await page.click('.tabs [data-tab="today"]');
+  await page.click('[data-act="open-sick"]');
+  if ((await page.locator('#view-sick .head .sos').count()) !== 1) fail('card: no card button in the sick view');
+  await page.click('#view-sick [data-tab="today"]');
+  await page.click('#view-today .head .sos');
+  if (await page.isHidden('#view-card')) fail('card: the button does not open the card');
   if (!(await page.innerText('.ec-allergy')).includes('Penicillin')) fail('card: allergy missing on the card');
   if ((await page.locator('#view-card a[href="tel:01712345678"]').count()) !== 1) fail('card: contact phone number is not a call link');
   if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail('card: scrolls sideways');
@@ -400,7 +404,7 @@ for (const theme of ['night', 'day']) {
   const live = st.emergency.filter(x => !x.deleted);
   if (live.length !== 1 || live[0].allergies !== 'Peanuts (hives)\nPenicillin' || live[0].blood !== 'O-' || !live[0].updatedAt) fail('card: change not saved');
   // The doctor summary lists allergies and conditions, in German too
-  await page.click('[data-tab="today"]');
+  await page.click('.tabs [data-tab="today"]');
   await page.click('[data-act="open-sick"]');
   await page.click('[data-sick="doctor"]');
   if (!(await page.innerText('.facts')).includes('Allergies: Peanuts (hives); Penicillin.') || !(await page.innerText('.facts')).includes('Known conditions: Asthma.')) fail('card: doctor summary lacks allergies or conditions');
@@ -411,7 +415,7 @@ for (const theme of ['night', 'day']) {
   st = await getState(page); st.example = false;
   st.emergency.push({ id: 'other', childId: 'kid-ex', allergies: '', contacts: '', doctor: '', meds: 'Inhaler when wheezing', updatedAt: 1 });
   await setState(page, st); await reload(page); await page.waitForSelector('h1');
-  await page.click('.card-line');
+  await page.click('#view-today .head .sos');
   if (!(await page.innerText('#view-card .ec')).includes('Inhaler when wheezing') || !(await page.innerText('#view-card .ec')).includes('Peanuts')) fail('card: two cards for one child not merged');
   await page.click('[data-act="card-edit"]');
   await page.click('[data-act="save-card"]');
@@ -419,6 +423,16 @@ for (const theme of ['night', 'day']) {
   const kept = st.emergency.filter(x => !x.deleted);
   if (kept.length !== 1 || kept[0].meds !== 'Inhaler when wheezing' || !kept[0].allergies.includes('Peanuts')) fail('card: merged save lost something');
   if (!st.emergency.some(x => x.id === 'other' && x.deleted)) fail('card: the merged card was not marked as replaced');
+  // Back returns to the screen the card was opened from
+  await page.click('[data-act="close"]').catch(() => {});
+  await page.click('.tabs [data-tab="vax"]');
+  await page.click('#view-vax .head .sos');
+  await page.click('#view-card [data-tab]');
+  if (await page.isHidden('#view-vax')) fail('card: Back does not return to the screen it was opened from');
+  // The home-screen shortcut opens the card straight away
+  await settle(page); await page.goto(url + '?open=card'); await page.waitForSelector('h1');
+  if (await page.isHidden('#view-card')) fail('card: home-screen shortcut does not open the card');
+  if (new URL(page.url()).search) fail('card: shortcut address kept, so a reload would reopen the card');
   await page.close();
 }
 
