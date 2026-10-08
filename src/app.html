@@ -1385,7 +1385,7 @@ function renderMore() {
       ${live(S.meds).map(m => `<div class="list-row medrow"><span>${esc(m.name)}</span><span class="row"><input type="number" min="0" step="0.5" value="${m.gapH ?? ''}" data-gap="${m.id}" aria-label="Hours between doses for ${esc(m.name)}"> h <button class="btn ghost danger" data-delmed="${m.id}" aria-label="Remove">✕</button></span></div>`).join('')}
       <div class="row"><input id="newMed" placeholder="Add a medicine" style="flex:1"><button class="btn sm" data-act="add-med">Add</button></div></div>
     <div class="card set"><h2>Google Drive backup and sync</h2>
-      <p class="small muted" style="margin:0">Your log is saved as <span class="num">${DRIVE_FILE}</span> in an “${DRIVE_FOLDER}” folder in your own Drive (you can move or rename it), with a backup copy saved before each change (hourly for two days, then daily for ${KEEP_DAYS} days). The app can only see files it created or that you picked. There is no other server. <a href="privacy.html" style="color:var(--accent-ink)">Privacy policy</a></p>
+      <p class="small muted" style="margin:0">Your log is saved as <span class="num">${DRIVE_FILE}</span> in an “${DRIVE_FOLDER}” folder in your own Drive (you can move or rename it), with a backup copy saved before each change (hourly for two days, then daily for ${KEEP_DAYS} days). Photos, document pages and sound recordings are part of the log, so they sync and are backed up too; backups keep each one once, in a “media” folder next to them. The app can only see files it created or that you picked. There is no other server. <a href="privacy.html" style="color:var(--accent-ink)">Privacy policy</a></p>
       ${GOOGLE_CLIENT_ID ? `<details class="small"><summary class="muted">Advanced: use your own Google project</summary>${googleOwnFields(st)}</details>` : googleOwnFields(st)}
       <div class="row"><button class="btn primary sm" data-act="drive-sync" ${syncing ? 'disabled' : ''}>${syncing ? 'Syncing…' : d.fileId ? 'Sync now' : 'Connect Google Drive'}</button>${d.fileId ? '<button class="btn sm" data-act="drive-backups">Restore from a Drive backup</button><button class="btn ghost sm" data-act="drive-forget">Disconnect</button>' : '<button class="btn sm" data-act="join">Join a shared log</button>'}</div>
       <p class="small muted" style="margin:0">${d.lastSync ? 'Last synced ' + ago(d.lastSync) + '.' : 'Not connected yet.'}${d.owner ? ' Shared with you by ' + esc(d.owner) + '.' : ''}${d.error ? ' Last error: ' + esc(d.error) : ''}</p></div>
@@ -1937,10 +1937,20 @@ async function uploadNew(tok, name, parent, data) {
   const b = 'aura' + uid(), body = `--${b}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify({ name, parents: [parent], mimeType: 'application/json' })}\r\n--${b}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(data)}\r\n--${b}--`;
   return (await (await gapi(tok, `${UP}?uploadType=multipart&fields=id`, { method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + b }, body })).json()).id;
 }
+// Drive takes a file in one request only up to 5 MB. A larger log (many pages, photos and sounds) goes up as a resumable upload.
+const ONE_SHOT = 4.5e6;
+async function writeFile(tok, id, text) {
+  if (text.length <= ONE_SHOT) return (await (await gapi(tok, `${UP}/${id}?uploadType=media&fields=version`, { method: 'PATCH', headers: JSON_H, body: text })).json()).version;
+  const loc = (await gapi(tok, `${UP}/${id}?uploadType=resumable&fields=version`, { method: 'PATCH', headers: { ...JSON_H, 'X-Upload-Content-Type': 'application/json' }, body: '{}' })).headers.get('Location');
+  if (!loc) throw new Error('Drive did not accept the upload. Will try again shortly.');
+  const r = await fetch(loc, { method: 'PUT', headers: JSON_H, body: text }); if (!r.ok) throw new Error(`Drive error ${r.status}`);
+  return (await r.json()).version;
+}
+// A new Drive log starts empty; the first sync then writes this phone's log into it like any other change.
 async function findOrCreateFile(tok) {
   const r = await (await gapi(tok, `${DRIVE}?q=${enc(`name='${DRIVE_FILE}' and trashed=false and 'me' in owners`)}&fields=files(id)`)).json();
   if (r.files?.length) return r.files[0].id;
-  return uploadNew(tok, DRIVE_FILE, await folderId(tok, DRIVE_FOLDER), shareable());
+  return uploadNew(tok, DRIVE_FILE, await folderId(tok, DRIVE_FOLDER), { ...shareable(), ...Object.fromEntries(SYNCED.map(k => [k, []])) });
 }
 // Before the app overwrites the Drive file, it saves the file as it was to Aura/backups in this person's own Drive,
 // at most once an hour. Kept: every snapshot from the newest KEEP_RECENT, then one per day for KEEP_DAYS days.
@@ -1958,7 +1968,7 @@ async function backupsDir(tok, fileId = S.drive?.fileId) {
 async function keepBeforeDrive(tok, fileId, raw) {
   if (S.drive.beforeV === SCHEMA) return;
   const dir = await backupsDir(tok, fileId), name = `aura-log-before-v${SCHEMA}.json`;
-  if (!(await listBackups(tok, dir)).some(f => f.name === name)) await uploadNew(tok, name, dir, raw);
+  if (!(await listBackups(tok, dir)).some(f => f.name === name)) await uploadNew(tok, name, dir, await packMedia(tok, raw));
   S.drive.beforeV = SCHEMA;
 }
 async function listBackups(tok, dir) {
@@ -1974,9 +1984,63 @@ function prunable(files) { // files sorted newest first
 async function snapshot(tok, fileId, data) {
   const hour = toLocalInput(Date.now()).slice(0, 13).replace('T', '-'); if (S.drive.backupHour === hour) return;
   const dir = await backupsDir(tok, fileId), name = `aura-backup-${hour}.json`, old = (await listBackups(tok, dir)).filter(f => HOURLY.test(f.name));
-  if (!old.some(f => f.name === name)) await uploadNew(tok, name, dir, data);
+  if (!old.some(f => f.name === name)) await uploadNew(tok, name, dir, await packMedia(tok, data));
   for (const f of prunable(old.filter(f => f.name !== name))) await gapi(tok, `${DRIVE}/${f.id}`, { method: 'DELETE' });
   S.drive.backupHour = hour; persist();
+}
+// Photos, pages of documents and sound clips are inside the log (data: URLs in the items), so they sync and go to a partner
+// with everything else. A Drive backup keeps each of them only once: as its own file in backups/media, named by its SHA-256,
+// which the backup's JSON points to ("aura-media:<file>#<data URL header>"). So hourly backups don't copy every picture again,
+// and the pictures can be opened in Drive. Restoring a backup puts them back in.
+const MEDIA_REF = 'aura-media:', isData = v => typeof v === 'string' && v.startsWith('data:') && v.includes(';base64,'), isRef = v => typeof v === 'string' && v.startsWith(MEDIA_REF);
+const hasRefs = d => SYNCED.some(k => Array.isArray(d?.[k]) && d[k].some(x => x && typeof x === 'object' && Object.values(x).some(isRef)));
+const sha256 = async s => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)))].map(b => b.toString(16).padStart(2, '0')).join('');
+const b64bytes = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const bytesB64 = buf => { const a = new Uint8Array(buf); let s = ''; for (let i = 0; i < a.length; i += 0x8000) s += String.fromCharCode(...a.subarray(i, i + 0x8000)); return btoa(s); };
+// Swaps every value that `test` picks in the synced items for what `fn` returns; an item is left out when `fn` returns undefined.
+async function mapMedia(d, test, fn) {
+  const out = { ...d };
+  for (const k of SYNCED) if (Array.isArray(d[k])) {
+    out[k] = [];
+    for (const x of d[k]) {
+      let y = x;
+      if (x && typeof x === 'object') for (const [f, v] of Object.entries(x)) if (test(v)) { const r = await fn(v); if (r === undefined) { y = null; break; } y = { ...y, [f]: r }; }
+      if (y) out[k].push(y);
+    }
+  }
+  return out;
+}
+let mediaHome = null; // { dir, have: file name -> Drive id }
+async function mediaDir(tok) {
+  if (mediaHome) return mediaHome;
+  const dir = await folderId(tok, 'media', await backupsDir(tok)), have = new Map(); let next = '';
+  do { const r = await (await gapi(tok, `${DRIVE}?q=${enc(`'${dir}' in parents and trashed=false`)}&pageSize=1000&fields=nextPageToken,files(id,name)${next ? '&pageToken=' + enc(next) : ''}`)).json();
+    for (const f of r.files || []) have.set(f.name, f.id); next = r.nextPageToken; } while (next);
+  return mediaHome = { dir, have };
+}
+async function uploadBlob(tok, name, parent, type, bytes) {
+  const b = 'aura' + uid(), body = new Blob([`--${b}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify({ name, parents: [parent] })}\r\n--${b}\r\nContent-Type: ${type}\r\n\r\n`, bytes, `\r\n--${b}--`]);
+  return (await (await gapi(tok, `${UP}?uploadType=multipart&fields=id`, { method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + b }, body })).json()).id;
+}
+async function packMedia(tok, d) {
+  if (!d || typeof d !== 'object') return d;
+  const m = await mediaDir(tok);
+  return mapMedia(d, isData, async v => {
+    const i = v.indexOf(','), head = v.slice(0, i), type = head.slice(5).split(';')[0], name = `${await sha256(v)}.${(type.split('/')[1] || 'bin').replace(/[^\w.+-]/g, '')}`;
+    if (!m.have.has(name)) m.have.set(name, await uploadBlob(tok, name, m.dir, type, b64bytes(v.slice(i + 1))));
+    return MEDIA_REF + name + '#' + head;
+  });
+}
+// Items whose picture or sound can't be found in backups/media are left out, so a restore never blanks a photo on this phone.
+async function unpackMedia(tok, d) {
+  if (!hasRefs(d)) return { d, missing: 0 };
+  const m = await mediaDir(tok); let missing = 0;
+  d = await mapMedia(d, isRef, async v => {
+    const [name, head] = v.slice(MEDIA_REF.length).split('#'), id = m.have.get(name);
+    if (!id || !head) { missing++; return undefined; }
+    return head + ',' + bytesB64(await (await gapi(tok, `${DRIVE}/${id}?alt=media`)).arrayBuffer());
+  });
+  return { d, missing };
 }
 // On this phone too: one copy of the whole log per day in IndexedDB, newest LOCAL_SNAPS kept.
 const LOCAL_SNAPS = 14;
@@ -2036,7 +2100,7 @@ async function sync(interactive) {
       if (coveredBy(S, remote) && !older) { ok = true; break; } // an older Drive log is always written back upgraded
       if (round === 0) try { await snapshot(tok, id, remote); } catch {}
       if (await version() !== ver) continue; // another phone wrote while this one was merging: read it first
-      ver = (await (await gapi(tok, `${UP}/${id}?uploadType=media&fields=version`, { method: 'PATCH', headers: JSON_H, body: JSON.stringify({ ...extra, ...shareable() }) })).json()).version;
+      ver = await writeFile(tok, id, JSON.stringify({ ...extra, ...shareable() }));
       ok = ver != null && await version() === ver;
     }
     if (!ok) throw new Error('Another phone was saving at the same time. Will try again shortly.');
@@ -2060,7 +2124,8 @@ async function localSnapsSheet() {
     ${keys.length ? keys.map(k => `<button class="pick" data-snap="${esc(k)}">${k.startsWith('before-v') ? `Before the update to version ${esc(k.slice(8))}` : `<b>${esc(k.slice(5))}</b>`}</button>`).join('') : '<p class="muted">No copies yet.</p>'}`);
 }
 async function restoreDrive(id) {
-  try { const tok = await token(true); mergeIn(await (await gapi(tok, `${DRIVE}/${id}?alt=media`)).json()); closeSheet(); commit(); toast('Backup restored'); }
+  try { const tok = await token(true), { d, missing } = await unpackMedia(tok, await (await gapi(tok, `${DRIVE}/${id}?alt=media`)).json());
+    mergeIn(d); closeSheet(); commit(); toast(missing ? `Backup restored, except ${missing} photo${missing > 1 ? 's or sounds' : ' or sound'} missing from the backups folder in Drive` : 'Backup restored'); }
   catch (e) { toast(e.message || 'Could not restore that backup.'); }
 }
 /* ---------- Sharing: Google Drive gives a partner access to the one log file ---------- */
@@ -2110,7 +2175,7 @@ async function joinPick() {
       .setTitle('Pick the shared Aura log').setCallback(d => {
         if (d.action !== google.picker.Action.PICKED || !d.docs?.[0]) return;
         if (S.example) { const st = S.settings; S = emptyState(); S.settings = st; }
-        S.drive = { fileId: d.docs[0].id }; backupsHome = null; closeSheet(); persist(); sync(true).then(() => { if (!S.drive.error) toast('Joined. You now share this log.'); tab = 'today'; render(); });
+        S.drive = { fileId: d.docs[0].id }; backupsHome = null; mediaHome = null; closeSheet(); persist(); sync(true).then(() => { if (!S.drive.error) toast('Joined. You now share this log.'); tab = 'today'; render(); });
       }).build().setVisible(true);
   } catch (e) { toast(e.message); }
 }
@@ -2452,7 +2517,7 @@ document.addEventListener('click', async ev => {
     case 'wipe': $('#wipeConfirm').innerHTML = `<div class="banner"><p>This deletes everything on this phone, including its daily copies. A copy in Google Drive is not deleted. Download a backup file first if you might want it back.</p><button class="btn danger sm" data-act="wipe-yes">Delete everything</button></div>`; return;
     case 'wipe-yes': allowShrink = true; try { localStorage.removeItem(LS_KEY); localStorage.removeItem(LS_OLD); } catch {} S = emptyState(); narrative = ''; tab = 'today'; commit(); if (db) dbKeys().then(ks => { const st = db.transaction('kv', 'readwrite').objectStore('kv'); ks.filter(k => String(k).startsWith('snap-')).forEach(k => st.delete(k)); }).catch(() => {}); return toast('Deleted from this device');
     case 'drive-sync': if ($('#clientId')) { S.settings.clientId = $('#clientId').value.trim(); persist(); } return sync(true);
-    case 'drive-forget': S.drive = {}; gTok = null; backupsHome = null; return commit();
+    case 'drive-forget': S.drive = {}; gTok = null; backupsHome = null; mediaHome = null; return commit();
     case 'drive-backups': return driveBackupsSheet();
     case 'share': return share();
     case 'join': return joinSheet();

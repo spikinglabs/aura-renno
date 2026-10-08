@@ -527,21 +527,34 @@ for (const theme of ['night', 'day']) {
   await page.addInitScript(() => { window.google = { accounts: { oauth2: { initTokenClient: o => ({ requestAccessToken: () => o.callback({ access_token: 't', expires_in: 3600 }) }) } } }; });
   const other = (id, t) => ({ id, child: 'kid-ex', type: 'note', t, note: 'From the other phone', updatedAt: t });
   // "future" stands for a part added by a later version of the app without a format change; it must be kept.
-  const drive = { file: { app: 'aura', v: 3, children: [], episodes: [], entries: [other('o1', 1000)], meds: [], measurements: [], growth: [], future: ['kept'] }, patches: 0, race: true, uploads: [], queries: [], version: 1, downloads: 0 };
+  const drive = { file: { app: 'aura', v: 3, children: [], episodes: [], entries: [other('o1', 1000)], meds: [], measurements: [], growth: [], future: ['kept'] }, patches: 0, race: true, uploads: [], queries: [], version: 1, downloads: 0, media: [], saved: {}, resumable: 0 };
   const setFile = f => { drive.file = f; drive.version++; }; // a change by someone else bumps Drive's version number
   await page.route('https://www.googleapis.com/**', async route => {
     const req = route.request(), u = new URL(req.url()), m = req.method();
     const json = b => route.fulfill({ status: 200, contentType: 'application/json', body: typeof b === 'string' ? b : JSON.stringify(b) });
-    if (u.pathname.startsWith('/upload') && m === 'PATCH') {
+    if (u.pathname.startsWith('/upload') && m === 'PATCH' && u.searchParams.get('uploadType') === 'resumable') return route.fulfill({ status: 200, headers: { Location: 'https://www.googleapis.com/upload/session/1', 'Access-Control-Expose-Headers': 'Location' }, body: '' });
+    if ((u.pathname.startsWith('/upload') && m === 'PATCH') || (u.pathname === '/upload/session/1' && m === 'PUT')) {
+      if (m === 'PUT') drive.resumable++;
       drive.patches++; drive.file = JSON.parse(req.postData()); const mine = String(++drive.version);
       // Another phone overwrites right after us with its own copy, which lacks our entries
       if (drive.race) { drive.race = false; setFile({ ...drive.file, entries: [other('o1', 1000), other('o2', 2000)] }); }
       return json({ version: mine });
     }
-    if (u.pathname.startsWith('/upload') && m === 'POST') { drive.uploads.push(req.postData()); return json({ id: 'b' + drive.uploads.length }); }
+    if (u.pathname.startsWith('/upload') && m === 'POST') {
+      // multipart: metadata, then the file; a picture or sound is sent as bytes
+      const raw = req.postDataBuffer().toString('latin1'), parts = raw.split(/\r\n--aura[^\r\n]*/), meta = JSON.parse(parts[0].split('\r\n\r\n')[1]), body = parts[1].split('\r\n\r\n').slice(1).join('\r\n\r\n');
+      drive.uploads.push(raw); const id = 'b' + drive.uploads.length;
+      if (meta.parents[0] === 'media') drive.media.push({ id, name: meta.name, body: Buffer.from(body, 'latin1') }); else drive.saved[id] = body;
+      return json({ id });
+    }
+    if (u.pathname === '/drive/v3/files' && m === 'POST') return json({ id: JSON.parse(req.postData()).name }); // a new folder is named by its id
+    const mf = drive.media.find(f => u.pathname === '/drive/v3/files/' + f.id); if (mf) return route.fulfill({ status: 200, contentType: 'application/octet-stream', body: mf.body });
+    if (drive.saved[u.pathname.split('/').pop()]) return json(drive.saved[u.pathname.split('/').pop()]);
     if (u.pathname === '/drive/v3/files/f1' && u.searchParams.get('alt') === 'media') { drive.downloads++; return json(drive.file); }
     if (u.pathname === '/drive/v3/files/f1') return json({ ownedByMe: true, parents: ['logdir'], version: String(drive.version) });
     if (u.pathname === '/drive/v3/files') drive.queries.push(u.searchParams.get('q') || '');
+    if (u.pathname === '/drive/v3/files' && (u.searchParams.get('q') || '').startsWith("'backups' in parents")) return json({ files: drive.saved.bkx ? [{ id: 'bkx', name: 'aura-backup-2026-10-08-09.json' }] : [] });
+    if (u.pathname === '/drive/v3/files' && (u.searchParams.get('q') || '').startsWith("'media' in parents")) return json({ files: drive.media.map(({ id, name }) => ({ id, name })) });
     if (u.pathname === '/drive/v3/files') return json({ files: (u.searchParams.get('q') || '').includes('in parents') ? [] : [{ id: 'folder' }] });
     return json({});
   });
@@ -576,6 +589,33 @@ for (const theme of ['night', 'day']) {
   setFile({ ...drive.file, entries: [...drive.file.entries, other('o3', 3000)] });
   await syncNow();
   if (!(await getState(page)).entries.some(e => e.id === 'o3')) fail('sync: change from the other phone not picked up');
+  // Drive backups hold each photo, page and sound once, as its own file in backups/media, and the backup points to it
+  // (the app's code is private, so the test changes the saved log and reloads)
+  const edit = async f => { const x = await getState(page); f(x); x.changedAt = Date.now(); await setState(page, x); await reload(page); await page.waitForSelector('h1'); };
+  const backupNow = () => edit(x => { x.drive.backupHour = null; x.entries[0].updatedAt = Date.now(); }); // a change, so the Drive log is written and backed up first
+  await backupNow(); await syncNow();
+  const bkId = Object.keys(drive.saved).filter(k => drive.saved[k].includes('"vp1"')).pop(), bk = bkId && JSON.parse(drive.saved[bkId]);
+  const book = drive.media.find(f => f.body.equals(Buffer.from('/9j/BOOK', 'base64')));
+  if (!book || !/^[0-9a-f]{64}\.jpeg$/.test(book.name)) fail('backup: page photo not kept as its own file in backups/media');
+  if (!bk || bk.pages.find(p => p.id === 'vp1').img !== `aura-media:${book?.name}#data:image/jpeg;base64`) fail('backup: page photo not referenced from the backup');
+  if (drive.saved[bkId]?.includes('/9j/BOOK')) fail('backup: page photo copied into the backup again');
+  let mediaN = drive.media.length; await backupNow(); await syncNow();
+  if (drive.media.length !== mediaN) fail('backup: a photo already in backups/media was uploaded again');
+  // Restoring that backup puts the photo back in; an item whose photo is missing from backups/media is left out
+  await edit(x => { x.pages = x.pages.filter(p => p.id !== 'vp1'); });
+  drive.saved.bkx = JSON.stringify({ ...bk, pages: [...bk.pages, { id: 'gone', docId: 'd1', childId: 'kid-ex', t: 1, img: 'aura-media:' + 'f'.repeat(64) + '.jpeg#data:image/jpeg;base64', updatedAt: 1 }] });
+  await page.evaluate(() => { document.getElementById('toast').hidden = true; });
+  await openTab(page, 'more'); await page.click('[data-act="drive-backups"]'); await page.click('[data-backup="bkx"]'); await page.waitForSelector('#toast:not([hidden])');
+  const restored = await getState(page);
+  if (restored.pages.find(p => p.id === 'vp1')?.img !== 'data:image/jpeg;base64,/9j/BOOK') fail('restore: page photo not put back from backups/media');
+  if (restored.pages.some(p => p.id === 'gone')) fail('restore: an item with a missing photo was restored blank');
+  { const t = await page.locator('#toast').innerText(); if (!t.includes('1 photo or sound missing')) fail('restore: missing photo not mentioned: ' + t); }
+  // A log over 5 MB (many photos) still syncs, as a resumable upload
+  await edit(x => { x.pages.push({ id: 'big', docId: 'd1', childId: 'kid-ex', t: 2, order: 1, img: 'data:image/jpeg;base64,' + 'A'.repeat(5e6), note: '', updatedAt: Date.now() }); });
+  await openTab(page, 'today'); await syncNow();
+  if (!drive.resumable || !drive.file.pages?.some(p => p.id === 'big')) fail('sync: a log over 5 MB was not written to Drive');
+  await edit(x => { x.pages = x.pages.filter(p => p.id !== 'big'); });
+  drive.file = { ...drive.file, pages: drive.file.pages.filter(p => p.id !== 'big') }; drive.version++;
   // A log saved by a newer version of the app is never overwritten by this one
   setFile({ ...drive.file, v: 99 }); let before = drive.patches;
   await page.click('[data-act="sync-tap"]');
