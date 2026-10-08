@@ -260,6 +260,12 @@ for (const theme of ['night', 'day']) {
   await page.click('[data-act="save-vax"]');
   if (await page.isHidden('#scrim')) fail('vaccines: a future date was saved');
   await page.click('[data-act="close"]');
+  // A travel vaccine outside the schedule
+  await page.click('[data-act="add-vax"]');
+  await page.click('.chips[data-k="against"] [data-v="rabies"]');
+  await page.click('[data-act="save-vax"]');
+  if ((await page.locator('.vx-dose', { hasText: 'Rabies' }).count()) !== 1) fail('vaccines: travel vaccine not recorded');
+  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail('vaccines: tab scrolls sideways with a travel vaccine');
   // A photo of a page of the book
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
   await page.setInputFiles('#vaxPage', { name: 'page.png', mimeType: 'image/png', buffer: png });

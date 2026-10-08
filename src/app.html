@@ -851,10 +851,12 @@ const VAX_PLAN = [
   { k: 'tdapipv', l: 'Booster: tetanus, diphtheria, whooping cough, polio', s: 'Tdap-polio booster', at: [108], ages: ['at 9 to 16 years'], upto: 204 },
   { k: 'hpv', l: 'HPV', s: 'HPV', at: [108, 113], ages: ['at 9 to 14 years', 'at least 5 months after the first'], upto: 180, note: 'Two doses between 9 and 14 years; started later, three doses.' },
   { k: 'menacwy', l: 'Meningococcus ACWY', s: 'Meningococcus ACWY', at: [144], ages: ['at 12 to 14 years'], upto: 180, note: 'Catch-up is possible up to 24 years.' }];
-const VAX_MORE = [['menc', 'Meningococcus C'], ['flu', 'Flu'], ['covid', 'COVID-19'], ['fsme', 'TBE (FSME)'], ['hepa', 'Hepatitis A'], ['other', 'Other']];
+// Vaccines outside the childhood schedule: older or single-disease shots, and the common travel vaccines.
+const VAX_MORE = [['menc', 'Meningococcus C'], ['flu', 'Flu'], ['covid', 'COVID-19'], ['fsme', 'TBE (FSME)'], ['hepa', 'Hepatitis A'], ['hepb', 'Hepatitis B'], ['polio', 'Polio'],
+  ['typhoid', 'Typhoid'], ['rabies', 'Rabies'], ['yellow', 'Yellow fever'], ['je', 'Japanese encephalitis'], ['cholera', 'Cholera'], ['other', 'Other']];
 const VAX_KINDS = [...VAX_PLAN.map(v => [v.k, v.s]), ...VAX_MORE];
 const vaxLabel = k => (VAX_KINDS.find(([x]) => x === k) || [, k])[1];
-const vaxNames = d => (d.against || []).map(vaxLabel).join(', ') || d.name || 'Vaccination';
+const vaxNames = d => (d.against || []).map(k => k === 'other' && d.name ? d.name : vaxLabel(k)).join(', ') || d.name || 'Vaccination';
 const fmtDate = t => new Date(t).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
 const vaxOf = c => live(S.vaccines || []).filter(v => v.childId === c.id);
 const vaxDoses = c => vaxOf(c).filter(v => v.kind === 'dose').sort((a, b) => b.t - a.t);
