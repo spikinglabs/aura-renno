@@ -1111,7 +1111,7 @@ function apptState(a) {
 }
 // Shown on Today: an appointment in the next two weeks, or one that has passed without being recorded.
 const apptSoon = s => s.st === 'went' || (s.st === 'booked' && apptT(s.appt) < startOfDay(Date.now()) + 15 * DAY);
-const apptNote = s => s.appt?.note ? `<small class="appt-note">${esc(oneLine(s.appt.note))}</small>` : '';
+const apptNote = s => s.appt?.place || s.appt?.note ? `<small class="appt-note">${esc([s.appt.place, oneLine(s.appt.note)].filter(Boolean).join(' · '))}</small>` : '';
 const apptLineText = (name, s) => s.st === 'booked' ? `${name}: appointment ${apptWhen(s.appt)}` : `${name}: appointment was ${apptWhen(s.appt)}, record it`;
 // The appointment block in a schedule item's sheet.
 const apptBlock = (s, plan, k, dose) => s.appt
@@ -1125,18 +1125,28 @@ function apptSheet(id, plan, k, dose, docId) {
   openSheet(`<div class="hd"><h2>${id ? 'Edit appointment' : 'Add an appointment'}</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
     <p class="small muted" style="margin:0">${esc(apptName(a.plan, a.k, a.dose))}</p>
     <div class="row"><label class="field" style="flex:1 1 150px"><span>Date</span><input id="a_date" type="date" value="${esc(a.date || '')}"></label><label class="field" style="flex:1 1 110px"><span>Time (optional)</span><input id="a_time" type="time" value="${esc(a.time || '')}"></label></div>
+    <label class="field"><span>Where (optional)</span><input id="a_place" value="${esc(a.place || '')}" placeholder="Practice and address" autocomplete="off"></label>
     <label class="field"><span>Note (optional)</span><textarea id="a_note" style="min-height:64px" placeholder="e.g. Dr. Weber, bring the U-Heft">${esc(a.note || '')}</textarea></label>
     <p class="small muted" style="margin:0">Shown instead of the usual time until you record the visit. Add it to your calendar for a reminder.</p>
     <div class="sheet-actions">${id ? '<button class="btn ghost danger" data-act="del-appt">Delete</button>' : '<span></span>'}<button class="btn primary" data-act="save-appt">Save</button></div>`, { appt: id || null, plan: a.plan, k: a.k, dose: a.dose, childId: c.id });
 }
+const apptFields = () => ({ time: $('#a_time').value || '', place: $('#a_place').value.trim(), note: $('#a_note').value.trim() });
+// After saving a coming appointment, Aura offers to put it in the parent's calendar right away.
+function apptSaved(a, back) {
+  const c = S.children.find(x => x.id === a.childId), e = upcoming(a) && apptEventOf(c, a);
+  closeSheet(); commit(); if (e) return calSheet([e], true); back?.(); toast('Appointment saved');
+}
+const apptEventOf = (c, a) => a.plan === 'u' ? uEvent(c, U_PLAN.find(u => u.k === a.k)) : a.plan === 'z' ? zEvent(c, Z_PLAN.find(z => z.k === a.k)) : apptEvent(c, a);
+// Calendar entries link back to the appointments in Aura.
+const appLink = () => location.href.split(/[?#]/)[0] + '?open=appts';
 const itemSheet = (plan, k) => plan === 'u' ? uItemSheet(k) : plan === 'z' ? zItemSheet(k) : vaxItemSheet(k);
 function saveAppt() {
   if (sheetCtx.plan === 'vax') return saveVaxAppt();
   if (sheetCtx.plan === 'other') return saveOtherAppt();
   const date = $('#a_date').value; if (!date) return toast('Enter the date of the appointment.');
   const { plan, k, dose, childId } = sheetCtx, a = sheetCtx.appt ? S.appts.find(x => x.id === sheetCtx.appt) : { id: uid(), childId, plan, k, ...(dose ? { dose } : {}) };
-  Object.assign(a, { date, time: $('#a_time').value || '', note: $('#a_note').value.trim() }); touch(a);
-  if (!sheetCtx.appt) S.appts.push(a); closeSheet(); commit(); itemSheet(plan, k); toast('Appointment saved');
+  Object.assign(a, apptFields(), { date }); touch(a);
+  if (!sheetCtx.appt) S.appts.push(a); apptSaved(a, () => itemSheet(plan, k));
 }
 // A vaccination appointment, from the Vaccinations screen or a vaccine of the schedule. The vaccines due now are ticked.
 const vaxGot = (c, a, k) => { const d = apptDose(a, k), got = vaxDoses(c).filter(x => (x.against || []).includes(k));
@@ -1151,6 +1161,7 @@ function vaxApptSheet(id, preset) {
   openSheet(`<div class="hd"><h2>${id ? 'Vaccination appointment' : 'Add a vaccination appointment'}</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
     <div class="field"><span>For (tap all that apply)</span><div class="chips" data-k="vks" data-multi>${VAX_KINDS.map(([k, l]) => `<button type="button" data-v="${k}" class="${on.has(k) ? 'on' : ''}">${esc(l)}</button>`).join('')}</div></div>
     <div class="row"><label class="field" style="flex:1 1 150px"><span>Date</span><input id="a_date" type="date" value="${esc(a.date || '')}"></label><label class="field" style="flex:1 1 110px"><span>Time (optional)</span><input id="a_time" type="time" value="${esc(a.time || '')}"></label></div>
+    <label class="field"><span>Where (optional)</span><input id="a_place" value="${esc(a.place || '')}" placeholder="Practice and address" autocomplete="off"></label>
     <label class="field"><span>Note (optional)</span><textarea id="a_note" style="min-height:64px" placeholder="e.g. Dr. Weber, bring the vaccination book">${esc(a.note || '')}</textarea></label>
     <p class="small muted" style="margin:0">Each vaccination shows this appointment instead of its usual age until you record the dose. Add it to your calendar for a reminder.</p>
     ${id && (s.st === 'booked' || startOfDay(apptT(a)) <= Date.now()) ? `<div class="row">${s.st === 'booked' ? '<button class="btn sm" data-act="cal-appt">Add to calendar</button>' : ''}${startOfDay(apptT(a)) <= Date.now() ? '<button class="btn sm" data-act="appt-record">Record the vaccinations</button>' : ''}</div>` : ''}
@@ -1165,16 +1176,16 @@ function saveVaxAppt() {
   const doses = {};
   for (const x of ks) { const v = VAX_PLAN.find(v => v.k === x), st = v && vaxStatus(c, v), old = sheetCtx.appt && apptKs(a).includes(x) ? apptDose(a, x) : undefined;
     const d = old ?? (v && st.n < st.of ? st.n + 1 : undefined); if (d) doses[x] = d; }
-  delete a.k; delete a.dose; Object.assign(a, { ks, doses, date, time: $('#a_time').value || '', note: $('#a_note').value.trim() }); touch(a);
-  if (!sheetCtx.appt) S.appts.push(a); closeSheet(); commit(); if (k) vaxItemSheet(k); toast('Appointment saved');
+  delete a.k; delete a.dose; Object.assign(a, apptFields(), { ks, doses, date }); touch(a);
+  if (!sheetCtx.appt) S.appts.push(a); apptSaved(a, k && (() => vaxItemSheet(k)));
 }
 // Any other appointment, optionally linked to one of the child's documents. It needs nothing recorded: once its day
 // has passed it moves to Past.
 const otherAppts = c => apptsOf(c).filter(a => a.plan === 'other').sort((a, b) => apptT(a) - apptT(b));
 const upcoming = a => startOfDay(apptT(a)) >= startOfDay(Date.now());
 const linkedDoc = a => a.docId ? S.docs.find(d => d.id === a.docId && !d.deleted) : null;
-const otherEvent = (c, a) => ({ uid: `${c.id}-appt-${a.id}`, t: apptT(a), time: a.time || '', booked: true, title: `${a.title} · ${c.name}`,
-  details: [a.note, linkedDoc(a) ? `Bring: ${docTitle(linkedDoc(a))}.` : '', 'From Aura.'].filter(Boolean).join(' ') });
+const otherEvent = (c, a) => ({ uid: `${c.id}-appt-${a.id}`, t: apptT(a), time: a.time || '', booked: true, title: `${a.title} · ${c.name}`, location: a.place || '',
+  details: [a.note, linkedDoc(a) ? `Bring: ${docTitle(linkedDoc(a))}.` : '', `Open in Aura: ${appLink()}`].filter(Boolean).join('\n\n') });
 const apptEvent = (c, a) => a.plan === 'vax' ? vaxApptEvent(c, a) : otherEvent(c, a);
 const otherLine = c => otherAppts(c).filter(a => upcoming(a) && apptT(a) < startOfDay(Date.now()) + 15 * DAY)
   .map(a => `<button class="linkish vax-line" data-tab="appts">${esc(a.title)}: appointment ${esc(apptWhen(a))}</button>`).join('');
@@ -1184,6 +1195,7 @@ function otherApptSheet(id, docId) {
     <label class="field"><span>What for</span><input id="a_title" value="${esc(a.title || '')}" placeholder="e.g. Allergy test, eye doctor, physiotherapy" autocomplete="off"></label>
     <div class="row"><label class="field" style="flex:1 1 150px"><span>Date</span><input id="a_date" type="date" value="${esc(a.date || '')}"></label><label class="field" style="flex:1 1 110px"><span>Time (optional)</span><input id="a_time" type="time" value="${esc(a.time || '')}"></label></div>
     ${docs.length ? `<label class="field"><span>Linked document (optional)</span><select id="a_doc"><option value="">None</option>${docs.map(x => `<option value="${x.id}"${x.id === a.docId ? ' selected' : ''}>${esc(docTitle(x))}</option>`).join('')}</select></label>` : ''}
+    <label class="field"><span>Where (optional)</span><input id="a_place" value="${esc(a.place || '')}" placeholder="Practice and address" autocomplete="off"></label>
     <label class="field"><span>Note (optional)</span><textarea id="a_note" style="min-height:64px" placeholder="e.g. Dr. Weber, bring the referral">${esc(a.note || '')}</textarea></label>
     ${id && (upcoming(a) || d) ? `<div class="row">${upcoming(a) ? '<button class="btn sm" data-act="cal-appt">Add to calendar</button>' : ''}${d ? `<button class="btn sm" data-docid="${d.id}">Open ${esc(docTitle(d))}</button>` : ''}</div>` : ''}
     <div class="sheet-actions">${id ? '<button class="btn ghost danger" data-act="del-appt">Delete</button>' : '<span></span>'}<button class="btn primary" data-act="save-appt">Save</button></div>`, { appt: id || null, plan: 'other', childId: c.id });
@@ -1193,8 +1205,8 @@ function saveOtherAppt() {
   if (!title) return toast('Write what the appointment is for.');
   if (!date) return toast('Enter the date of the appointment.');
   const a = sheetCtx.appt ? S.appts.find(x => x.id === sheetCtx.appt) : { id: uid(), childId: sheetCtx.childId, plan: 'other' };
-  Object.assign(a, { title, date, time: $('#a_time').value || '', docId: $('#a_doc')?.value || '', note: $('#a_note').value.trim() }); touch(a);
-  if (!sheetCtx.appt) S.appts.push(a); closeSheet(); commit(); toast('Appointment saved');
+  Object.assign(a, apptFields(), { title, date, docId: $('#a_doc')?.value || '' }); touch(a);
+  if (!sheetCtx.appt) S.appts.push(a); apptSaved(a);
 }
 // Starting a new appointment: what kind first, then which checkup.
 function apptNewSheet() {
@@ -1236,8 +1248,8 @@ const apptsSummary = c => { const r = apptList(c)[0]; return r ? `Next: ${r.titl
 // A recorded visit starts on the appointment's day when that day has come.
 const apptDay = (c, plan, k, dose) => { const a = c && k && apptFor(c, plan, k, dose); return a && startOfDay(apptT(a)) <= Date.now() ? Math.min(apptT(a), Date.now()) : null; };
 // Calendar event for a booked appointment: at its time (or all day), with the note.
-const bookedEvent = (s, uid, what, c, bring) => ({ uid, t: apptT(s.appt), time: s.appt.time || '', booked: true, title: `${what} · ${c.name}`,
-  details: [`Appointment for the ${what}.`, s.appt.note, bring, 'From Aura.'].filter(Boolean).join(' ') });
+const bookedEvent = (s, uid, what, c, bring) => ({ uid, t: apptT(s.appt), time: s.appt.time || '', booked: true, title: `${what[0].toUpperCase() + what.slice(1)} · ${c.name}`, location: s.appt.place || '',
+  details: [`Appointment for the ${what}.`, s.appt.note, bring, `Open in Aura: ${appLink()}`].filter(Boolean).join('\n\n') });
 // Where a child stands with one vaccine of the schedule: done, due, not recorded past the usual age, later, or over.
 function vaxStatus(c, v) {
   const given = vaxDoses(c).filter(d => (d.against || []).includes(v.k)).reverse(), n = given.length, of = v.at.length;
@@ -1592,28 +1604,38 @@ const ymd = t => toLocalInput(t).slice(0, 10).replace(/-/g, '');
 const hms = t => toLocalInput(t).replace(/[-:]/g, '') + '00';
 const calSpan = e => e.time ? [hms(e.t), hms(e.t + H)] : [ymd(e.t), ymd(startOfDay(e.t) + 36 * H)];
 const calWhen = e => fmtDate(e.t) + (e.time ? ', ' + fmtTime(e.t) : '');
-const googleCalUrl = e => 'https://calendar.google.com/calendar/render?' + new URLSearchParams({ action: 'TEMPLATE', text: e.title, dates: calSpan(e).join('/'), details: e.details });
+const googleCalUrl = e => 'https://calendar.google.com/calendar/render?' + new URLSearchParams({ action: 'TEMPLATE', text: e.title, dates: calSpan(e).join('/'), details: e.details, ...(e.location ? { location: e.location } : {}) });
+// A booked appointment with a time reminds the day before and an hour before; other dates at 9:00 on the day.
+const icsAlarm = (e, trigger) => ['BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEsc(e.title)}`, `TRIGGER:${trigger}`, 'END:VALARM'];
 const icsEsc = s => String(s).replace(/[\;,]/g, m => '\\' + m).replace(/\r?\n/g, '\\n');
 const icsFold = l => l.length <= 70 ? l : l.match(/.{1,70}/gu).join('\r\n ');
 function icsText(evs) {
   const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
   return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Aura//Baby log//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
     ...evs.flatMap(e => ['BEGIN:VEVENT', `UID:${e.uid}@aura`, `DTSTAMP:${stamp}`, ...(([a, b], v) => [`DTSTART${v}:${a}`, `DTEND${v}:${b}`])(calSpan(e), e.time ? '' : ';VALUE=DATE'),
-      `SUMMARY:${icsEsc(e.title)}`, `DESCRIPTION:${icsEsc(e.details)}`, 'TRANSP:TRANSPARENT', 'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEsc(e.title)}`, e.time ? 'TRIGGER:-PT1H' : 'TRIGGER:PT9H', 'END:VALARM', 'END:VEVENT']),
+      `SUMMARY:${icsEsc(e.title)}`, `DESCRIPTION:${icsEsc(e.details)}`, ...(e.location ? [`LOCATION:${icsEsc(e.location)}`] : []), ...(e.booked ? [`URL:${appLink()}`] : []),
+      e.booked && e.time ? 'TRANSP:OPAQUE' : 'TRANSP:TRANSPARENT', ...(e.time ? [...icsAlarm(e, '-P1D'), ...icsAlarm(e, '-PT1H')] : icsAlarm(e, 'PT9H')), 'END:VEVENT']),
     'END:VCALENDAR'].map(icsFold).join('\r\n') + '\r\n';
 }
+const icsName = evs => evs.length === 1 ? `aura-${evs[0].title.split(' ·')[0].toLowerCase().replace(/[^a-z0-9]+/g, '-')}.ics` : 'aura-dates.ics';
+const icsFile = evs => new File([icsText(evs)], icsName(evs), { type: 'text/calendar' });
+// Phones can hand the calendar file to another app (a calendar, a messenger to send it to a partner).
+const canShareIcs = evs => { try { return !!navigator.canShare?.({ files: [icsFile(evs)] }); } catch { return false; } };
 function saveIcs(evs) {
   const blob = new Blob([icsText(evs)], { type: 'text/calendar' }), a = document.createElement('a'), url = URL.createObjectURL(blob);
-  a.href = url; a.download = evs.length === 1 ? `aura-${evs[0].title.split(' ·')[0].toLowerCase().replace(/[^a-z0-9]+/g, '-')}.ics` : 'aura-dates.ics';
+  a.href = url; a.download = icsName(evs);
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
-function calSheet(evs) {
+function calSheet(evs, saved) {
   const one = evs.length === 1 ? evs[0] : null;
-  openSheet(`<div class="hd"><h2>Add to calendar</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
-    <div>${evs.map(e => `<div class="vx-dose"><b>${esc(e.title)}</b><small>${e.booked ? 'Appointment · ' : ''}${calWhen(e)}</small></div>`).join('')}</div>
+  openSheet(`<div class="hd"><h2>${saved ? 'Appointment saved' : 'Add to calendar'}</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+    ${saved ? '<p class="small muted" style="margin:0">Add it to your calendar, so your phone reminds you.</p>' : ''}
+    <div>${evs.map(e => `<div class="vx-dose"><b>${esc(e.title)}</b><small>${e.booked ? 'Appointment · ' : ''}${calWhen(e)}${e.location ? ' · ' + esc(e.location) : ''}</small></div>`).join('')}</div>
     ${one ? `<a class="pick" data-gcal href="${esc(googleCalUrl(one))}" target="_blank" rel="noopener noreferrer"><b>Google Calendar</b><br><span class="small muted">Opens the event, ready to save.</span></a>` : ''}
     <button class="pick" data-act="cal-ics"><b>${one ? 'Apple Calendar, Outlook or other' : `All ${evs.length} dates as a calendar file`}</b><br><span class="small muted">${one ? 'Downloads a calendar file; open it to add the event.' : 'Open it on your phone or computer to add them all. Google Calendar imports it on the website, under Settings, Import.'}</span></button>
-    <p class="small muted" style="margin:0">Aura doesn't sign in to your calendar. ${evs.every(e => e.booked) ? 'Booked appointments go in on their day and time.' : 'Without an appointment the event lands on the first day of the usual time. Once it is booked, add the appointment in Aura and add it to your calendar again.'}</p>`, { cal: evs });
+    ${canShareIcs(evs) ? `<button class="pick" data-act="cal-share"><b>Share to another app</b><br><span class="small muted">Send the calendar file to a calendar app, or to your partner.</span></button>` : ''}
+    <p class="small muted" style="margin:0">Aura doesn't sign in to your calendar. ${evs.every(e => e.booked) ? 'Appointments go in at their day and time, with the place, your note and a link back to Aura. If you change one later, add it again: calendar files replace the old event, a Google link adds a new one.' : 'Without an appointment the event lands on the first day of the usual time. Once it is booked, add the appointment in Aura and add it to your calendar again.'}</p>
+    ${saved ? '<div class="sheet-actions"><span></span><button class="btn" data-act="close">Not now</button></div>' : ''}`, { cal: evs });
 }
 
 /* ---------- Documents tab ---------- */
@@ -2771,11 +2793,12 @@ document.addEventListener('click', async ev => {
     case 'appt': return apptSheet(b.dataset.appt || null, b.dataset.plan, b.dataset.for, b.dataset.dose ? +b.dataset.dose : undefined, b.dataset.doc);
     case 'appt-new': return apptNewSheet();
     case 'appt-pick': return apptPickSheet(b.dataset.plan);
-    case 'cal-appts': { const c = kid(); return calSheet(apptList(c).filter(r => r.s.st === 'booked').map(r => r.s.appt.plan === 'u' ? uEvent(c, U_PLAN.find(u => u.k === r.s.appt.k)) : r.s.appt.plan === 'z' ? zEvent(c, Z_PLAN.find(z => z.k === r.s.appt.k)) : apptEvent(c, r.s.appt))); }
+    case 'cal-appts': { const c = kid(); return calSheet(apptList(c).filter(r => r.s.st === 'booked').map(r => apptEventOf(c, r.s.appt))); }
     case 'save-appt': return saveAppt();
     case 'del-appt': { const a = S.appts.find(x => x.id === sheetCtx.appt), k = sheetCtx.k; a.deleted = true; touch(a); closeSheet(); commit(); if (k) itemSheet(a.plan, k); return toast('Appointment deleted'); }
     case 'cal-appt': return calSheet([apptEvent(kid(), S.appts.find(x => x.id === sheetCtx.appt))]);
     case 'appt-record': { const c = kid(), a = S.appts.find(x => x.id === sheetCtx.appt); return vaxSheet(null, null, { against: vaxApptKs(c, a), t: Math.min(apptT(a), Date.now()), note: '' }); }
+    case 'cal-share': { const evs = sheetCtx.cal; try { await navigator.share({ files: [icsFile(evs)], title: evs[0].title }); closeSheet(); } catch (e) { if (e?.name !== 'AbortError') { saveIcs(evs); closeSheet(); } } return; }
     case 'cal-ics': saveIcs(sheetCtx.cal); closeSheet(); return toast('Calendar file saved. Open it to add the dates.');
     case 'save-growth': {
       const ctx = sheetCtx.growth, label = $('#g_label')?.value.trim();
@@ -2855,7 +2878,8 @@ if ('serviceWorker' in navigator && location.protocol === 'https:' && !window.cl
 load().then(() => {
   $('#fab svg').innerHTML = ICONS.say;
   // Opened from the home-screen shortcut ("Emergency card" when long-pressing the app icon).
-  if (new URLSearchParams(location.search).get('open') === 'card' && kid()) { tab = 'card'; history.replaceState(null, '', location.pathname); }
+  const opening = new URLSearchParams(location.search).get('open');
+  if (['card', 'appts'].includes(opening) && kid()) { tab = opening; history.replaceState(null, '', location.pathname); }
   render();
   if (!S.example) { keepStorage(); localSnapshot(); }
   refreshRecalls();
