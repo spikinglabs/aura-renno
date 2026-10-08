@@ -440,15 +440,21 @@ for (const theme of ['night', 'day']) {
   await page.click('#sheet [data-act="appt"]');
   await page.click('[data-act="save-appt"]');
   if (await page.isHidden('#scrim') || (await page.locator('#a_date').count()) !== 1) fail('appointments: saved without a date');
-  await page.fill('#a_date', day(5)); await page.fill('#a_time', '09:30'); await page.fill('#a_note', 'Dr. Zahn, Hauptstr. 3');
+  await page.fill('#a_date', day(5)); await page.fill('#a_time', '09:30'); await page.fill('#a_place', 'Zahnarztpraxis, Hauptstr. 3'); await page.fill('#a_note', 'Dr. Zahn');
   await page.click('[data-act="save-appt"]');
-  if (!(await page.innerText('#sheet .appt')).includes('Dr. Zahn')) fail('appointments: the checkup sheet does not show the appointment');
-  await page.click('#sheet [data-act="cal-z"]');
+  // Saving offers the calendar right away, with the time, the place, the note and a link back
+  if ((await page.locator('#sheet h2', { hasText: 'Appointment saved' }).count()) !== 1) fail('appointments: saving does not offer the calendar');
   const g = new URL(await page.getAttribute('[data-gcal]', 'href'));
-  if (g.searchParams.get('dates') !== `${day(5).replace(/-/g, '')}T093000/${day(5).replace(/-/g, '')}T103000` || !g.searchParams.get('details').includes('Dr. Zahn')) fail('appointments: Google Calendar link does not use the appointment');
+  if (g.searchParams.get('dates') !== `${day(5).replace(/-/g, '')}T093000/${day(5).replace(/-/g, '')}T103000` || !g.searchParams.get('details').includes('Dr. Zahn')
+    || g.searchParams.get('location') !== 'Zahnarztpraxis, Hauptstr. 3' || !g.searchParams.get('details').includes('?open=appts')) fail('appointments: Google Calendar link does not use the appointment');
+  const gd = g.searchParams.get('details');
+  if (g.searchParams.get('text') !== '🦷 Z4 dental checkup · Mia' || !gd.startsWith("Mia's Z4 dental checkup appointment") || !gd.includes('📍 Zahnarztpraxis') || !gd.includes('📝 Dr. Zahn') || !gd.includes('Bring:\n• Dental pass or U-Heft') || !/can be done until/.test(gd)) fail('appointments: calendar entry not filled in');
   const [dl] = await Promise.all([page.waitForEvent('download'), page.click('[data-act="cal-ics"]')]);
   const ics = readFileSync(await dl.path(), 'utf8');
-  if (!ics.includes(`DTSTART:${day(5).replace(/-/g, '')}T093000`) || !ics.includes('TRIGGER:-PT1H')) fail('appointments: calendar file does not use the appointment time');
+  if (!ics.includes(`DTSTART:${day(5).replace(/-/g, '')}T093000`) || !ics.includes('TRIGGER:-PT1H') || !ics.includes('TRIGGER:-P1D') || !ics.includes('LOCATION:Zahnarztpraxis\\, Hauptstr. 3') || !ics.includes('TRANSP:OPAQUE')) fail('appointments: calendar file does not use the appointment');
+  await page.click('[data-zitem="Z4"]');
+  if (!(await page.innerText('#sheet .appt')).includes('Dr. Zahn')) fail('appointments: the checkup sheet does not show the appointment');
+  await page.click('#sheet [data-act="close"]');
   const row = await page.innerText('[data-zitem="Z4"]');
   if ((await page.locator('[data-zitem="Z4"].booked').count()) !== 1 || !row.includes('Appointment') || !row.includes('Dr. Zahn') || /month 34/.test(row)) fail('appointments: the row still shows the usual time');
   let st = await getState(page), a = st.appts.find(x => x.k === 'Z4');
@@ -461,9 +467,11 @@ for (const theme of ['night', 'day']) {
   await page.click('#sheet [data-act="appt"]');
   await page.fill('#a_date', day(40));
   await page.click('[data-act="save-appt"]');
+  await page.click('#sheet [data-act="close"]');
   if ((await page.locator('[data-vxitem="menb"].booked').count()) !== 1) fail('appointments: vaccination not shown as booked');
   st = await getState(page);
-  if (!st.appts.some(x => x.plan === 'vax' && x.k === 'menb' && x.dose >= 1 && !x.deleted)) fail('appointments: vaccination appointment not saved for its dose');
+  if (!st.appts.some(x => x.plan === 'vax' && x.ks?.includes('menb') && x.doses?.menb >= 1 && !x.deleted)) fail('appointments: vaccination appointment not saved for its dose');
+  await page.click('[data-vxitem="menb"]');
   await page.click('#sheet .appt [data-act="appt"]');
   await page.click('[data-act="del-appt"]');
   if ((await page.locator('[data-vxitem="menb"].booked').count()) !== 0) fail('appointments: deleted appointment still shown');
@@ -481,6 +489,106 @@ for (const theme of ['night', 'day']) {
   if ((await page.locator('[data-zitem="Z4"].done').count()) !== 1) fail('appointments: recording the visit did not close it');
   await page.click('.tabs [data-tab="today"]');
   if ((await page.locator('.vax-line', { hasText: 'Z4' }).count()) !== 0) fail('appointments: Today still shows the recorded visit');
+  await page.close();
+}
+
+// Vaccination appointments: one appointment for several vaccines, from the Vaccinations screen, recorded afterwards
+{
+  const page = await newPage();
+  page.on('pageerror', e => fail(`vaccination appointments: ${e.message}`));
+  const day = n => { const d = new Date(Date.now() + n * 864e5); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  await page.goto(url);
+  await page.waitForSelector('h1');
+  await openTab(page, 'vax');
+  await page.click('#view-vax [data-act="appt"][data-plan="vax"]');
+  if ((await page.locator('.chips[data-k="vks"] [data-v="menb"].on').count()) !== 1) fail('vaccination appointments: the vaccination due now is not ticked');
+  await page.click('.chips[data-k="vks"] [data-v="flu"]');
+  await page.fill('#a_date', day(3)); await page.fill('#a_time', '10:00'); await page.fill('#a_note', 'Dr. Weber');
+  await page.click('[data-act="save-appt"]');
+  await page.click('#sheet [data-act="close"]');
+  const card = await page.innerText('#view-vax .card:has(h2:text("Appointments"))').catch(() => '');
+  if (!card.includes('Meningococcus B, Flu') || !card.includes('Dr. Weber')) fail('vaccination appointments: not listed on the Vaccinations screen');
+  if ((await page.locator('[data-vxitem="menb"].booked').count()) !== 1) fail('vaccination appointments: the vaccine row does not show the appointment');
+  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail('vaccination appointments: screen scrolls sideways');
+  let st = await getState(page);
+  const a = st.appts.find(x => x.plan === 'vax' && !x.deleted);
+  if (!a || a.ks.join() !== 'menb,flu' || !(a.doses.menb >= 1) || a.doses.flu !== undefined || a.time !== '10:00') fail('vaccination appointments: not saved');
+  await page.click('.tabs [data-tab="today"]');
+  if ((await page.locator('.vax-line', { hasText: 'Vaccination (Meningococcus B, Flu): appointment' }).count()) !== 1) fail('vaccination appointments: Today does not show it');
+  if ((await page.locator('.vax-line', { hasText: 'to check' }).count()) !== 0) fail('vaccination appointments: a booked vaccination is still to check');
+  await openTab(page, 'checkups');
+  await page.click('[data-act="cal-next"]');
+  if ((await page.locator('#sheet .vx-dose', { hasText: 'Meningococcus B, Flu' }).count()) !== 1) fail('vaccination appointments: calendar has it more or less than once');
+  await page.click('#sheet [data-act="close"]');
+  // Once the day has passed, the vaccinations are recorded from the appointment
+  st.appts.find(x => x.id === a.id).date = day(-2); await setState(page, st);
+  await reload(page); await page.waitForSelector('h1');
+  if ((await page.locator('.vax-line', { hasText: 'appointment was' }).count()) !== 1) fail('vaccination appointments: Today does not ask to record it');
+  await openTab(page, 'vax');
+  await page.click(`#view-vax [data-appt="${a.id}"]`);
+  await page.click('[data-act="appt-record"]');
+  if ((await page.inputValue('#v_date')) !== day(-2) || (await page.locator('.chips[data-k="against"] button.on').count()) !== 2) fail('vaccination appointments: recording does not start from the appointment');
+  await page.click('[data-act="save-vax"]');
+  if ((await page.locator('#view-vax [data-appt]').count()) !== 0 || (await page.locator('[data-vxitem="menb"].booked, [data-vxitem="menb"].went').count()) !== 0) fail('vaccination appointments: still open after recording');
+  // An appointment saved by the first version (one vaccine, `k` and `dose`) still shows
+  st = await getState(page); const n = st.vaccines.filter(d => !d.deleted && d.childId === st.child && d.against?.includes('rota')).length;
+  st.appts.push({ id: 'old', childId: st.child, plan: 'vax', k: 'rota', dose: n + 1, date: day(9), time: '', note: '', updatedAt: Date.now() }); await setState(page, st);
+  await reload(page); await page.waitForSelector('h1');
+  await openTab(page, 'vax');
+  if ((await page.locator('#view-vax [data-appt="old"]').count()) !== 1) fail('vaccination appointments: an appointment from the first version is not shown');
+  await page.close();
+}
+
+// Appointments screen: every booked appointment in one list, any other appointment, linked to a document
+{
+  const page = await newPage();
+  page.on('pageerror', e => fail(`appointments screen: ${e.message}`));
+  const day = n => { const d = new Date(Date.now() + n * 864e5); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  await page.goto(url);
+  await page.waitForSelector('h1');
+  { const st = await getState(page); st.docs.push({ id: 'd1', childId: st.child, type: 'other', title: 'Allergy pass', note: '', updatedAt: Date.now() }); await setState(page, st); }
+  await reload(page); await page.waitForSelector('h1');
+  // From a document: the appointment is linked to it
+  await page.click('.tabs [data-tab="docs"]');
+  await page.click('#view-docs [data-docid="d1"]');
+  await page.click('#sheet [data-act="appt"][data-plan="other"]');
+  if ((await page.inputValue('#a_doc')) !== 'd1') fail('appointments screen: appointment from a document not linked to it');
+  await page.click('[data-act="save-appt"]');
+  if (await page.isHidden('#scrim')) fail('appointments screen: saved without saying what for');
+  await page.fill('#a_title', 'Allergy test'); await page.fill('#a_date', day(4)); await page.fill('#a_time', '08:15'); await page.fill('#a_note', 'Dr. Haut');
+  await page.click('[data-act="save-appt"]');
+  await page.click('#sheet [data-act="close"]');
+  let st = await getState(page);
+  const a = st.appts.find(x => x.plan === 'other');
+  if (!a || a.title !== 'Allergy test' || a.docId !== 'd1' || a.date !== day(4) || a.time !== '08:15') fail('appointments screen: other appointment not saved');
+  if (!(await page.innerText('#view-docs [data-tab="appts"]')).includes('Allergy test')) fail('appointments screen: Documents row does not show the next appointment');
+  await page.click('#view-docs [data-tab="appts"]');
+  if (await page.isHidden('#view-appts') || (await page.locator('.tabs [data-tab="docs"][aria-selected="true"]').count()) !== 1) fail('appointments screen: does not open under Documents');
+  // A checkup booked from here shows in the same list
+  await page.click('[data-act="appt-new"]');
+  await page.click('[data-act="appt-pick"][data-plan="u"]');
+  await page.click('#sheet [data-act="appt"][data-for="U7a"]');
+  await page.fill('#a_date', day(20));
+  await page.click('[data-act="save-appt"]');
+  await page.click('#sheet [data-act="close"]');
+  const list = await page.innerText('#view-appts');
+  if (!list.includes('Allergy test') || !list.includes('Allergy pass') || !list.includes('U7a checkup') || list.indexOf('Allergy test') > list.indexOf('U7a checkup')) fail('appointments screen: list wrong or not in date order');
+  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail('appointments screen: scrolls sideways');
+  await page.click('[data-act="cal-appts"]');
+  if ((await page.locator('#sheet .vx-dose').count()) !== 2) fail('appointments screen: calendar does not have both appointments');
+  await page.click('#sheet [data-act="close"]');
+  await page.click(`#view-appts [data-appt="${a.id}"]`);
+  await page.click('#sheet [data-act="cal-appt"]');
+  if (new URL(await page.getAttribute('[data-gcal]', 'href')).searchParams.get('dates') !== `${day(4).replace(/-/g, '')}T081500/${day(4).replace(/-/g, '')}T091500`) fail('appointments screen: calendar link wrong');
+  await page.click('#sheet [data-act="close"]');
+  await page.click('.tabs [data-tab="today"]');
+  if ((await page.locator('.vax-line', { hasText: 'Allergy test: appointment' }).count()) !== 1) fail('appointments screen: Today does not show it');
+  // Once its day has passed it moves to Past
+  st = await getState(page); st.appts.find(x => x.id === a.id).date = day(-1); await setState(page, st);
+  await reload(page); await page.waitForSelector('h1');
+  if ((await page.locator('.vax-line', { hasText: 'Allergy test' }).count()) !== 0) fail('appointments screen: Today still shows a past appointment');
+  await page.click('.tabs [data-tab="docs"]'); await page.click('#view-docs [data-tab="appts"]');
+  if (!(await page.innerText('#view-appts details')).includes('Past (1)')) fail('appointments screen: past appointment not under Past');
   await page.close();
 }
 
