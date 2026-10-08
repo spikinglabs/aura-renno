@@ -425,6 +425,8 @@ for (const theme of ['night', 'day']) {
   const kept = st.emergency.filter(x => !x.deleted);
   if (kept.length !== 1 || kept[0].meds !== 'Inhaler when wheezing' || !kept[0].allergies.includes('Peanuts')) fail('card: merged save lost something');
   if (!st.emergency.some(x => x.id === 'other' && x.deleted)) fail('card: the merged card was not marked as replaced');
+  // The tab bar fills the full width, with the last tab ending near the right edge
+  { const r = await page.evaluate(() => { const b = [...document.querySelectorAll('.tabs button')].pop().getBoundingClientRect(); return innerWidth - b.right; }); if (r > 20) fail(`tabs: ${Math.round(r)} px empty on the right of the tab bar`); }
   // The Documents tab holds the card, the vaccination book, the U-Heft and other papers
   await page.click('.tabs [data-tab="docs"]');
   if (!(await page.innerText('#view-docs .vx-row[data-card]')).includes('Peanuts')) fail('documents tab: card row lacks the allergies');

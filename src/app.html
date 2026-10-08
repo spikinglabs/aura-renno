@@ -221,7 +221,7 @@ tr:last-child td { border-bottom: 0 }
 
 /* Tabs */
 .tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--card); padding-bottom: env(safe-area-inset-bottom, 0px) }
-.tabs .in { max-width: 600px; margin: 0 auto; display: grid; grid-template-columns: repeat(5, 1fr) }
+.tabs .in { max-width: 600px; margin: 0 auto; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr }
 .tabs button { background: none; border: 0; padding: 8px 4px 14px; font-size: .8rem; font-weight: 800; color: var(--muted) }
 .tabs button::before { content: ""; display: block; width: 24px; height: 4px; border-radius: 4px; margin: 0 auto 6px; background: transparent }
 .tabs button[aria-selected="true"] { color: var(--ink) }
