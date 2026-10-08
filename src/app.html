@@ -210,8 +210,13 @@ tr:last-child td { border-bottom: 0 }
 .vx-dose:first-of-type { border-top: 0 }
 .vx-dose small { color: var(--muted); font-size: .84rem }
 .book { display: flex; gap: 8px; flex-wrap: wrap }
-.book button { padding: 0; border: 0; background: none; border-radius: 10px; overflow: hidden; width: 96px; height: 96px }
-.book img { width: 100%; height: 100%; object-fit: cover; display: block }
+.book button { padding: 0; border: 0; background: none; border-radius: 10px; overflow: hidden; width: 90px; height: 124px }
+.book img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block }
+.book button { position: relative }
+.book .pg { position: absolute; left: 6px; bottom: 6px; min-width: 22px; padding: 1px 6px; border-radius: 99px; background: var(--card); color: var(--ink); font-size: 12px; font-weight: 600; text-align: center }
+.pager { display: grid; grid-template-columns: 36px minmax(0, 1fr) 36px; align-items: center; gap: 4px }
+.pager .btn { padding: 8px 0; font-size: 22px }
+.pager img { width: 100%; max-height: 62vh; object-fit: contain; border-radius: 10px; touch-action: pan-y pinch-zoom }
 
 /* Tabs */
 .tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--card); padding-bottom: env(safe-area-inset-bottom, 0px) }
@@ -239,6 +244,11 @@ tr:last-child td { border-bottom: 0 }
 .parsed { display: flex; flex-direction: column; gap: 6px }
 .parsed label { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-radius: 12px; background: var(--card-2) }
 .parsed input { width: auto }
+.scan-item { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: 12px; background: var(--card-2) }
+.scan-item label, .scan-ok { display: flex; gap: 10px; align-items: flex-start }
+.parsed .scan-item label { padding: 0; background: none }
+.scan-item input[type=date] { width: 100%; box-sizing: border-box }
+.scan-ok input, .scan-item input[type=checkbox] { width: 20px; height: 20px; padding: 0; margin: 2px 0 0; flex: none; accent-color: var(--accent) }
 .dict { position: relative; display: block }
 .dict textarea { padding-right: 52px }
 .mic { position: absolute; right: 6px; bottom: 8px; width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--card); display: grid; place-items: center; padding: 0 }
@@ -1071,13 +1081,13 @@ const vaxAround = (c, ep) => vaxDoses(c).filter(d => d.t >= startOfDay(ep.start)
 function renderVax() {
   const el = $('#view-vax'), c = kid();
   if (!c) { el.innerHTML = header('Vaccines', 'Vaccination record') + `<div class="card empty"><p class="muted">Add your child to keep their vaccinations here.</p><button class="btn primary" data-kid="new">Add your child</button></div>`; return; }
-  const doses = vaxDoses(c), pages = vaxOf(c).filter(v => v.kind === 'page').sort((a, b) => a.t - b.t), m = ageMonths(c);
+  const doses = vaxDoses(c), m = ageMonths(c);
   const row = v => { const s = vaxStatus(c, v);
     return `<button class="vx-row ${s.st}" data-vxitem="${v.k}"><span><b>${esc(v.l)}</b><small>${esc(s.text)}</small></span><span class="vx-dots" aria-label="${s.n} of ${s.of} recorded">${v.at.map((_, i) => `<i class="${i < s.n ? 'on' : ''}"></i>`).join('')}</span></button>`; };
   const soon = VAX_PLAN.filter(v => m == null || v.at[0] <= m + 12 || vaxStatus(c, v).n), later = VAX_PLAN.filter(v => !soon.includes(v));
   const open = vaxOpen(c);
   el.innerHTML = header('Vaccines', `${esc(c.name)}${c.dob ? ' · ' + ageText(c) : ''}`) + exampleBanner() + `
-    <div class="row"><button class="btn primary" data-act="add-vax">Add a vaccination</button><button class="btn" data-act="vax-photo">Photo of the book</button><input id="vaxPage" type="file" accept="image/*" hidden></div>
+    <div class="row"><button class="btn primary" data-act="scan" data-for="vax">Scan a page</button><button class="btn" data-act="add-vax">Add a vaccination</button><input id="vaxPage" type="file" accept="image/*" multiple hidden></div>
     ${planOn() ? `<div class="card set"><div class="row between"><h2>Schedule</h2><span class="muted small">Germany · STIKO</span></div>
       ${!c.dob ? '<p class="small muted" style="margin:0">Add a birth date to see when each vaccination is usually given.</p>' : open.length ? `<p class="small" style="margin:0;color:var(--wait)"><b>${open.length} to check with your pediatrician.</b> If one was given, tap it and add the date from the book.</p>` : ''}
       <div>${soon.map(row).join('')}</div>
@@ -1085,10 +1095,8 @@ function renderVax() {
       <p class="small muted" style="margin:0">The usual ages from the STIKO recommendations (as of 2026), as a reminder only. Your pediatrician decides what your child gets and when. Plans differ for babies born early, for health conditions and for catch-up doses.</p></div>` : ''}
     <div class="card set"><div class="row between"><h2>Recorded</h2>${doses.length ? '<button class="btn sm" data-act="copy-vax">Copy list</button>' : ''}</div>
       ${doses.length ? `<div>${doses.map(d => `<button class="vx-dose" data-vxdose="${d.id}"><span><b>${esc(vaxNames(d))}</b> <span class="muted small num">${fmtDate(d.t)}${c.dob ? ' · ' + ageText(c, d.t) : ''}</span></span>${d.name || d.batch || d.by ? `<small>${esc([d.name, d.batch && 'batch ' + d.batch, d.by].filter(Boolean).join(' · '))}</small>` : ''}${d.note ? `<small>${esc(d.note)}</small>` : ''}</button>`).join('')}</div>`
-        : '<p class="muted small" style="margin:0">Nothing recorded yet. Copy each line from the vaccination book: the date, what it protects against, and the vaccine name and batch number if you like.</p>'}</div>
-    <div class="card set"><div class="row between"><h2>Pages of the book</h2><span class="muted small">${pages.length}</span></div>
-      ${pages.length ? `<div class="book">${pages.map(p => `<button data-vxpage="${p.id}" aria-label="Photo from ${fmtDate(p.t)}"><img src="${p.img}" alt=""></button>`).join('')}</div>` : ''}
-      <p class="small muted" style="margin:0">A photo of each filled page is a backup if the book gets lost. It syncs with your partner like other photos.</p></div>
+        : '<p class="muted small" style="margin:0">Nothing recorded yet. Tap Scan a page and photograph the filled pages of the vaccination book, or add each line by hand.</p>'}</div>
+    ${pagesCard(c, 'vax')}
     <div class="card set"><h2>Schedule to show</h2>
       <div class="chips">${[['de', 'Germany (STIKO)'], ['none', 'None, just my records']].map(([k, l]) => `<button data-vaxplan="${k}" class="${(S.settings.vaxPlan || 'de') === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>`;
 }
@@ -1110,14 +1118,6 @@ function vaxItemSheet(k) {
     <p class="small muted" style="margin:0">Usually ${v.at.length > 1 ? v.at.length + ' doses: ' : ''}${esc(v.ages.join(', '))}.${v.note ? ' ' + esc(v.note) : ''}</p>
     <div>${s.given.map((d, i) => `<button class="vx-dose" data-vxdose="${d.id}"><span><b>Dose ${i + 1}</b> <span class="muted small num">${fmtDate(d.t)}${c.dob ? ' · ' + ageText(c, d.t) : ''}</span></span>${d.name || d.batch ? `<small>${esc([d.name, d.batch && 'batch ' + d.batch].filter(Boolean).join(' · '))}</small>` : ''}</button>`).join('') || '<p class="muted small" style="margin:0">None recorded yet.</p>'}</div>
     <div class="sheet-actions"><button class="btn ghost" data-act="vax-skip" data-for="${k}">${skip ? 'Show as planned again' : 'Not planned for us'}</button><span class="row">${!skip && vaxEvent(c, v) ? `<button class="btn" data-act="cal-vax" data-for="${k}">Add to calendar</button>` : ''}<button class="btn primary" data-act="add-vax" data-for="${k}">Add a dose</button></span></div>`, { vaxItem: k });
-}
-function vaxPageSheet(id) {
-  const p = S.vaccines.find(x => x.id === id);
-  openSheet(`<div class="hd"><h2>Page of the book</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
-    <img src="${p.img}" alt="Vaccination book page" style="width:100%;border-radius:10px">
-    <label class="field"><span>Note (optional)</span><input id="vp_note" value="${esc(p.note || '')}" placeholder="e.g. pages 4 and 5"></label>
-    <p class="small muted" style="margin:0">Added ${fmtDate(p.t)}</p>
-    <div class="sheet-actions"><button class="btn ghost danger" data-act="del-vxpage">Delete photo</button><button class="btn primary" data-act="save-vxpage">Save</button></div>`, { vxpage: id });
 }
 const vaxListText = c => [`VACCINATIONS: ${c.name}${c.dob ? ', born ' + fmtDate(new Date(c.dob + 'T12:00').getTime()) : ''}`,
   ...vaxDoses(c).slice().reverse().map(d => `${fmtDate(d.t)}: ${vaxNames(d)}${d.name ? ' (' + d.name + ')' : ''}${d.batch ? ', batch ' + d.batch : ''}${d.by ? ', ' + d.by : ''}`)].join('\n');
@@ -1258,13 +1258,13 @@ const nextEvents = c => [...(uPlanOn() ? U_PLAN.map(u => uEvent(c, u)) : []), ..
 function renderCheckups() {
   const el = $('#view-checkups'), c = kid();
   if (!c) { el.innerHTML = header('Checkups', 'U-Heft') + `<div class="card empty"><p class="muted">Add your child to keep their checkups here.</p><button class="btn primary" data-kid="new">Add your child</button></div>`; return; }
-  const exams = uExams(c), pages = uOf(c).filter(x => x.kind === 'page').sort((a, b) => a.t - b.t), now = Date.now();
+  const exams = uExams(c), now = Date.now();
   const row = u => { const s = uStatus(c, u);
     return `<button class="vx-row ${s.st}" data-uitem="${u.k}"><span><b>${u.k}</b><small>${esc(s.text)}</small></span><span class="vx-dots" aria-label="${s.st === 'done' ? 'recorded' : 'not recorded'}"><i class="${s.st === 'done' ? 'on' : ''}"></i></span></button>`; };
   const soon = U_PLAN.filter(u => !c.dob || uStatus(c, u).st !== 'later' || uStatus(c, u).ws < now + 400 * DAY), later = U_PLAN.filter(u => !soon.includes(u));
   const evs = c.dob ? nextEvents(c) : [];
   el.innerHTML = header('Checkups', `${esc(c.name)}${c.dob ? ' · ' + ageText(c) : ''}`) + exampleBanner() + `
-    <div class="row"><button class="btn primary" data-act="add-u">Add a checkup</button><button class="btn" data-act="u-photo">Photo of the U-Heft</button><input id="uPage" type="file" accept="image/*" hidden></div>
+    <div class="row"><button class="btn primary" data-act="scan" data-for="u">Scan a page</button><button class="btn" data-act="add-u">Add a checkup</button><input id="uPage" type="file" accept="image/*" multiple hidden></div>
     ${uPlanOn() ? `<div class="card set"><div class="row between"><h2>U-Heft</h2><span class="muted small">Germany</span></div>
       ${!c.dob ? '<p class="small muted" style="margin:0">Add a birth date to see when each checkup is due.</p>' : ''}
       <div>${soon.map(row).join('')}</div>
@@ -1273,10 +1273,8 @@ function renderCheckups() {
       <p class="small muted" style="margin:0">Ages from the German child checkup rules (Kinder-Richtlinie). The first dates are the usual time; a checkup can still be done until the last day shown. Daycare and school often ask to see the U-Heft.</p></div>` : ''}
     <div class="card set"><h2>Recorded</h2>
       ${exams.length ? `<div>${exams.map(e => `<button class="vx-dose" data-uexam="${e.id}"><span><b>${esc(uName(e.u))}</b> <span class="muted small num">${fmtDate(e.t)}${c.dob ? ' · ' + ageText(c, e.t) : ''}</span></span>${e.by ? `<small>${esc(e.by)}</small>` : ''}${e.note ? `<small>${esc(e.note)}</small>` : ''}</button>`).join('')}</div>`
-        : '<p class="muted small" style="margin:0">Nothing recorded yet. After each checkup, add the date and what the doctor said, in your own words.</p>'}</div>
-    <div class="card set"><div class="row between"><h2>Pages of the U-Heft</h2><span class="muted small">${pages.length}</span></div>
-      ${pages.length ? `<div class="book">${pages.map(p => `<button data-upage="${p.id}" aria-label="Photo from ${fmtDate(p.t)}"><img src="${p.img}" alt=""></button>`).join('')}</div>` : ''}
-      <p class="small muted" style="margin:0">A photo of each filled page is a backup if the booklet gets lost. It syncs with your partner and goes into Drive backups.</p></div>
+        : '<p class="muted small" style="margin:0">Nothing recorded yet. Tap Scan a page and photograph the stamped pages of the U-Heft, or add each checkup by hand with what the doctor said, in your own words.</p>'}</div>
+    ${pagesCard(c, 'u')}
     <div class="card set"><h2>Schedule to show</h2>
       <div class="chips">${[['de', 'Germany (U-Heft)'], ['none', 'None, just my records']].map(([k, l]) => `<button data-uplan="${k}" class="${(S.settings.uPlan || 'de') === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>`;
 }
@@ -1297,14 +1295,6 @@ function uItemSheet(k) {
     <p class="small muted" style="margin:0">Usually ${esc(u.ages)}${s.best && u.k !== 'U1' ? ` (${esc(s.best)})` : ''}.${s.ws && u.k !== 'U1' ? ` It can be done from ${fmtDate(s.ws)} until ${fmtDate(lastDay(s.we))}.` : ''}${u.note ? ' ' + esc(u.note) : ''}</p>
     <div>${s.given.map(e => `<button class="vx-dose" data-uexam="${e.id}"><span><b>${fmtDate(e.t)}</b>${c.dob ? ` <span class="muted small num">${ageText(c, e.t)}</span>` : ''}</span>${e.by ? `<small>${esc(e.by)}</small>` : ''}${e.note ? `<small>${esc(e.note)}</small>` : ''}</button>`).join('') || '<p class="muted small" style="margin:0">Not recorded yet.</p>'}</div>
     <div class="sheet-actions">${ev ? `<button class="btn" data-act="cal-u" data-for="${k}">Add to calendar</button>` : '<span></span>'}<button class="btn primary" data-act="add-u" data-for="${k}">${s.given.length ? 'Add another visit' : 'Record it'}</button></div>`, { uItem: k });
-}
-function uPageSheet(id) {
-  const p = S.checkups.find(x => x.id === id);
-  openSheet(`<div class="hd"><h2>Page of the U-Heft</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
-    <img src="${p.img}" alt="U-Heft page" style="width:100%;border-radius:10px">
-    <label class="field"><span>Note (optional)</span><input id="up_note" value="${esc(p.note || '')}" placeholder="e.g. U5, pages 1 and 2"></label>
-    <p class="small muted" style="margin:0">Added ${fmtDate(p.t)}</p>
-    <div class="sheet-actions"><button class="btn ghost danger" data-act="del-upage">Delete photo</button><button class="btn primary" data-act="save-upage">Save</button></div>`, { upage: id });
 }
 
 /* ---------- Calendar ---------- */
@@ -1371,7 +1361,7 @@ function renderMore() {
       <label class="field"><span>Address (base URL)</span><input id="aiBase" value="${esc(st.aiBase)}" placeholder="https://api.example.com/v1" autocomplete="off" inputmode="url"></label>
       <label class="field"><span>Model name, as the service spells it</span><input id="aiModel" value="${esc(st.aiModel)}" placeholder="e.g. the model id from your service's docs" autocomplete="off"></label>` : `<label class="field"><span>Model (optional)</span><input id="aiModel" value="${esc(st.aiModel)}" placeholder="${MODEL}" autocomplete="off"></label>`}
       <label class="field"><span>API key${st.aiKind === 'openai' ? ' (leave empty for Ollama or LM Studio)' : ''}, stored only on this phone, never synced</span><input id="apiKey" type="password" value="${esc(st.apiKey)}" placeholder="${st.aiKind === 'openai' ? 'key' : 'sk-ant-…'}" autocomplete="off"></label>
-      <p class="small muted" style="margin:0">AI is used only when you tap an AI button. Then the text needed for that task goes from your phone straight to the service you chose, with names replaced by placeholders and age instead of birth date. Photos, sounds, links and Drive details are never sent. Each answer has a “See exactly what was sent” link. AI never gives doses or diagnoses.</p></div>
+      <p class="small muted" style="margin:0">AI is used only when you tap an AI button. Then the text needed for that task goes from your phone straight to the service you chose, with names replaced by placeholders and age instead of birth date. Photos, sounds, links and Drive details are never sent, except pages of the vaccination book or U-Heft you choose to scan. Each answer has a “See exactly what was sent” link. AI never gives doses or diagnoses.</p></div>
     <div class="card set"><h2>Your data</h2>
       <p class="small muted" style="margin:0" id="storeInfo">Saved on this phone.</p>
       <div class="row"><button class="btn sm" data-act="download">Save a backup file</button><button class="btn sm" data-act="restore-file">Restore from a backup file</button><button class="btn sm" data-act="local-snaps">Restore a daily copy on this phone</button><input id="restoreFile" type="file" accept="application/json,.json" hidden></div>
@@ -1522,9 +1512,10 @@ async function aiProvider() {
   if (st.aiKind === 'openai' ? okBase(st.aiBase) && st.aiModel : st.apiKey) return 'key';
   return (await getSample()) ? 'sample' : null;
 }
-async function openaiCall(system, user, schema) {
+async function openaiCall(system, user, schema, images = []) {
   const st = S.settings, url = st.aiBase.replace(/\/+$/, '') + '/chat/completions';
-  const messages = [{ role: 'system', content: system + (schema ? `\n\nReply with only JSON matching this JSON Schema:\n${JSON.stringify(schema)}` : '') }, { role: 'user', content: user }];
+  const content = images.length ? [{ type: 'text', text: user }, ...images.map(img => ({ type: 'image_url', image_url: { url: img } }))] : user;
+  const messages = [{ role: 'system', content: system + (schema ? `\n\nReply with only JSON matching this JSON Schema:\n${JSON.stringify(schema)}` : '') }, { role: 'user', content }];
   const post = body => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(st.apiKey ? { Authorization: 'Bearer ' + st.apiKey } : {}) }, body: JSON.stringify(body) });
   const base = { model: st.aiModel, messages };
   let r = await post(schema ? { ...base, response_format: { type: 'json_schema', json_schema: { name: 'entries', schema, strict: true } } } : base);
@@ -1537,16 +1528,18 @@ async function openaiCall(system, user, schema) {
   return JSON.parse(m[0]);
 }
 let sdkClient = null, sdkKey = null;
-async function apiCall(system, user, schema) {
-  if (S.settings.aiKind === 'openai') return openaiCall(system, user, schema);
+async function apiCall(system, user, schema, images = []) {
+  if (S.settings.aiKind === 'openai') return openaiCall(system, user, schema, images);
   if (!sdkClient || sdkKey !== S.settings.apiKey) { const { default: Anthropic } = await import(SDK_URL); sdkClient = new Anthropic({ apiKey: S.settings.apiKey, dangerouslyAllowBrowser: true }); sdkKey = S.settings.apiKey; }
-  const output_config = { effort: 'low' }; if (schema) output_config.format = { type: 'json_schema', schema };
-  const msg = await sdkClient.beta.messages.create({ model: S.settings.aiModel || MODEL, max_tokens: 16000, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default', output_config, system, messages: [{ role: 'user', content: user }] });
+  const output_config = { effort: images.length ? 'medium' : 'low' }; if (schema) output_config.format = { type: 'json_schema', schema };
+  const content = images.length ? [...images.map(img => ({ type: 'image', source: { type: 'base64', media_type: img.slice(5, img.indexOf(';')), data: img.slice(img.indexOf(',') + 1) } })), { type: 'text', text: user }] : user;
+  const msg = await sdkClient.beta.messages.create({ model: S.settings.aiModel || MODEL, max_tokens: 16000, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default', output_config, system, messages: [{ role: 'user', content }] });
   if (msg.stop_reason === 'refusal') throw new Error('The AI declined this request.');
   const text = msg.content.filter(b => b.type === 'text').map(b => b.text).join('');
   return schema ? JSON.parse(text) : text;
 }
-// Privacy: names become placeholders before anything is sent and are put back on the phone. Photos, sounds, links and birth dates are never part of a prompt.
+// Privacy: names become placeholders before anything is sent and are put back on the phone. Photos, sounds, links and birth dates are never part of a prompt,
+// with one exception the parent opts into: pages of the vaccination book or U-Heft they scan (`images`), which only go to their own AI service.
 let lastSent = null;
 function nameMap(cid) {
   const cs = kids().slice().sort((a, b) => (b.id === cid) - (a.id === cid)), map = cs.map((c, i) => [c.name.trim(), i ? `[CHILD ${i + 1}]` : '[CHILD]']);
@@ -1557,12 +1550,13 @@ const redact = (t, map) => map.reduce((s, [n, p]) => s.replace(new RegExp(`(^|[^
 const unredact = (t, map) => map.reduce((s, [n, p]) => s.split(p).join(n), String(t));
 const deepMap = (v, f) => typeof v === 'string' ? f(v) : Array.isArray(v) ? v.map(x => deepMap(x, f)) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, deepMap(x, f)])) : v;
 const sentHtml = () => lastSent ? `<details class="small"><summary class="muted">See exactly what was sent</summary><pre class="sent">${esc(lastSent.system + '\n\n' + lastSent.user)}</pre></details>` : '';
-async function ai(system, user, schema, cid = kid()?.id) {
+async function ai(system, user, schema, cid = kid()?.id, images = []) {
   const p = await aiProvider(); if (!p) throw new Error('AI is off. Choose a service under More to use it.');
+  if (images.length && p !== 'key') throw new Error('Reading photos needs your own AI service. Choose one under More.');
   const map = nameMap(cid), sys = system + ' Names are replaced by placeholders such as [CHILD]; keep each placeholder exactly as written.', u = redact(user, map);
-  lastSent = { system: sys, user: u, via: p };
+  lastSent = { system: sys, user: u + (images.length ? `\n\n[${images.length} photo${images.length > 1 ? 's' : ''}]` : ''), via: p };
   let r;
-  if (p === 'key') r = await apiCall(sys, u, schema);
+  if (p === 'key') r = await apiCall(sys, u, schema, images);
   else { const sample = await getSample(), prompt = `${sys}\n\n${u}`;
     r = schema ? await sample.json(prompt + `\n\nReply with only JSON matching this JSON Schema:\n${JSON.stringify(schema)}`, { modelTier: 'quick', cache: false }) : (await sample(prompt, { cache: false })).text; }
   return deepMap(r, t => unredact(t, map));
@@ -1625,6 +1619,148 @@ async function aiSummary() {
   try { narrative = (await ai(system, user, null, ep.childId)).trim(); } catch (err) { narrative = ''; toast(aiError(err)); }
   render();
 }
+/* ---------- Scan a page ---------- */
+// Reads new entries from photos of the vaccination book or the U-Heft with the parent's own AI service, which must be able
+// to read pictures. The parent photographs only the pages with new entries. Nothing is saved until they check the list,
+// entries already recorded are left out, and the photos are kept only if they ask. The photos are the one thing in Aura
+// that goes to the AI as a picture, so the first scan asks once, and the sheet always says that names printed on a page
+// can't be replaced by placeholders. The answer is only read off the page: no advice, no judging of findings.
+let scanned = null;
+const aiKeySet = () => { const st = S.settings; return st.aiKind === 'openai' ? !!(okBase(st.aiBase) && st.aiModel) : !!st.apiKey; };
+const VAX_SCAN_SCHEMA = { type: 'object', additionalProperties: false, required: ['doses'], properties: { doses: { type: 'array', items: { type: 'object', additionalProperties: false,
+  required: ['date', 'against', 'name', 'batch', 'by'], properties: { date: nul('string'), against: { type: 'array', items: { type: 'string', enum: VAX_KINDS.map(([k]) => k) } }, name: nul('string'), batch: nul('string'), by: nul('string') } } } } };
+const U_SCAN_SCHEMA = { type: 'object', additionalProperties: false, required: ['checkups'], properties: { checkups: { type: 'array', items: { type: 'object', additionalProperties: false,
+  required: ['u', 'date', 'by', 'weightKg', 'heightCm', 'headCm'], properties: { u: { type: 'string', enum: [...U_PLAN.map(u => u.k), 'other'] }, date: nul('string'), by: nul('string'), weightKg: nul('number'), heightCm: nul('number'), headCm: nul('number') } } } } };
+const SCAN_RULES = 'Dates are written like 12.03.25 or 12.03.2025 (day first); answer YYYY-MM-DD, and two-digit years are 20YY. Read only what is written. If a value is missing or you cannot read it with confidence, use null; never guess a date, number or name. Skip empty rows, printed headings and example text. Do not interpret anything and do not give medical advice.';
+const VAX_SCAN_SYSTEM = `You read photos of pages from a child's vaccination record, such as the German yellow Impfpass or an international certificate of vaccination. List every vaccination entry you can read, one item per dose (one row or sticker with a date). ` +
+  `"against" holds the keys of what the dose protects against, from this list: ${JSON.stringify(Object.fromEntries(VAX_KINDS))}. A combined shot against diphtheria, tetanus, whooping cough (pertussis), polio, Hib and hepatitis B (for example Hexyon, Infanrix hexa, Vaxelis) is "6in1", also when those diseases are ticked one by one on the same row. ` +
+  `Tetanus, diphtheria and whooping cough without polio (Boostrix, Covaxis) is "tdap"; with polio (Boostrix Polio, Repevax) is "tdapipv". Measles, mumps and rubella is "mmr"; MMRV (Priorix-Tetra, ProQuad) is "mmr" and "var". Nirsevimab (Beyfortus) is "rsv". ` +
+  `Use "other" only when nothing else fits, and then always give the name. "name": the vaccine's trade name as written or on the sticker. "batch": the batch number (Ch.-B., Lot) exactly as printed. "by": the doctor or practice from the stamp. ${SCAN_RULES}`;
+const U_SCAN_SYSTEM = `You read photos of pages from the German child health booklet (gelbes Kinderuntersuchungsheft, U-Heft). List each checkup that was done: U1, U2, U3, U4, U5, U6, U7, U7a, U8, U9, U10 or J1 ("other" for anything else). ` +
+  `A checkup counts as done only when a date is written for it, usually with a practice stamp or signature, for example on the attendance card (Teilnahmekarte) or at the end of that checkup's section. ` +
+  `"by": the doctor or practice from the stamp. weightKg, heightCm and headCm: body weight (Körpergewicht, convert grams to kg), length or height (Körperlänge/Größe) and head circumference (Kopfumfang) if written in that checkup's section, else null. Ignore ticked findings and the rest of the examination. ${SCAN_RULES}`;
+function scanSheet(book) {
+  const vax = book === 'vax', keyOk = aiKeySet(), read = keyOk && S.settings.scanRead !== false;
+  scanned = null;
+  openSheet(`<div class="hd"><h2>Scan a page</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+    <p class="small muted" style="margin:0">Photograph only the page${vax ? ' with the newest vaccinations' : 's with the newest stamps'}, not the whole book. You can choose several photos.</p>
+    ${keyOk ? `<label class="scan-ok small"><input type="checkbox" id="scanRead" ${read ? 'checked' : ''}><span><b>Read the entries with AI</b>, so you don't have to type them. When this is off, the photos are just kept as pages of the book.</span></label>
+    <div id="scanAi" class="set" ${read ? '' : 'hidden'}><p class="small muted" style="margin:0">Aura reads ${vax ? 'the dates, vaccines, batch numbers and stamps' : 'which checkups were done, their dates and stamps, and the weight, height and head size'} and shows you what it found. Nothing is saved until you check it, and what is already recorded is left out.</p>
+    <label class="scan-ok small"><input type="checkbox" id="scanOk" ${S.settings.scanOk ? 'checked' : ''}><span>The photos go from this phone straight to ${esc(aiName())}, the AI service you chose. Names, addresses and stamps printed on the page can't be hidden in a picture, so that service sees them. Nothing else from your log is sent.</span></label></div>
+    <input id="scanFiles" type="file" accept="image/*" multiple hidden>`
+    : `<p class="small muted" style="margin:0">Aura keeps the photos as pages of the book. To have it also read the entries for you, set up an AI service that understands pictures (for example Claude, GPT-4o or Gemini) under More → AI helper.</p>`}
+    <div class="row"><button class="btn primary" data-act="scan-pick">Choose photos</button><button class="btn ghost" data-act="scan-hand">Add by hand</button>${keyOk ? '' : '<button class="btn ghost" data-act="scan-setup">Set up AI</button>'}</div>
+    <div id="scanOut"></div>`, { scan: book });
+}
+const scanDay = s => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || ''); if (!m) return ''; const t = new Date(s + 'T12:00').getTime(); return isNaN(t) || startOfDay(t) > Date.now() ? '' : s; };
+const sameDay = (a, b) => startOfDay(a) === startOfDay(b);
+async function scanRun(files) {
+  const book = sheetCtx?.scan, out = $('#scanOut'), c = kid(); if (!book || !out || !c) return;
+  out.innerHTML = `<p class="muted small">Reading ${files.length > 1 ? files.length + ' photos' : 'the photo'}…</p>`;
+  try {
+    const images = await Promise.all(files.map(f => shrink(f, 1600)));
+    const vax = book === 'vax', r = await ai(vax ? VAX_SCAN_SYSTEM : U_SCAN_SYSTEM, vax ? 'Read the vaccinations in these photos.' : 'Read the checkups in these photos.', vax ? VAX_SCAN_SCHEMA : U_SCAN_SCHEMA, c.id, images);
+    if (sheetCtx?.scan !== book) return;
+    const items = [], skipped = [];
+    if (vax) {
+      const have = vaxDoses(c);
+      for (const x of r.doses || []) {
+        const d = { against: (x.against || []).filter(k => VAX_KINDS.some(([v]) => v === k)), name: (x.name || '').trim(), batch: (x.batch || '').trim(), by: (x.by || '').trim(), day: scanDay(x.date) };
+        if (!d.against.length && !d.name) continue;
+        const t = d.day && new Date(d.day + 'T12:00').getTime(), same = y => sameDay(y.t, t) && ((y.against || []).some(k => d.against.includes(k) && k !== 'other') || (d.name && y.name?.toLowerCase() === d.name.toLowerCase()));
+        if (t && (have.some(same) || items.some(y => y.day && same({ ...y, t: new Date(y.day + 'T12:00').getTime() })))) skipped.push(d); else items.push(d);
+      }
+    } else {
+      const have = uExams(c);
+      for (const x of r.checkups || []) {
+        const e = { u: x.u, by: (x.by || '').trim(), day: scanDay(x.date), ...Object.fromEntries(MEAS.map(([k]) => [k, typeof x[k] === 'number' && x[k] > 0 ? x[k] : null])) };
+        if (e.u !== 'other' && (have.some(y => y.u === e.u) || items.some(y => y.u === e.u))) skipped.push(e); else items.push(e);
+      }
+    }
+    scanned = { book, items, skipped, images };
+    out.innerHTML = scanHtml();
+  } catch (err) {
+    if (!$('#scanOut')) return;
+    $('#scanOut').innerHTML = `<p class="small" style="color:var(--alert)">${esc(aiError(err))}</p><p class="small muted" style="margin:0">If your AI model can't read pictures, choose one that can under More, or add the entries by hand.</p>`;
+  }
+}
+const scanDesc = (book, x) => book === 'vax' ? `<b>${esc(vaxNames(x))}</b>${x.name || x.batch || x.by ? `<br><span class="small muted">${esc([x.name, x.batch && 'batch ' + x.batch, x.by].filter(Boolean).join(' · '))}</span>` : ''}`
+  : `<b>${esc(uName(x.u))}</b>${x.by || MEAS.some(([k]) => x[k] != null) ? `<br><span class="small muted">${esc([x.by, ...MEAS.filter(([k]) => x[k] != null).map(([k, l, u]) => `${l} ${x[k]} ${u}`)].filter(Boolean).join(' · '))}</span>` : ''}`;
+function scanHtml() {
+  const { book, items, skipped, images } = scanned, max = toLocalInput(Date.now()).slice(0, 10);
+  if (!items.length) return `<div class="parsed"><p class="small muted" style="margin:0">${skipped.length ? `Everything on ${images.length > 1 ? 'these pages' : 'this page'} is already recorded (${skipped.length}).` : `I couldn't find any ${book === 'vax' ? 'vaccinations' : 'checkups with a date'} on ${images.length > 1 ? 'these photos' : 'this photo'}. Try a sharper photo of one page, in good light.`}</p>
+    <div class="row"><button class="btn" data-act="scan-add">Keep ${images.length > 1 ? 'the photos as pages' : 'the photo as a page'}</button></div><input type="checkbox" id="scanKeep" checked hidden>${sentHtml()}</div>`;
+  return `<div class="parsed"><p class="small muted" style="margin:0">Check each line against the book. Fix a date if it was misread; you can change anything else later by tapping the entry.</p>
+    ${items.map((x, i) => `<div class="scan-item"><label><input type="checkbox" data-si="${i}" ${x.day ? 'checked' : ''}><span>${scanDesc(book, x)}</span></label><input type="date" data-sd="${i}" value="${x.day}" max="${max}" aria-label="Date"></div>`).join('')}
+    ${items.some(x => !x.day) ? '<p class="small" style="margin:0;color:var(--wait)">Some dates could not be read. Add them from the book, or leave those lines unticked.</p>' : ''}
+    ${skipped.length ? `<p class="small muted" style="margin:0">Already recorded, left out: ${esc(skipped.map(x => book === 'vax' ? vaxNames(x) + (x.day ? ' ' + fmtDate(new Date(x.day + 'T12:00').getTime()) : '') : x.u).join(', '))}</p>` : ''}
+    <label class="scan-ok small"><input type="checkbox" id="scanKeep" checked><span>Also keep ${images.length > 1 ? 'the photos' : 'the photo'} as ${images.length > 1 ? 'pages' : 'a page'} of the book (you can replace a page later with a newer photo)</span></label>
+    <div class="row"><button class="btn primary" data-act="scan-add">Add selected</button><button class="btn ghost" data-act="scan-discard">Discard</button></div>${sentHtml()}</div>`;
+}
+function scanAdd() {
+  if (!scanned) return;
+  const { book, items, images } = scanned, c = kid(), pick = [];
+  for (const box of document.querySelectorAll('#scanOut [data-si]')) {
+    if (!box.checked) continue;
+    const x = items[+box.dataset.si], day = scanDay($(`#scanOut [data-sd="${box.dataset.si}"]`).value);
+    if (!day) return toast(`Add the date for ${book === 'vax' ? vaxNames(x) : x.u} from the book, or untick it.`);
+    pick.push({ ...x, t: Math.min(new Date(day + 'T12:00').getTime(), Date.now()) });
+  }
+  const keep = $('#scanKeep')?.checked;
+  if (!pick.length && !keep) return toast('Tick what you want to add.');
+  for (const x of pick) {
+    if (book === 'vax') S.vaccines.push(touch({ id: uid(), childId: c.id, kind: 'dose', t: x.t, against: x.against, name: x.name, batch: x.batch, by: x.by, note: '' }));
+    else {
+      const e = { id: uid(), childId: c.id, kind: 'exam', u: x.u, t: x.t, by: x.by, note: '' };
+      if (MEAS.some(([k]) => x[k] != null)) { const m = touch({ id: uid(), childId: c.id, t: x.t, note: uName(x.u), ...Object.fromEntries(MEAS.map(([k]) => [k, x[k]])) }); S.measurements.push(m); e.measId = m.id; }
+      S.checkups.push(touch(e));
+    }
+  }
+  if (keep) addPages(c, book, images);
+  scanned = null; closeSheet(); commit();
+  toast(pick.length ? `Added ${pick.length} ${book === 'vax' ? (pick.length > 1 ? 'vaccinations' : 'vaccination') : (pick.length > 1 ? 'checkups' : 'checkup')}${keep ? ' and kept the page' + (images.length > 1 ? 's' : '') : ''}` : (images.length > 1 ? 'Pages kept' : 'Page kept'));
+}
+
+/* ---------- Pages of the book ---------- */
+// Photos of the vaccination book and the U-Heft, kept page by page in the book's order (`order`; pages from before it
+// existed follow in the order they were added). When more is written on a page, the parent replaces it with a newer
+// photo; the earlier one stays in the phone and Drive backups like any earlier version of the log.
+const BOOK = { vax: { list: () => S.vaccines, name: 'the vaccination book', title: 'Pages of the book' }, u: { list: () => S.checkups, name: 'the U-Heft', title: 'Pages of the U-Heft' } };
+const bookPages = (c, book) => live(BOOK[book].list()).filter(x => x.childId === c.id && x.kind === 'page').sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity) || a.t - b.t);
+const setOrder = pages => pages.forEach((p, i) => { if (p.order !== i) { p.order = i; touch(p); } });
+function addPages(c, book, imgs) {
+  const pages = bookPages(c, book); setOrder(pages);
+  imgs.forEach((img, i) => BOOK[book].list().push(touch({ id: uid(), childId: c.id, kind: 'page', t: Date.now(), img, note: '', order: pages.length + i })));
+}
+function pagesCard(c, book) {
+  const pages = bookPages(c, book), attr = book === 'vax' ? 'data-vxpage' : 'data-upage';
+  return `<div class="card set"><div class="row between"><h2>${BOOK[book].title}</h2><span class="muted small">${pages.length ? pages.length + (pages.length > 1 ? ' pages' : ' page') : ''}</span></div>
+    ${pages.length ? `<div class="book">${pages.map((p, i) => `<button ${attr}="${p.id}" aria-label="Page ${i + 1}"><img src="${p.img}" alt=""><span class="pg num">${i + 1}</span></button>`).join('')}</div>` : ''}
+    <p class="small muted" style="margin:0">${pages.length ? 'Tap a page to leaf through the book, or to replace it with a newer photo when more is written on it.' : `Keep a photo of each filled page of ${BOOK[book].name} as a backup if it gets lost: tap Scan a page.`} Pages sync with your partner and go into Drive backups.</p></div>`;
+}
+function pageSheet(book, id) {
+  const c = kid(), pages = bookPages(c, book), i = pages.findIndex(p => p.id === id); if (i < 0) return closeSheet();
+  const p = pages[i], n = pages.length, nav = (j, l, a) => `<button class="btn ghost" data-act="page-go" data-for="${pages[j]?.id || ''}" ${pages[j] ? '' : 'disabled'} aria-label="${a}">${l}</button>`;
+  openSheet(`<div class="hd"><h2>Page ${i + 1} of ${n}</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+    <div class="pager">${nav(i - 1, '‹', 'Previous page')}<img id="pageImg" src="${p.img}" alt="Page ${i + 1} of ${esc(BOOK[book].name)}">${nav(i + 1, '›', 'Next page')}</div>
+    <label class="field"><span>Note (optional)</span><input id="pg_note" value="${esc(p.note || '')}" placeholder="${book === 'vax' ? 'e.g. pages 4 and 5' : 'e.g. U5, pages 1 and 2'}" autocomplete="off"></label>
+    <p class="small muted" style="margin:0">Photo from ${fmtDate(p.t)}</p>
+    <div class="row"><button class="btn" data-act="page-replace">Replace with a newer photo</button>${n > 1 ? `<button class="btn ghost sm" data-act="page-move" data-for="-1" ${i ? '' : 'disabled'}>Move earlier</button><button class="btn ghost sm" data-act="page-move" data-for="1" ${i < n - 1 ? '' : 'disabled'}>Move later</button>` : ''}</div>
+    <input id="pageFile" type="file" accept="image/*" hidden>
+    <div class="sheet-actions"><button class="btn ghost danger" data-act="page-del">Delete page</button><button class="btn primary" data-act="close">Done</button></div>`, { page: id, book });
+}
+function movePage(dir) {
+  const { book, page } = sheetCtx, pages = bookPages(kid(), book), i = pages.findIndex(x => x.id === page), j = i + dir;
+  if (!pages[j]) return;
+  [pages[i], pages[j]] = [pages[j], pages[i]]; setOrder(pages); commit(); pageSheet(book, page);
+}
+// Swipe left or right on a page to turn it.
+let swipeX = null;
+document.addEventListener('touchstart', ev => { swipeX = ev.target.id === 'pageImg' ? [ev.touches[0].clientX, ev.touches[0].clientY] : null; }, { passive: true });
+document.addEventListener('touchend', ev => {
+  if (!swipeX) return; const dx = ev.changedTouches[0].clientX - swipeX[0], dy = ev.changedTouches[0].clientY - swipeX[1]; swipeX = null;
+  if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) $(`#sheet .pager [data-act="page-go"]:${dx > 0 ? 'first' : 'last'}-of-type`)?.click();
+}, { passive: true });
 /* ---------- Voice: dictation into any text box, and sound recordings ---------- */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const micBtn = id => SR ? `<button type="button" class="mic" data-mic="${id}" aria-label="Dictate"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS.say}</svg></button>` : '';
@@ -2051,10 +2187,10 @@ document.addEventListener('click', async ev => {
   if (b.dataset.card) { cardKidId = b.dataset.card; cardFrom = tab === 'more' ? 'more' : 'today'; closeSheet(); tab = 'card'; render(); return window.scrollTo(0, 0); }
   if (b.dataset.vxitem) return vaxItemSheet(b.dataset.vxitem);
   if (b.dataset.vxdose) return vaxSheet(b.dataset.vxdose);
-  if (b.dataset.vxpage) return vaxPageSheet(b.dataset.vxpage);
+  if (b.dataset.vxpage) return pageSheet('vax', b.dataset.vxpage);
   if (b.dataset.uitem) return uItemSheet(b.dataset.uitem);
   if (b.dataset.uexam) return uSheet(b.dataset.uexam);
-  if (b.dataset.upage) return uPageSheet(b.dataset.upage);
+  if (b.dataset.upage) return pageSheet('u', b.dataset.upage);
   if (b.dataset.tooth) return growthSheet('tooth', b.dataset.tooth);
   if (b.dataset.ms) return growthSheet('milestone', b.dataset.ms === 'new' ? null : b.dataset.ms);
   if (b.dataset.track) {
@@ -2129,9 +2265,6 @@ document.addEventListener('click', async ev => {
     }
     case 'del-vax': { const d = S.vaccines.find(x => x.id === sheetCtx.vax); d.deleted = true; touch(d); closeSheet(); commit(); return toast('Deleted'); }
     case 'vax-skip': { const c = kid(), k = b.dataset.for, sk = new Set(c.vaxSkip || []); sk.has(k) ? sk.delete(k) : sk.add(k); c.vaxSkip = [...sk]; touch(c); closeSheet(); return commit(); }
-    case 'vax-photo': return $('#vaxPage').click();
-    case 'save-vxpage': { const p = S.vaccines.find(x => x.id === sheetCtx.vxpage); p.note = $('#vp_note').value.trim(); touch(p); closeSheet(); return commit(); }
-    case 'del-vxpage': { const p = S.vaccines.find(x => x.id === sheetCtx.vxpage); p.deleted = true; touch(p); closeSheet(); commit(); return toast('Photo deleted'); }
     case 'copy-vax': return copyText(vaxListText(kid()));
     case 'card-edit': return cardSheet(cardKid());
     case 'card-copy': return copyText(inLang(S.settings.docLang, () => cardText(cardKid())));
@@ -2160,9 +2293,25 @@ document.addEventListener('click', async ev => {
       touch(e); if (!sheetCtx.uexam) S.checkups.push(e); closeSheet(); commit(); return toast('Checkup saved');
     }
     case 'del-u': { const e = S.checkups.find(x => x.id === sheetCtx.uexam); e.deleted = true; touch(e); closeSheet(); commit(); return toast(e.measId ? 'Deleted. Its measurements stay under Growth.' : 'Deleted'); }
-    case 'u-photo': return $('#uPage').click();
-    case 'save-upage': { const p = S.checkups.find(x => x.id === sheetCtx.upage); p.note = $('#up_note').value.trim(); touch(p); closeSheet(); return commit(); }
-    case 'del-upage': { const p = S.checkups.find(x => x.id === sheetCtx.upage); p.deleted = true; touch(p); closeSheet(); commit(); return toast('Photo deleted'); }
+    case 'scan': return scanSheet(b.dataset.for);
+    case 'scan-pick': {
+      if (!aiKeySet() || !$('#scanRead')?.checked) return $(sheetCtx.scan === 'vax' ? '#vaxPage' : '#uPage').click();
+      const ok = $('#scanOk'); if (!ok.checked) return toast('Tick the box first, so you know where the photos go.');
+      if (!S.settings.scanOk) { S.settings.scanOk = true; persist(); }
+      return $('#scanFiles').click();
+    }
+    case 'page-go': return pageSheet(sheetCtx.book, b.dataset.for);
+    case 'page-move': return movePage(+b.dataset.for);
+    case 'page-replace': return $('#pageFile').click();
+    case 'page-del': {
+      const { book, page } = sheetCtx, pages = bookPages(kid(), book), i = pages.findIndex(x => x.id === page), next = pages[i + 1] || pages[i - 1];
+      pages[i].deleted = true; touch(pages[i]); commit(); toast('Page deleted');
+      return next ? pageSheet(book, next.id) : closeSheet();
+    }
+    case 'scan-hand': { const bk = sheetCtx.scan; scanned = null; closeSheet(); return bk === 'vax' ? vaxSheet() : uSheet(); }
+    case 'scan-setup': closeSheet(); tab = 'more'; render(); $('#aiStatus')?.scrollIntoView({ block: 'center' }); return;
+    case 'scan-add': return scanAdd();
+    case 'scan-discard': scanned = null; $('#scanOut').innerHTML = ''; return;
     case 'cal-u': return calSheet([uEvent(kid(), U_PLAN.find(u => u.k === b.dataset.for))]);
     case 'cal-vax': return calSheet([vaxEvent(kid(), VAX_PLAN.find(v => v.k === b.dataset.for))]);
     case 'cal-next': return calSheet(nextEvents(kid()));
@@ -2228,8 +2377,13 @@ document.addEventListener('change', ev => {
   if (t.id === 'apiKey' || t.id === 'aiBase' || t.id === 'aiModel') { S.settings[t.id] = t.value.trim(); persist(); renderMore(); if (t.id === 'aiBase' && t.value && !okBase(t.value.trim())) toast('Use an https:// address, or http://localhost for a model on this computer.'); }
   if (t.id === 'clientId' || t.id === 'pickerKey') { S.settings[t.id] = t.value.trim(); persist(); }
   if (t.id === 'meName') { S.settings.me = t.value.trim(); persist(); }
-  if (t.id === 'vaxPage' && t.files[0]) { const c = kid(); shrink(t.files[0], 1600).then(img => { S.vaccines.push(touch({ id: uid(), childId: c.id, kind: 'page', t: Date.now(), img, note: '' })); commit(); toast('Photo saved'); }).catch(e => toast(e.message)); t.value = ''; }
-  if (t.id === 'uPage' && t.files[0]) { const c = kid(); shrink(t.files[0], 1600).then(img => { S.checkups.push(touch({ id: uid(), childId: c.id, kind: 'page', t: Date.now(), img, note: '' })); commit(); toast('Photo saved'); }).catch(e => toast(e.message)); t.value = ''; }
+  if ((t.id === 'vaxPage' || t.id === 'uPage') && t.files.length) { const c = kid();
+    Promise.all([...t.files].map(f => shrink(f, 1600))).then(imgs => { addPages(c, t.id === 'vaxPage' ? 'vax' : 'u', imgs); closeSheet(); commit(); toast(imgs.length > 1 ? `${imgs.length} pages kept` : 'Page kept'); }).catch(e => toast(e.message)); t.value = ''; }
+  if (t.id === 'scanRead') { S.settings.scanRead = t.checked; persist(); $('#scanAi').hidden = !t.checked; }
+  if (t.id === 'pg_note' && sheetCtx?.page) { const p = BOOK[sheetCtx.book].list().find(x => x.id === sheetCtx.page); p.note = t.value.trim(); touch(p); commit(); }
+  if (t.id === 'pageFile' && t.files[0]) { const { book, page } = sheetCtx, p = BOOK[book].list().find(x => x.id === page);
+    shrink(t.files[0], 1600).then(img => { Object.assign(p, { img, t: Date.now() }); touch(p); commit(); pageSheet(book, page); toast('Page replaced'); }).catch(e => toast(e.message)); t.value = ''; }
+  if (t.id === 'scanFiles' && t.files.length) { scanRun([...t.files]); t.value = ''; }
   if (t.id === 'restoreFile' && t.files[0]) t.files[0].text().then(x => { mergeIn(JSON.parse(x)); commit(); toast('Backup restored'); }).catch(e => toast(e instanceof SyntaxError ? "That file isn't an Aura backup." : e.message));
 });
 function markTags() { const t = $('#f_symtext')?.value; document.querySelectorAll('#symTags [data-tag]').forEach(x => x.classList.toggle('on', hasTag(t, x.dataset.tag))); }
