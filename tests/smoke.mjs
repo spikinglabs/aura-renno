@@ -21,6 +21,8 @@ const reload = async page => { await settle(page); await page.reload(); };
 const addPage = async (page, sel, files) => { await Promise.all([page.waitForEvent('filechooser').then(fc => fc.setFiles(files)), page.click(sel)]); await page.waitForSelector('#pageImg'); };
 // Pages get an empty recall list unless a test answers with its own (the newest route wins).
 const newPage = async () => { const page = await browser.newPage({ viewport: { width: 375, height: 800 } }); await page.route('**/processed.json', r => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: '[]' })); return page; };
+// Vaccinations and Checkups are opened from the Documents tab.
+const openTab = async (page, t) => { if (t === 'vax' || t === 'checkups') { await page.click('.tabs [data-tab="docs"]'); await page.click(`#view-docs [data-tab="${t}"]`); } else await page.click(`.tabs [data-tab="${t}"]`); };
 
 for (const theme of ['night', 'day']) {
   const page = await newPage();
@@ -116,7 +118,7 @@ for (const theme of ['night', 'day']) {
   // Sick view tabs, Growth and More
   await page.click('[data-act="open-sick"]');
   for (const t of ['overview', 'chart', 'doctor']) { await page.click(`[data-sick="${t}"]`); if (await overflow()) fail(`${theme}: sick ${t} scrolls sideways`); }
-  for (const t of ['growth', 'vax', 'checkups', 'more']) { await page.click(`.tabs [data-tab="${t}"]`); if (await overflow()) fail(`${theme}: ${t} scrolls sideways`); }
+  for (const t of ['growth', 'docs', 'vax', 'checkups', 'more']) { await openTab(page, t); if (await overflow()) fail(`${theme}: ${t} scrolls sideways`); }
   // The illness's name, start and notes can be changed from the sick card on Today
   if (theme === 'day') {
     await page.click('.tabs [data-tab="today"]');
@@ -247,7 +249,7 @@ for (const theme of ['night', 'day']) {
   await page.click('[data-act="vax-skip"]');
   await page.click('.tabs [data-tab="today"]');
   if ((await line()) !== 0) fail('vaccines: reminder shown for a vaccine marked not planned');
-  await page.click('.tabs [data-tab="vax"]');
+  await openTab(page, 'vax');
   await page.click('[data-vxitem="menb"]');
   await page.click('[data-act="vax-skip"]');
   // Adding the dose from the book closes it
@@ -287,9 +289,9 @@ for (const theme of ['night', 'day']) {
   await page.click('[data-sick="doctor"]');
   if (!(await page.innerText('.facts')).includes('Vaccinated')) fail('vaccines: doctor summary does not mention the recent vaccination');
   // Without a schedule only the records show
-  await page.click('.tabs [data-tab="vax"]');
+  await openTab(page, 'vax');
   await page.click('[data-vaxplan="none"]');
-  if ((await page.locator('.vx-row').count()) !== 0) fail('vaccines: schedule shown with no schedule chosen');
+  if ((await page.locator('#view-vax .vx-row').count()) !== 0) fail('vaccines: schedule shown with no schedule chosen');
   await page.click('.tabs [data-tab="today"]');
   await page.close();
 }
@@ -301,7 +303,7 @@ for (const theme of ['night', 'day']) {
   await page.goto(url);
   await page.waitForSelector('h1');
   if ((await page.locator('.vax-line', { hasText: 'checkup' }).count()) !== 0) fail('checkups: Today shows a checkup for the example child, whose next one is months away');
-  await page.click('.tabs [data-tab="checkups"]');
+  await openTab(page, 'checkups');
   if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail('checkups: tab scrolls sideways');
   if ((await page.locator('[data-uitem].done').count()) !== 7) fail(`checkups: expected U1 to U7 done, got ${await page.locator('[data-uitem].done').count()}`);
   if ((await page.locator('[data-uitem="U7a"].later').count()) !== 1) fail('checkups: U7a not shown as later');
@@ -320,7 +322,7 @@ for (const theme of ['night', 'day']) {
   ics = await icsOf('[data-act="cal-ics"]');
   if ((ics.match(/BEGIN:VEVENT/g) || []).length !== 2 || !ics.includes('Meningococcus B vaccination')) fail('checkups: calendar file of the next dates is wrong');
   // A vaccination due later can go into the calendar too
-  await page.click('.tabs [data-tab="vax"]');
+  await openTab(page, 'vax');
   await page.click('[data-vxitem="menb"]');
   await page.click('[data-act="cal-vax"]');
   if (!(await page.getAttribute('[data-gcal]', 'href')).includes('Meningococcus')) fail('checkups: vaccination calendar link is wrong');
@@ -351,7 +353,7 @@ for (const theme of ['night', 'day']) {
   if (!ex || ex.by !== 'Dr. Weber' || ex.note !== 'All fine' || !ex.updatedAt) fail('checkups: checkup not saved');
   if (!m || m.weightKg !== 7.4 || m.childId !== 'kid-b' || m.deleted) fail('checkups: weight from the checkup not saved for Growth');
   // Clearing the weight again removes that measurement
-  await page.click('.tabs [data-tab="checkups"]');
+  await openTab(page, 'checkups');
   await page.click(`[data-uexam="${ex.id}"]`);
   await page.fill('#u_weightKg', '');
   await page.click('[data-act="save-u"]');
@@ -378,7 +380,7 @@ for (const theme of ['night', 'day']) {
   await page.goto(url);
   await page.waitForSelector('h1');
   // The card button sits next to the child at the top of every main screen and the sick view
-  for (const t of ['growth', 'vax', 'checkups', 'more']) { await page.click(`.tabs [data-tab="${t}"]`); if ((await page.locator(`#view-${t} .head .sos`).count()) !== 1) fail(`card: no card button on ${t}`); }
+  for (const t of ['growth', 'docs', 'vax', 'checkups', 'more']) { await openTab(page, t); if ((await page.locator(`#view-${t} .head .sos`).count()) !== 1) fail(`card: no card button on ${t}`); }
   await page.click('.tabs [data-tab="today"]');
   await page.click('[data-act="open-sick"]');
   if ((await page.locator('#view-sick .head .sos').count()) !== 1) fail('card: no card button in the sick view');
@@ -423,9 +425,19 @@ for (const theme of ['night', 'day']) {
   const kept = st.emergency.filter(x => !x.deleted);
   if (kept.length !== 1 || kept[0].meds !== 'Inhaler when wheezing' || !kept[0].allergies.includes('Peanuts')) fail('card: merged save lost something');
   if (!st.emergency.some(x => x.id === 'other' && x.deleted)) fail('card: the merged card was not marked as replaced');
+  // The Documents tab holds the card, the vaccination book, the U-Heft and other papers
+  await page.click('.tabs [data-tab="docs"]');
+  if (!(await page.innerText('#view-docs .vx-row[data-card]')).includes('Peanuts')) fail('documents tab: card row lacks the allergies');
+  if (!(await page.innerText('#view-docs [data-tab="vax"]')).includes('to check')) fail('documents tab: vaccinations row lacks what is open');
+  await page.click('#view-docs [data-tab="checkups"]');
+  if ((await page.locator('.tabs [data-tab="docs"][aria-selected="true"]').count()) !== 1) fail('documents tab: not lit while on Checkups');
+  await page.click('#view-checkups .head [data-tab="docs"]');
+  await page.click('#view-docs .vx-row[data-card]');
+  await page.click('#view-card [data-tab]');
+  if (await page.isHidden('#view-docs')) fail('documents tab: Back from the card does not return to Documents');
   // Back returns to the screen the card was opened from
   await page.click('[data-act="close"]').catch(() => {});
-  await page.click('.tabs [data-tab="vax"]');
+  await openTab(page, 'vax');
   await page.click('#view-vax .head .sos');
   await page.click('#view-card [data-tab]');
   if (await page.isHidden('#view-vax')) fail('card: Back does not return to the screen it was opened from');
@@ -715,7 +727,7 @@ for (const theme of ['night', 'day']) {
   await page.goto(url);
   await page.waitForSelector('h1');
   // Without an AI service pages are just kept, and the page says how to have them read
-  await page.click('.tabs [data-tab="vax"]');
+  await openTab(page, 'vax');
   await addPage(page, '#view-vax [data-act="doc-add"] >> nth=0', [file('a.png'), file('b.png')]);
   if ((await page.innerText('#sheet h2')) !== 'Page 1 of 2') fail(`documents: new page opens as ${await page.innerText('#sheet h2')}`);
   if ((await page.locator('#sheet [data-act="doc-setup"]').count()) !== 1 || (await page.locator('#scanOk').count()) !== 0) fail('documents: reading offered without an AI service');
@@ -738,7 +750,7 @@ for (const theme of ['night', 'day']) {
       : { checkups: [{ u: 'U6', date: '2025-08-01', by: null, weightKg: null, heightCm: null, headCm: null }, { u: 'U7a', date: '2026-09-01', by: 'Praxis Sonne', weightKg: 12.5, heightCm: null, headCm: 48 }] });
     await route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ choices: [{ message: { content } }] }) });
   });
-  await page.click('.tabs [data-tab="vax"]');
+  await openTab(page, 'vax');
   const doses = async () => (await getState(page)).vaccines.filter(v => v.kind === 'dose' && !v.deleted).length, before = await doses();
   // A new page: kept at once, and read only after the parent agrees once
   await addPage(page, '#view-vax [data-act="doc-add"] >> nth=0', file('c.png'));
@@ -781,7 +793,7 @@ for (const theme of ['night', 'day']) {
 
   // The U-Heft: a recorded checkup is left out, a new one with its measurements is added
   await page.click('#sheet [data-act="close"]');
-  await page.click('.tabs [data-tab="checkups"]');
+  await openTab(page, 'checkups');
   await addPage(page, '#view-checkups [data-act="doc-add"] >> nth=0', file('u.png'));
   await page.waitForSelector('#scanOut .scan-item');
   if (!/U-Heft/.test(body.messages[0].content)) fail('documents: U-Heft prompt not used');
@@ -819,18 +831,18 @@ for (const theme of ['night', 'day']) {
   await page.click('#sheet [data-act="close"]');
   if ((await page.locator('#view-checkups .book [data-pg]').count()) !== 1) fail('documents: deleted page still shown');
 
-  // Any other document: name it, add pages, find it under More, delete it only after a second tap
-  await page.click('.tabs [data-tab="more"]');
+  // Any other document: name it, add pages, find it under Documents, delete it only after a second tap
+  await page.click('.tabs [data-tab="docs"]');
   await page.click('[data-act="doc-new"]');
   await page.fill('#doc_title', 'Allergy pass');
   await Promise.all([page.waitForEvent('filechooser').then(fc => fc.setFiles([file('x.png'), file('y.png')])), page.click('[data-act="doc-save"]')]);
   await page.waitForSelector('#pageImg');
   if ((await page.locator('#scanOk, #scanRead, [data-act="page-read"]').count()) !== 0) fail('documents: reading offered for a document without a reader');
   await page.click('#sheet [data-act="close"]');
-  const row = page.locator('#view-more [data-docid]', { hasText: 'Allergy pass' });
+  const row = page.locator('#view-docs [data-docid]', { hasText: 'Allergy pass' });
   if ((await row.count()) !== 1 || !(await row.innerText()).includes('2 pages')) fail('documents: other document not listed with its pages');
-  if ((await page.locator('#view-more [data-docid]', { hasText: 'Vaccination book' }).count()) !== 1) fail('documents: vaccination book not listed under More');
-  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail('documents: More scrolls sideways');
+  if (!(await page.innerText('#view-docs [data-tab="vax"]')).includes('page')) fail('documents: vaccination book pages not counted under Documents');
+  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail('documents: Documents tab scrolls sideways');
   await row.click();
   await page.click('[data-act="doc-del"]');
   if (await page.isHidden('#scrim')) fail('documents: deleted without a second tap');
@@ -865,7 +877,7 @@ for (const theme of ['night', 'day']) {
   if (!up.vaccines.filter(v => v.kind === 'page').every(v => v.deleted && !v.img) || !up.checkups.filter(v => v.kind === 'page').every(v => v.deleted && !v.img)) fail('upgrade v3: old photo records not cleared');
   if (!up.docs.some(d => d.id === 'vax-' + st.child && d.type === 'vax') || !up.docs.some(d => d.id === 'u-' + st.child && d.type === 'u')) fail('upgrade v3: documents not made');
   if (up.vaccines.filter(v => v.kind === 'dose').length !== st.vaccines.filter(v => v.kind === 'dose').length) fail('upgrade v3: vaccinations changed');
-  await page.click('.tabs [data-tab="vax"]');
+  await openTab(page, 'vax');
   if ((await page.locator('#view-vax .book [data-pg]').count()) !== 2) fail('upgrade v3: moved pages not shown');
   await page.click('#view-vax .book [data-pg] >> nth=0');
   if ((await page.getAttribute('#pageImg', 'src')) !== 'data:image/jpeg;base64,/9j/P0') fail('upgrade v3: pages not in the order they were added');

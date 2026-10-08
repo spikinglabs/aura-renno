@@ -269,13 +269,13 @@ tr:last-child td { border-bottom: 0 }
   <section class="view" id="view-vax" hidden></section>
   <section class="view" id="view-card" hidden></section>
   <section class="view" id="view-checkups" hidden></section>
+  <section class="view" id="view-docs" hidden></section>
   <section class="view" id="view-more" hidden></section>
 </div>
 <nav class="tabs"><div class="in" role="tablist">
   <button role="tab" data-tab="today" aria-selected="true">Today</button>
   <button role="tab" data-tab="growth" aria-selected="false">Growth</button>
-  <button role="tab" data-tab="vax" aria-selected="false">Vaccines</button>
-  <button role="tab" data-tab="checkups" aria-selected="false">Checkups</button>
+  <button role="tab" data-tab="docs" aria-selected="false">Documents</button>
   <button role="tab" data-tab="more" aria-selected="false">More</button>
 </div></nav>
 <div class="scrim" id="scrim" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
@@ -620,21 +620,23 @@ function applyTheme() {
 }
 
 /* ---------- Rendering ---------- */
+// Screens without a tab of their own light up the tab they belong to.
+const tabOf = t => ({ sick: 'today', vax: 'docs', checkups: 'docs' })[t] || t;
 let tab = 'today', sickTab = 'overview', aiParsed = null, narrative = '', showDays = 3;
 function render() {
   applyTheme();
-  document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === (tab === 'sick' ? 'today' : tab === 'card' ? cardFrom : tab))));
-  for (const v of ['today', 'sick', 'growth', 'vax', 'checkups', 'more', 'card']) $('#view-' + v).hidden = v !== tab;
-  $('#fab').hidden = tab === 'more' || tab === 'vax' || tab === 'checkups' || tab === 'card' || !kid();
-  ({ today: renderToday, sick: renderSick, growth: renderGrowth, vax: renderVax, checkups: renderCheckups, more: renderMore, card: renderCard })[tab]();
+  document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === tabOf(tab === 'card' ? cardFrom : tab))));
+  for (const v of ['today', 'sick', 'growth', 'vax', 'checkups', 'docs', 'more', 'card']) $('#view-' + v).hidden = v !== tab;
+  $('#fab').hidden = !['today', 'sick', 'growth'].includes(tab) || !kid();
+  ({ today: renderToday, sick: renderSick, growth: renderGrowth, vax: renderVax, checkups: renderCheckups, docs: renderDocs, more: renderMore, card: renderCard })[tab]();
 }
 const exampleBanner = () => S.example ? `<div class="banner"><p>This is example data so you can see how it works. Nothing here is real.</p><button class="btn primary sm" data-act="clear-example">Start with my child</button></div>` : '';
 function greeting() { const h = new Date().getHours(); return h < 5 ? 'Late night' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; }
 // The emergency card is one tap away at the top right of every main screen (and the sick view), next to the child.
 const sosBtn = c => c ? `<button class="sos" data-card="${c.id}" aria-label="Emergency card for ${esc(c.name)}" title="Emergency card"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS.card}</svg></button>` : '';
 function header(title, sub) {
-  const c = kid();
-  return `<div class="head"><div><div class="hi">${sub}</div><h1>${title}</h1></div>
+  const c = kid(), back = tabOf(tab) === 'docs' && tab !== 'docs';
+  return `<div class="head"><div>${back ? '<button class="linkish" data-tab="docs">‹ Documents</button>' : ''}<div class="hi">${sub}</div><h1>${title}</h1></div>
     <div class="row" style="flex-direction:column;align-items:flex-end;gap:6px"><div class="row" style="gap:8px;flex-wrap:nowrap">${sosBtn(c)}<button class="avatar" data-act="pick-kid" aria-label="Switch child">${c ? esc((c.name.trim()[0] || '?').toUpperCase()) : '+'}</button></div>${syncLabel()}</div></div>`;
 }
 
@@ -1097,13 +1099,13 @@ const vaxLine = c => { const o = vaxOpen(c); return o.length ? `<button class="l
 const vaxAround = (c, ep) => vaxDoses(c).filter(d => d.t >= startOfDay(ep.start) - 14 * DAY && d.t <= (ep.end || Date.now())).reverse();
 function renderVax() {
   const el = $('#view-vax'), c = kid();
-  if (!c) { el.innerHTML = header('Vaccines', 'Vaccination record') + `<div class="card empty"><p class="muted">Add your child to keep their vaccinations here.</p><button class="btn primary" data-kid="new">Add your child</button></div>`; return; }
+  if (!c) { el.innerHTML = header('Vaccinations', 'Vaccination record') + `<div class="card empty"><p class="muted">Add your child to keep their vaccinations here.</p><button class="btn primary" data-kid="new">Add your child</button></div>`; return; }
   const doses = vaxDoses(c), m = ageMonths(c);
   const row = v => { const s = vaxStatus(c, v);
     return `<button class="vx-row ${s.st}" data-vxitem="${v.k}"><span><b>${esc(v.l)}</b><small>${esc(s.text)}</small></span><span class="vx-dots" aria-label="${s.n} of ${s.of} recorded">${v.at.map((_, i) => `<i class="${i < s.n ? 'on' : ''}"></i>`).join('')}</span></button>`; };
   const soon = VAX_PLAN.filter(v => m == null || v.at[0] <= m + 12 || vaxStatus(c, v).n), later = VAX_PLAN.filter(v => !soon.includes(v));
   const open = vaxOpen(c);
-  el.innerHTML = header('Vaccines', `${esc(c.name)}${c.dob ? ' · ' + ageText(c) : ''}`) + exampleBanner() + `
+  el.innerHTML = header('Vaccinations', `${esc(c.name)}${c.dob ? ' · ' + ageText(c) : ''}`) + exampleBanner() + `
     <div class="row"><button class="btn primary" data-act="doc-add" data-type="vax">Add a page of the book</button><button class="btn" data-act="add-vax">Add a vaccination</button></div>
     ${planOn() ? `<div class="card set"><div class="row between"><h2>Schedule</h2><span class="muted small">Germany · STIKO</span></div>
       ${!c.dob ? '<p class="small muted" style="margin:0">Add a birth date to see when each vaccination is usually given.</p>' : open.length ? `<p class="small" style="margin:0;color:var(--wait)"><b>${open.length} to check with your pediatrician.</b> If one was given, tap it and add the date from the book.</p>` : ''}
@@ -1256,8 +1258,8 @@ function uStatus(c, u) {
   return { ...base, st: 'later', text: `${best} · ${u.ages}` };
 }
 const uOpen = c => uPlanOn() && c?.dob ? U_PLAN.filter(u => ['due', 'soon'].includes(uStatus(c, u).st)) : [];
-const uLine = c => { const u = uOpen(c)[0]; if (!u) return ''; const s = uStatus(c, u);
-  return `<button class="linkish vax-line" data-tab="checkups">${u.k} checkup ${s.st === 'due' ? 'due until ' + fmtDate(lastDay(s.we)) : 'from ' + fmtDate(s.ws) + ': time to book'}</button>`; };
+const uLineText = (c, u) => { const s = uStatus(c, u); return `${u.k} checkup ${s.st === 'due' ? 'due until ' + fmtDate(lastDay(s.we)) : 'from ' + fmtDate(s.ws) + ': time to book'}`; };
+const uLine = c => { const u = uOpen(c)[0]; return u ? `<button class="linkish vax-line" data-tab="checkups">${uLineText(c, u)}</button>` : ''; };
 // Calendar events for the open checkups and vaccinations (to book or to go to), from today on.
 function uEvent(c, u) {
   const s = uStatus(c, u); if (!['due', 'soon', 'later'].includes(s.st)) return null;
@@ -1342,6 +1344,29 @@ function calSheet(evs) {
     <p class="small muted" style="margin:0">Aura doesn't sign in to your calendar. The event lands on the first day of the usual time; move it to your appointment once it's booked.</p>`, { cal: evs });
 }
 
+/* ---------- Documents tab ---------- */
+// Everything that describes the child rather than their day, in one tab: the emergency card, the vaccination book and the
+// U-Heft (their own screens, with schedules and reminders), and any other paper document kept page by page.
+const pagesText = n => n ? ` · ${n} page${n === 1 ? '' : 's'}` : '';
+function renderDocs() {
+  const el = $('#view-docs'), c = kid();
+  if (!c) { el.innerHTML = header('Documents', 'Records and papers') + `<div class="card empty"><p class="muted">Add your child to keep their emergency card, vaccinations, checkups and documents here.</p><button class="btn primary" data-kid="new">Add your child</button></div>`; return; }
+  const card = cardOf(c), vo = vaxOpen(c), uo = uOpen(c), doses = vaxDoses(c).length, exams = uExams(c).length;
+  const vaxText = vo.length ? `${vo.length} to check: ${vo.map(v => v.s).join(', ')}` : `${doses} recorded`;
+  const uNext = uPlanOn() && c.dob ? U_PLAN.find(u => ['due', 'soon', 'later'].includes(uStatus(c, u).st)) : null;
+  const uText = uo.length ? uLineText(c, uo[0]) : `${exams} recorded${uNext ? ` · next ${uNext.k} from ${fmtDate(uStatus(c, uNext).ws)}` : ''}`;
+  const others = docsOf(c).filter(d => d.type === 'other');
+  el.innerHTML = header('Documents', `${esc(c.name)}${c.dob ? ' · ' + ageText(c) : ''}`) + exampleBanner() + `
+    <div class="card set">
+      <button class="vx-row" data-card="${c.id}"><span><b>Emergency card</b><small>${card?.allergies ? 'Allergies: ' + esc(oneLine(card.allergies)) : card ? 'No allergies written down' : 'Not filled in yet'}</small></span><span class="muted" aria-hidden="true">›</span></button>
+      <button class="vx-row ${vo.length ? 'due' : ''}" data-tab="vax"><span><b>Vaccinations</b><small>${esc(vaxText)}${pagesText(docPages(typedDoc(c, 'vax')).length)}</small></span><span class="muted" aria-hidden="true">›</span></button>
+      <button class="vx-row ${uo.length ? 'due' : ''}" data-tab="checkups"><span><b>Checkups (U-Heft)</b><small>${esc(uText)}${pagesText(docPages(typedDoc(c, 'u')).length)}</small></span><span class="muted" aria-hidden="true">›</span></button></div>
+    <div class="card set"><h2>Other documents</h2>
+      <p class="small muted" style="margin:0">Digital copies of ${esc(c.name)}'s other papers, page by page: an allergy pass, a hospital letter, the daycare contract.</p>
+      ${others.length ? `<div>${others.map(d => `<button class="vx-dose" data-docid="${d.id}"><span><b>${esc(docTitle(d))}</b> <span class="muted small">${docPages(d).length} page${docPages(d).length === 1 ? '' : 's'}</span></span>${d.note ? `<small>${esc(d.note)}</small>` : ''}</button>`).join('')}</div>` : ''}
+      <div><button class="btn sm" data-act="doc-new">Add a document</button></div></div>`;
+}
+
 /* ---------- More ---------- */
 function renderMore() {
   const st = S.settings, d = S.drive || {}, eps = live(S.episodes).sort((a, b) => b.start - a.start);
@@ -1351,7 +1376,6 @@ function renderMore() {
       <div><button class="btn sm" data-kid="new">Add a child</button></div></div>
     <div class="card set"><h2>Illnesses</h2>
       ${eps.map(e => `<div class="list-row"><span><b>${esc(e.title || 'Illness')}</b> <span class="muted small">${esc(childOf(e)?.name || '')} · ${fmtDay(e.start)}${e.end ? ' – ' + fmtDay(e.end) : ' · ongoing'}</span></span><span class="row"><button class="btn sm ghost" data-act="edit-episode" data-for="${e.id}">Edit</button><button class="btn sm" data-ep="${e.id}">Open</button></span></div>`).join('') || '<p class="muted small" style="margin:0">Past illnesses show up here, with their chart and doctor summary.</p>'}</div>
-    ${kid() ? docsCard(kid()) : ''}
     ${recallCard()}
     <div class="card set"><h2>Look</h2>
       <div class="chips">${[['auto', 'Dim at night (7 pm – 7 am)'], ['night', 'Always dim'], ['day', 'Always light']].map(([k, l]) => `<button data-theme-set="${k}" class="${(st.theme || 'auto') === k ? 'on' : ''}">${l}</button>`).join('')}</div>
@@ -1682,7 +1706,7 @@ function addPages(d, imgs) {
 }
 const pagesGrid = pages => pages.length ? `<div class="book">${pages.map((p, i) => `<button data-pg="${p.id}" aria-label="Page ${i + 1}"><img src="${p.img}" alt=""><span class="pg num">${i + 1}</span></button>`).join('')}</div>` : '';
 const readOn = () => aiKeySet() && S.settings.scanRead !== false;
-// The card on the Vaccines and Checkups tabs.
+// The card on the Vaccinations and Checkups screens (under Documents).
 function docCard(c, type) {
   const d = typedDoc(c, type), pages = docPages(d), what = type === 'vax' ? 'vaccination book' : 'U-Heft';
   return `<div class="card set"><div class="row between"><h2>Pages of the ${what}</h2><span class="muted small">${pages.length ? pages.length + (pages.length > 1 ? ' pages' : ' page') : ''}</span></div>
@@ -1801,7 +1825,7 @@ function deletePage() {
   p.deleted = true; touch(p); commit(); toast('Page deleted');
   return next ? pageSheet(next.id) : closeSheet();
 }
-// Any other document: a name, pages and a note. Opened from More → Documents.
+// Any other document: a name, pages and a note. Opened from the Documents tab.
 function docSheet(id) {
   const c = kid(), d = id === 'new' ? null : S.docs.find(x => x.id === id && !x.deleted); if (id !== 'new' && !d) return closeSheet();
   if (!d) return openSheet(`<div class="hd"><h2>Add a document</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
@@ -1810,7 +1834,7 @@ function docSheet(id) {
     <div class="sheet-actions"><span></span><button class="btn primary" data-act="doc-save">Add pages</button></div>`, { docEdit: 'new' });
   const pages = docPages(d), typed = d.type !== 'other';
   openSheet(`<div class="hd"><h2>${esc(docTitle(d))}</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
-    ${typed ? `<p class="small muted" style="margin:0">Its entries are on the ${d.type === 'vax' ? 'Vaccines' : 'Checkups'} tab.</p>` : `<label class="field"><span>Name</span><input id="doc_title" value="${esc(d.title)}" autocomplete="off"></label>`}
+    ${typed ? `<p class="small muted" style="margin:0">Its entries are under Documents → ${d.type === 'vax' ? 'Vaccinations' : 'Checkups'}.</p>` : `<label class="field"><span>Name</span><input id="doc_title" value="${esc(d.title)}" autocomplete="off"></label>`}
     ${pagesGrid(pages) || '<p class="small muted" style="margin:0">No pages yet.</p>'}
     <div><button class="btn sm" data-act="doc-add" data-doc="${d.id}">Add a page</button></div>
     <label class="field"><span>Note (optional)</span><textarea id="doc_note" style="min-height:64px" placeholder="e.g. where the paper is kept">${esc(d.note || '')}</textarea></label>
@@ -1827,11 +1851,6 @@ function deleteDoc() {
   if (!sheetCtx.sure) { sheetCtx.sure = true; b.textContent = `Tap again to delete it and its ${docPages(d).length} pages`; return; }
   docPages(d).forEach(p => { p.deleted = true; touch(p); }); d.deleted = true; touch(d); closeSheet(); commit(); toast('Document deleted');
 }
-const docsCard = c => { const ds = docsOf(c);
-  return `<div class="card set"><h2>Documents</h2>
-    <p class="small muted" style="margin:0">Digital copies of ${esc(c.name)}'s paper documents, page by page. The vaccination book and U-Heft are kept on their own tabs.</p>
-    ${ds.length ? `<div>${ds.map(d => { const n = docPages(d).length; return `<button class="vx-dose" data-docid="${d.id}"><span><b>${esc(docTitle(d))}</b> <span class="muted small">${n} page${n === 1 ? '' : 's'}</span></span>${d.note ? `<small>${esc(d.note)}</small>` : ''}</button>`; }).join('')}</div>` : ''}
-    <div><button class="btn sm" data-act="doc-new">Add a document</button></div></div>`; };
 // Swipe left or right on a page to turn it.
 let swipeX = null;
 document.addEventListener('touchstart', ev => { swipeX = ev.target.id === 'pageImg' ? [ev.touches[0].clientX, ev.touches[0].clientY] : null; }, { passive: true });
