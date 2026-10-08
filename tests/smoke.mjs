@@ -316,7 +316,10 @@ for (const theme of ['night', 'day']) {
   let body = null, auth = null;
   await page.route('https://ai.example.com/v1/chat/completions', async route => {
     body = route.request().postDataJSON(); auth = route.request().headers().authorization;
-    await route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ choices: [{ message: { content: '[CHILD] is on day 3.' } }] }) });
+    const sys = body.messages[0].content, user = body.messages[1].content;
+    // Notes to translate come as {"notes": [...]}; the fake service answers each with a marked copy
+    const content = /translate notes/.test(sys) ? JSON.stringify({ translations: JSON.parse(user).notes.map(n => 'DE: ' + n) }) : '[CHILD] is on day 3.';
+    await route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ choices: [{ message: { content } }] }) });
   });
   await page.goto(url);
   await page.waitForSelector('h1');
@@ -333,6 +336,26 @@ for (const theme of ['night', 'day']) {
   await page.waitForSelector('.narrative >> text=Mia is on day 3');
   if (!body || body.model !== 'test-model' || auth !== 'Bearer k123') fail('ai service: request not sent to the chosen service');
   if (JSON.stringify(body).includes('Mia')) fail('ai service: child name was sent');
+
+  // The doctor summary in German: fixed wording, symptom tags and decimal commas on the phone, typed notes by the AI
+  await page.click('[data-doclang="de"]');
+  const doc = () => page.locator('.doc-lang').textContent();
+  for (const w of ['Tag 1', 'Max. Temp.', 'Neue Symptome', 'Ärztliche Hinweise', 'Krankheitsbeginn']) if (!(await doc()).includes(w)) fail(`german: "${w}" missing`);
+  if (!/\d,\d°C/.test(await doc())) fail('german: no decimal comma in temperatures');
+  if (/Max temp|New symptoms|readings/.test(await doc())) fail('german: English wording left in the summary');
+  if (!(await doc()).includes('Husten') && !(await doc()).includes('Fieber')) fail('german: symptom tags not translated');
+  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail('german: doctor view scrolls sideways');
+  await page.click('[data-act="doc-translate"]');
+  await page.waitForSelector('.doc-said >> text=DE:');
+  if (!/German/.test(body.messages[0].content) || JSON.stringify(body).includes('Mia')) fail('german: notes not sent for translation without names');
+  if ((await page.locator('[data-act="doc-translate"]').count()) !== 0) fail('german: translate button still shown after translating');
+  await reload(page);
+  { const s = await getState(page); if (s.settings.docLang !== 'de' || !Object.keys(s.docTr?.de || {}).length) fail('german: language or translations not kept'); }
+  await page.click('[data-act="open-sick"]');
+  await page.click('[data-sick="doctor"]');
+  if (!(await doc()).includes('DE:')) fail('german: translations not shown after reopening');
+  await page.click('[data-doclang="en"]');
+  if (!(await doc()).includes('Day 1') || (await doc()).includes('DE:')) fail('german: switching back to English did not restore the summary');
   await page.close();
 }
 
@@ -364,6 +387,7 @@ for (const theme of ['night', 'day']) {
   await page.goto(url);
   await page.waitForSelector('h1');
   const st = await getState(page); st.example = false; st.settings.clientId = 'x-y.apps.googleusercontent.com'; st.drive = { fileId: 'f1' };
+  st.vaccines.push({ id: 'vp1', childId: 'kid-ex', kind: 'page', t: 1000, img: 'data:image/jpeg;base64,/9j/BOOK', note: '', updatedAt: Date.now() });
   await setState(page, st); await reload(page); await page.waitForSelector('h1');
   await page.click('[data-act="sync-tap"]');
   await page.waitForSelector('.sync.ok');
@@ -374,6 +398,7 @@ for (const theme of ['night', 'day']) {
   if (!drive.uploads.some(b => b.includes('aura-backup-'))) fail('sync: no backup saved before overwriting');
   if (!drive.queries.some(q => q.includes("name='backups'") && q.includes("'logdir' in parents"))) fail('sync: backups not kept next to the log (so a moved or renamed folder would lose them)');
   if (!drive.file.vaccines?.some(v => v.kind === 'dose')) fail('sync: vaccinations not written to Drive');
+  if (!drive.file.vaccines?.some(v => v.id === 'vp1' && v.img === 'data:image/jpeg;base64,/9j/BOOK')) fail('sync: photo of the vaccination book not written to Drive');
   if (drive.file.future?.[0] !== 'kept') fail('sync: a part of the Drive file this version does not know was dropped');
   // With nothing changed on either side, a sync only asks Drive for the version number and downloads nothing
   let downloads = drive.downloads, patches = drive.patches;
