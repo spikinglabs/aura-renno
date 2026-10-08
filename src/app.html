@@ -1154,7 +1154,10 @@ const vaxGot = (c, a, k) => { const d = apptDose(a, k), got = vaxDoses(c).filter
 const vaxApptKs = (c, a) => apptKs(a).filter(k => !vaxGot(c, a, k));
 const vaxApptOpen = c => apptsOf(c).filter(a => a.plan === 'vax' && vaxApptKs(c, a).length).sort((a, b) => apptT(a) - apptT(b));
 const vaxApptNames = (c, a) => vaxApptKs(c, a).map(vaxLabel).join(', ');
-const vaxApptEvent = (c, a) => bookedEvent({ appt: a }, `${c.id}-appt-${a.id}`, `vaccination (${vaxApptNames(c, a)})`, c, 'Bring the vaccination book.');
+const vaxApptEvent = (c, a) => bookedEvent({ appt: a }, `${c.id}-appt-${a.id}`, 'vaccination', c, { emoji: '💉', title: `Vaccination: ${vaxApptNames(c, a)}`,
+  about: 'Vaccinations:\n' + vaxApptKs(c, a).map(k => { const v = VAX_PLAN.find(x => x.k === k), d = apptDose(a, k);
+    return `• ${v ? v.l : vaxLabel(k)}${v && d && v.at.length > 1 ? `, dose ${d} of ${v.at.length}` : ''}`; }).join('\n'),
+  bring: ['Vaccination book', 'Health insurance card'] });
 function vaxApptSheet(id, preset) {
   const c = kid(), a = id ? S.appts.find(x => x.id === id) : { date: '', time: '', note: '' };
   const on = new Set(id ? apptKs(a) : preset ? [preset] : vaxOpen(c).map(v => v.k)), s = id && apptState(a);
@@ -1184,8 +1187,8 @@ function saveVaxAppt() {
 const otherAppts = c => apptsOf(c).filter(a => a.plan === 'other').sort((a, b) => apptT(a) - apptT(b));
 const upcoming = a => startOfDay(apptT(a)) >= startOfDay(Date.now());
 const linkedDoc = a => a.docId ? S.docs.find(d => d.id === a.docId && !d.deleted) : null;
-const otherEvent = (c, a) => ({ uid: `${c.id}-appt-${a.id}`, t: apptT(a), time: a.time || '', booked: true, title: `${a.title} · ${c.name}`, location: a.place || '',
-  details: [a.note, linkedDoc(a) ? `Bring: ${docTitle(linkedDoc(a))}.` : '', `Open in Aura: ${appLink()}`].filter(Boolean).join('\n\n') });
+const otherEvent = (c, a) => ({ uid: `${c.id}-appt-${a.id}`, t: apptT(a), time: a.time || '', booked: true, title: `📅 ${a.title} · ${c.name}`, location: a.place || '',
+  details: eventText(`${c.name}: ${a.title}`, a, { bring: linkedDoc(a) ? [docTitle(linkedDoc(a)), 'Health insurance card'] : ['Health insurance card'] }) });
 const apptEvent = (c, a) => a.plan === 'vax' ? vaxApptEvent(c, a) : otherEvent(c, a);
 const otherLine = c => otherAppts(c).filter(a => upcoming(a) && apptT(a) < startOfDay(Date.now()) + 15 * DAY)
   .map(a => `<button class="linkish vax-line" data-tab="appts">${esc(a.title)}: appointment ${esc(apptWhen(a))}</button>`).join('');
@@ -1248,8 +1251,12 @@ const apptsSummary = c => { const r = apptList(c)[0]; return r ? `Next: ${r.titl
 // A recorded visit starts on the appointment's day when that day has come.
 const apptDay = (c, plan, k, dose) => { const a = c && k && apptFor(c, plan, k, dose); return a && startOfDay(apptT(a)) <= Date.now() ? Math.min(apptT(a), Date.now()) : null; };
 // Calendar event for a booked appointment: at its time (or all day), with the note.
-const bookedEvent = (s, uid, what, c, bring) => ({ uid, t: apptT(s.appt), time: s.appt.time || '', booked: true, title: `${what[0].toUpperCase() + what.slice(1)} · ${c.name}`, location: s.appt.place || '',
-  details: [`Appointment for the ${what}.`, s.appt.note, bring, `Open in Aura: ${appLink()}`].filter(Boolean).join('\n\n') });
+// A calendar entry for a booked appointment: an icon and the child in the title, then where, the note, what to bring,
+// what the appointment is, and a link back to Aura. Plain text, so every calendar shows it the same way.
+const eventText = (head, a, o) => [head, [a.place && `📍 ${a.place}`, a.note && `📝 ${a.note}`].filter(Boolean).join('\n'),
+  o.bring?.length ? 'Bring:\n' + o.bring.map(x => `• ${x}`).join('\n') : '', o.about, `Open in Aura: ${appLink()}`].filter(Boolean).join('\n\n');
+const bookedEvent = (s, uid, what, c, o) => ({ uid, t: apptT(s.appt), time: s.appt.time || '', booked: true, location: s.appt.place || '',
+  title: `${o.emoji} ${o.title || what[0].toUpperCase() + what.slice(1)} · ${c.name}`, details: eventText(`${c.name}'s ${what} appointment`, s.appt, o) });
 // Where a child stands with one vaccine of the schedule: done, due, not recorded past the usual age, later, or over.
 function vaxStatus(c, v) {
   const given = vaxDoses(c).filter(d => (d.against || []).includes(v.k)).reverse(), n = given.length, of = v.at.length;
@@ -1442,7 +1449,8 @@ const uLine = c => { const u = uOpen(c)[0]; return u ? `<button class="linkish v
 // Calendar events for the open checkups and vaccinations (to book or to go to), from today on.
 function uEvent(c, u) {
   const s = uStatus(c, u);
-  if (s.st === 'booked') return bookedEvent(s, `${c.id}-${u.k}`, `${u.k} checkup`, c, 'Bring the U-Heft and the vaccination book.');
+  if (s.st === 'booked') return bookedEvent(s, `${c.id}-${u.k}`, `${u.k} checkup`, c, { emoji: '🩺', bring: ['U-Heft', 'Vaccination book', 'Health insurance card'],
+    about: `The ${u.k} checkup is usually ${u.ages}${s.ws && u.k !== 'U1' ? `; it can be done until ${fmtDate(lastDay(s.we))}` : ''}.` });
   if (!['due', 'soon', 'later'].includes(s.st)) return null;
   return { uid: `${c.id}-${u.k}`, t: Math.max(s.as, startOfDay(Date.now())), title: `${u.k} checkup · ${c.name}`,
     details: `${u.k} checkup (U-Heft), usually ${u.k === 'U1' ? u.ages : u.ages + ': ' + s.best}. It can be done from ${fmtDate(s.ws)} until ${fmtDate(lastDay(s.we))}. Book it with your pediatrician and bring the U-Heft and the vaccination book. From Aura.` };
@@ -1531,7 +1539,8 @@ function zSummary(c) {
 }
 function zEvent(c, z) {
   const s = zStatus(c, z);
-  if (s.st === 'booked') return bookedEvent(s, `${c.id}-${z.k}`, `${z.k} dental checkup`, c, 'Bring the dental pass or the U-Heft.');
+  if (s.st === 'booked') return bookedEvent(s, `${c.id}-${z.k}`, `${z.k} dental checkup`, c, { emoji: '🦷', bring: ['Dental pass or U-Heft', 'Health insurance card'],
+    about: `The ${z.k} dental checkup is in ${z.ages} of life${s.we ? `; it can be done until ${fmtDate(lastDay(s.we))}` : ''}.` });
   if (!['due', 'soon', 'later'].includes(s.st)) return null;
   return { uid: `${c.id}-${z.k}`, t: Math.max(s.ws, startOfDay(Date.now())), title: `${z.k} dental checkup · ${c.name}`,
     details: `${z.k} dental checkup, ${z.ages}: from ${fmtDate(s.ws)} until ${fmtDate(lastDay(s.we))}. Book it with a dentist for children and bring the dental pass or the U-Heft. From Aura.` };

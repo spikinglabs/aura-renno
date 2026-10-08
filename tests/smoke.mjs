@@ -447,6 +447,8 @@ for (const theme of ['night', 'day']) {
   const g = new URL(await page.getAttribute('[data-gcal]', 'href'));
   if (g.searchParams.get('dates') !== `${day(5).replace(/-/g, '')}T093000/${day(5).replace(/-/g, '')}T103000` || !g.searchParams.get('details').includes('Dr. Zahn')
     || g.searchParams.get('location') !== 'Zahnarztpraxis, Hauptstr. 3' || !g.searchParams.get('details').includes('?open=appts')) fail('appointments: Google Calendar link does not use the appointment');
+  const gd = g.searchParams.get('details');
+  if (g.searchParams.get('text') !== '🦷 Z4 dental checkup · Mia' || !gd.startsWith("Mia's Z4 dental checkup appointment") || !gd.includes('📍 Zahnarztpraxis') || !gd.includes('📝 Dr. Zahn') || !gd.includes('Bring:\n• Dental pass or U-Heft') || !/can be done until/.test(gd)) fail('appointments: calendar entry not filled in');
   const [dl] = await Promise.all([page.waitForEvent('download'), page.click('[data-act="cal-ics"]')]);
   const ics = readFileSync(await dl.path(), 'utf8');
   if (!ics.includes(`DTSTART:${day(5).replace(/-/g, '')}T093000`) || !ics.includes('TRIGGER:-PT1H') || !ics.includes('TRIGGER:-P1D') || !ics.includes('LOCATION:Zahnarztpraxis\\, Hauptstr. 3') || !ics.includes('TRANSP:OPAQUE')) fail('appointments: calendar file does not use the appointment');
