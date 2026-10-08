@@ -8,14 +8,19 @@ const fail = m => { errors.push(m); };
 // The app keeps its log in IndexedDB ('aura' database, 'kv' store, key 'state').
 const IDB = `const idb = mode => new Promise((res, rej) => { const r = indexedDB.open('aura', 1); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });`;
 const getState = (page, key = 'state') => page.evaluate(`(async () => { ${IDB} const d = await idb(); return await new Promise(res => { const q = d.transaction('kv').objectStore('kv').get('${key}'); q.onsuccess = () => { d.close(); res(q.result); }; }); })()`);
-const setState = (page, s) => page.evaluate(`(async () => { ${IDB} const d = await idb(); await new Promise(res => { const tx = d.transaction('kv', 'readwrite'); tx.objectStore('kv').put(${JSON.stringify(s)}, 'state'); tx.oncomplete = res; }); d.close(); })()`);
+const writeState = (page, s) => page.evaluate(`(async () => { ${IDB} const d = await idb(); await new Promise(res => { const tx = d.transaction('kv', 'readwrite'); tx.objectStore('kv').put(${JSON.stringify(s)}, 'state'); tx.oncomplete = res; }); d.close(); })()`);
+// The app checks the recall list once on opening and then saves its copy of the log. Wait for that before writing,
+// or the app's save (even one from a check cut off by a reload) can land on top of what the test wrote.
+const setState = async (page, s) => { for (let i = 0; i < 50 && !(await getState(page))?.recalls?.tried; i++) await page.waitForTimeout(100); await writeState(page, s); };
 // Waits until the app's last save has reached IndexedDB, then reloads. A readwrite transaction on the same store
 // only completes after the earlier ones, so a reload can't cut off a save that is still being written.
 const settle = page => page.evaluate(`(async () => { ${IDB} const d = await idb(); await new Promise(res => { const tx = d.transaction('kv', 'readwrite'); tx.objectStore('kv').get('state'); tx.oncomplete = res; }); d.close(); })()`);
 const reload = async page => { await settle(page); await page.reload(); };
+// Pages get an empty recall list unless a test answers with its own (the newest route wins).
+const newPage = async () => { const page = await browser.newPage({ viewport: { width: 375, height: 800 } }); await page.route('**/processed.json', r => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: '[]' })); return page; };
 
 for (const theme of ['night', 'day']) {
-  const page = await browser.newPage({ viewport: { width: 375, height: 800 } });
+  const page = await newPage();
   page.on('pageerror', e => fail(`${theme}: ${e.message}`));
   await page.goto(url);
   await page.waitForSelector('h1');
@@ -156,7 +161,7 @@ for (const theme of ['night', 'day']) {
 
 // Sound recordings, saying it without AI, backups, and what the AI is sent
 {
-  const page = await browser.newPage({ viewport: { width: 375, height: 800 } });
+  const page = await newPage();
   page.on('pageerror', e => fail(`extras: ${e.message}`));
   // A stand-in for the claude.ai AI that records the prompt and answers with the placeholder.
   await page.addInitScript(() => { window.__sent = []; const sample = async p => { window.__sent.push(p); return { text: '[CHILD] has had a fever for three days.' }; }; sample.json = async p => { window.__sent.push(p); return { entries: [] }; }; window.claude = { use: async () => sample }; });
@@ -220,7 +225,7 @@ for (const theme of ['night', 'day']) {
 
 // Backups are required: a new log asks for one and Today keeps reminding until a copy exists off the phone
 {
-  const page = await browser.newPage({ viewport: { width: 375, height: 800 } });
+  const page = await newPage();
   page.on('pageerror', e => fail(`backup: ${e.message}`));
   await page.goto(url);
   await page.waitForSelector('h1');
@@ -240,7 +245,7 @@ for (const theme of ['night', 'day']) {
 
 // AI through any OpenAI-style service the parent chooses, still without names
 {
-  const page = await browser.newPage({ viewport: { width: 375, height: 800 } });
+  const page = await newPage();
   page.on('pageerror', e => fail(`ai service: ${e.message}`));
   let body = null, auth = null;
   await page.route('https://ai.example.com/v1/chat/completions', async route => {
@@ -267,7 +272,7 @@ for (const theme of ['night', 'day']) {
 
 // Drive sync against a fake Drive: a second phone saving at the same moment, and a damaged Drive file
 {
-  const page = await browser.newPage({ viewport: { width: 375, height: 800 } });
+  const page = await newPage();
   page.on('pageerror', e => fail(`sync: ${e.message}`));
   await page.addInitScript(() => { window.google = { accounts: { oauth2: { initTokenClient: o => ({ requestAccessToken: () => o.callback({ access_token: 't', expires_in: 3600 }) }) } } }; });
   const other = (id, t) => ({ id, child: 'kid-ex', type: 'note', t, note: 'From the other phone', updatedAt: t });
@@ -334,7 +339,7 @@ for (const theme of ['night', 'day']) {
 
 // A stored log with missing parts still opens, and nothing is lost on the next save
 {
-  const page = await browser.newPage({ viewport: { width: 375, height: 800 } });
+  const page = await newPage();
   page.on('pageerror', e => fail(`robust: ${e.message}`));
   await page.goto(url);
   await page.waitForSelector('h1');
@@ -348,7 +353,7 @@ for (const theme of ['night', 'day']) {
 
 // Data from the earlier Sick Day Log is migrated
 {
-  const page = await browser.newPage({ viewport: { width: 375, height: 800 } });
+  const page = await newPage();
   page.on('pageerror', e => fail(`migration: ${e.message}`));
   await page.goto(url);
   await page.waitForSelector('h1');
@@ -365,7 +370,7 @@ for (const theme of ['night', 'day']) {
 
 // A log saved by a newer version of the app is shown but never changed by this one
 {
-  const page = await browser.newPage({ viewport: { width: 375, height: 800 } });
+  const page = await newPage();
   page.on('pageerror', e => fail(`newer: ${e.message}`));
   await page.goto(url);
   await page.waitForSelector('h1');
@@ -379,7 +384,7 @@ for (const theme of ['night', 'day']) {
 
 // Product recalls: the public list is loaded, products on the family's list are matched, and a warning shows until seen
 {
-  const page = await browser.newPage({ viewport: { width: 375, height: 800 } });
+  const page = await newPage();
   page.on('pageerror', e => fail(`recalls: ${e.message}`));
   const feed = [
     { id: 'https://example.org/r1', title: 'HiPP Bio Karotten mit Kartoffeln 190 g', url: 'https://example.org/r1', publish_datetime: new Date(Date.now() - 2 * 864e5).toISOString(), country_sold_in: 'DE', source: 'Lebensmittelwarnung.de', reason: { en: 'Foreign bodies', de: 'Fremdkörper' }, company: 'HiPP GmbH, Pfaffenhofen', scraped_datetime: new Date().toISOString() },
