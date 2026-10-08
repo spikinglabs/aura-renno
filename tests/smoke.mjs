@@ -463,7 +463,7 @@ for (const theme of ['night', 'day']) {
   await page.click('[data-act="save-appt"]');
   if ((await page.locator('[data-vxitem="menb"].booked').count()) !== 1) fail('appointments: vaccination not shown as booked');
   st = await getState(page);
-  if (!st.appts.some(x => x.plan === 'vax' && x.k === 'menb' && x.dose >= 1 && !x.deleted)) fail('appointments: vaccination appointment not saved for its dose');
+  if (!st.appts.some(x => x.plan === 'vax' && x.ks?.includes('menb') && x.doses?.menb >= 1 && !x.deleted)) fail('appointments: vaccination appointment not saved for its dose');
   await page.click('#sheet .appt [data-act="appt"]');
   await page.click('[data-act="del-appt"]');
   if ((await page.locator('[data-vxitem="menb"].booked').count()) !== 0) fail('appointments: deleted appointment still shown');
@@ -481,6 +481,52 @@ for (const theme of ['night', 'day']) {
   if ((await page.locator('[data-zitem="Z4"].done').count()) !== 1) fail('appointments: recording the visit did not close it');
   await page.click('.tabs [data-tab="today"]');
   if ((await page.locator('.vax-line', { hasText: 'Z4' }).count()) !== 0) fail('appointments: Today still shows the recorded visit');
+  await page.close();
+}
+
+// Vaccination appointments: one appointment for several vaccines, from the Vaccinations screen, recorded afterwards
+{
+  const page = await newPage();
+  page.on('pageerror', e => fail(`vaccination appointments: ${e.message}`));
+  const day = n => { const d = new Date(Date.now() + n * 864e5); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  await page.goto(url);
+  await page.waitForSelector('h1');
+  await openTab(page, 'vax');
+  await page.click('#view-vax [data-act="appt"][data-plan="vax"]');
+  if ((await page.locator('.chips[data-k="vks"] [data-v="menb"].on').count()) !== 1) fail('vaccination appointments: the vaccination due now is not ticked');
+  await page.click('.chips[data-k="vks"] [data-v="flu"]');
+  await page.fill('#a_date', day(3)); await page.fill('#a_time', '10:00'); await page.fill('#a_note', 'Dr. Weber');
+  await page.click('[data-act="save-appt"]');
+  const card = await page.innerText('#view-vax .card:has(h2:text("Appointments"))').catch(() => '');
+  if (!card.includes('Meningococcus B, Flu') || !card.includes('Dr. Weber')) fail('vaccination appointments: not listed on the Vaccinations screen');
+  if ((await page.locator('[data-vxitem="menb"].booked').count()) !== 1) fail('vaccination appointments: the vaccine row does not show the appointment');
+  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail('vaccination appointments: screen scrolls sideways');
+  let st = await getState(page);
+  const a = st.appts.find(x => x.plan === 'vax' && !x.deleted);
+  if (!a || a.ks.join() !== 'menb,flu' || !(a.doses.menb >= 1) || a.doses.flu !== undefined || a.time !== '10:00') fail('vaccination appointments: not saved');
+  await page.click('.tabs [data-tab="today"]');
+  if ((await page.locator('.vax-line', { hasText: 'Vaccination (Meningococcus B, Flu): appointment' }).count()) !== 1) fail('vaccination appointments: Today does not show it');
+  if ((await page.locator('.vax-line', { hasText: 'to check' }).count()) !== 0) fail('vaccination appointments: a booked vaccination is still to check');
+  await openTab(page, 'checkups');
+  await page.click('[data-act="cal-next"]');
+  if ((await page.locator('#sheet .vx-dose', { hasText: 'Meningococcus B, Flu' }).count()) !== 1) fail('vaccination appointments: calendar has it more or less than once');
+  await page.click('#sheet [data-act="close"]');
+  // Once the day has passed, the vaccinations are recorded from the appointment
+  st.appts.find(x => x.id === a.id).date = day(-2); await setState(page, st);
+  await reload(page); await page.waitForSelector('h1');
+  if ((await page.locator('.vax-line', { hasText: 'appointment was' }).count()) !== 1) fail('vaccination appointments: Today does not ask to record it');
+  await openTab(page, 'vax');
+  await page.click(`#view-vax [data-appt="${a.id}"]`);
+  await page.click('[data-act="appt-record"]');
+  if ((await page.inputValue('#v_date')) !== day(-2) || (await page.locator('.chips[data-k="against"] button.on').count()) !== 2) fail('vaccination appointments: recording does not start from the appointment');
+  await page.click('[data-act="save-vax"]');
+  if ((await page.locator('#view-vax [data-appt]').count()) !== 0 || (await page.locator('[data-vxitem="menb"].booked, [data-vxitem="menb"].went').count()) !== 0) fail('vaccination appointments: still open after recording');
+  // An appointment saved by the first version (one vaccine, `k` and `dose`) still shows
+  st = await getState(page); const n = st.vaccines.filter(d => !d.deleted && d.childId === st.child && d.against?.includes('rota')).length;
+  st.appts.push({ id: 'old', childId: st.child, plan: 'vax', k: 'rota', dose: n + 1, date: day(9), time: '', note: '', updatedAt: Date.now() }); await setState(page, st);
+  await reload(page); await page.waitForSelector('h1');
+  await openTab(page, 'vax');
+  if ((await page.locator('#view-vax [data-appt="old"]').count()) !== 1) fail('vaccination appointments: an appointment from the first version is not shown');
   await page.close();
 }
 
