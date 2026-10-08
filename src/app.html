@@ -71,6 +71,7 @@ textarea { resize: vertical }
 .backup-due { box-shadow: inset 0 0 0 1.5px var(--wait) }
 .recall-due { box-shadow: inset 0 0 0 1.5px var(--alert) }
 a.btn { color: inherit; text-decoration: none; display: inline-block }
+a.pick { display: block; color: inherit; text-decoration: none; box-sizing: border-box }
 .recall-row { display: flex; flex-direction: column; gap: 2px; padding: 8px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere }
 .recall-row:first-of-type { border-top: 0 }
 .recall-row a { color: var(--accent-ink); font-size: .86rem; align-self: flex-start }
@@ -190,7 +191,7 @@ tr:last-child td { border-bottom: 0 }
 .vx-row { width: 100%; text-align: left; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 0; background: none; border: 0; border-top: 1px solid var(--line) }
 .vx-row:first-of-type { border-top: 0 }
 .vx-row small { display: block; color: var(--muted); font-size: .84rem; overflow-wrap: anywhere }
-.vx-row.due small, .vx-row.late small { color: var(--wait); font-weight: 700 }
+.vx-row.due small, .vx-row.late small, .vx-row.soon small { color: var(--wait); font-weight: 700 }
 .vx-row.skip b, .vx-row.missed b { color: var(--muted) }
 .vx-dots { display: flex; gap: 4px }
 .vx-dots i { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--muted) }
@@ -204,7 +205,7 @@ tr:last-child td { border-bottom: 0 }
 
 /* Tabs */
 .tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--card); padding-bottom: env(safe-area-inset-bottom, 0px) }
-.tabs .in { max-width: 600px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr) }
+.tabs .in { max-width: 600px; margin: 0 auto; display: grid; grid-template-columns: repeat(5, 1fr) }
 .tabs button { background: none; border: 0; padding: 8px 4px 14px; font-size: .8rem; font-weight: 800; color: var(--muted) }
 .tabs button::before { content: ""; display: block; width: 24px; height: 4px; border-radius: 4px; margin: 0 auto 6px; background: transparent }
 .tabs button[aria-selected="true"] { color: var(--ink) }
@@ -245,12 +246,14 @@ tr:last-child td { border-bottom: 0 }
   <section class="view" id="view-sick" hidden></section>
   <section class="view" id="view-growth" hidden></section>
   <section class="view" id="view-vax" hidden></section>
+  <section class="view" id="view-checkups" hidden></section>
   <section class="view" id="view-more" hidden></section>
 </div>
 <nav class="tabs"><div class="in" role="tablist">
   <button role="tab" data-tab="today" aria-selected="true">Today</button>
   <button role="tab" data-tab="growth" aria-selected="false">Growth</button>
   <button role="tab" data-tab="vax" aria-selected="false">Vaccines</button>
+  <button role="tab" data-tab="checkups" aria-selected="false">Checkups</button>
   <button role="tab" data-tab="more" aria-selected="false">More</button>
 </div></nav>
 <div class="scrim" id="scrim" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
@@ -269,7 +272,7 @@ const DRIVE_FILE = 'aura-log.json', DRIVE_FOLDER = 'Aura';
 const built = v => /^__/.test(v) ? '' : v;
 const GOOGLE_CLIENT_ID = built('__GOOGLE_CLIENT_ID__'), GOOGLE_PICKER_KEY = built('__GOOGLE_PICKER_KEY__');
 const gClient = () => S.settings.clientId || GOOGLE_CLIENT_ID, gPickerKey = () => S.settings.pickerKey || GOOGLE_PICKER_KEY;
-const FEVER_C = 38.0, EXAMPLE_V = 6;
+const FEVER_C = 38.0, EXAMPLE_V = 7;
 const H = 3600e3, DAY = 24 * H;
 const reEsc = s => s.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
 // Symptoms are free text; preset tags found in the text are also kept as a list for reminders and the doctor summary.
@@ -325,9 +328,9 @@ const icon = k => `<span class="ic t-${k}"><svg viewBox="0 0 24 24" aria-hidden=
 
 /* ---------- State ---------- */
 function emptyState() {
-  return { app: 'aura', v: SCHEMA, example: false, children: [], episodes: [], entries: [], measurements: [], growth: [], products: [], vaccines: [],
+  return { app: 'aura', v: SCHEMA, example: false, children: [], episodes: [], entries: [], measurements: [], growth: [], products: [], vaccines: [], checkups: [],
     meds: [{ id: 'm1', name: 'Paracetamol (acetaminophen)', gapH: 4, updatedAt: 0 }, { id: 'm2', name: 'Ibuprofen', gapH: 6, updatedAt: 0 }],
-    settings: { unit: 'C', clientId: '', pickerKey: '', apiKey: '', aiKind: 'anthropic', aiBase: '', aiModel: '', theme: 'auto', me: '', recallCountries: null, docLang: 'en', vaxPlan: 'de' }, child: null, drive: {}, recalls: {}, docTr: {} };
+    settings: { unit: 'C', clientId: '', pickerKey: '', apiKey: '', aiKind: 'anthropic', aiBase: '', aiModel: '', theme: 'auto', me: '', recallCountries: null, docLang: 'en', vaxPlan: 'de', uPlan: 'de' }, child: null, drive: {}, recalls: {}, docTr: {} };
 }
 function readLS(k) { try { const r = localStorage.getItem(k); return r ? JSON.parse(r) : null; } catch { return null; } }
 // The log's format version. To change the format, raise SCHEMA and add the step MIGRATIONS[old version], which turns a
@@ -429,6 +432,8 @@ function exampleState() {
     [11, ['6in1', 'pcv'], 'Vaxelis, Prevenar 20'], [11.2, ['mmr', 'var'], 'Priorix-Tetra'], [15, ['mmr', 'var'], 'Priorix-Tetra']]
     .forEach(([m, against, name], i) => s.vaccines.push({ id: uid(), childId: kid.id, kind: 'dose', t: startOfDay(atAge(m)) + 10 * H, against, name, batch: 'AB' + (4127 + i * 37), by: 'Dr. Weber', note: '', updatedAt: 0 }));
   kid.vaxSkip = ['rsv'];
+  [['U1', 0, 'Klinikum, Dr. Brandt'], ['U2', 4, 'Klinikum, Dr. Brandt'], ['U3', 32, 'Dr. Weber'], ['U4', 100, 'Dr. Weber'], ['U5', 195, 'Dr. Weber'], ['U6', 335, 'Dr. Weber'], ['U7', 690, 'Dr. Weber']]
+    .forEach(([u, d, by]) => s.checkups.push({ id: uid(), childId: kid.id, kind: 'exam', u, t: startOfDay(born + d * DAY) + 10 * H, by, note: u === 'U6' ? 'All fine. Hearing test again at the U7.' : u === 'U7' ? 'Hearing fine. Speaks many single words.' : '', updatedAt: 0 }));
   const start = now - 2.6 * DAY;
   s.episodes.push({ id: 'ep-ex', childId: kid.id, title: 'Fever and cough', start, end: null, updatedAt: 0 });
   const at = h => start + h * H;
@@ -581,9 +586,9 @@ let tab = 'today', sickTab = 'overview', aiParsed = null, narrative = '', showDa
 function render() {
   applyTheme();
   document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === (tab === 'sick' ? 'today' : tab))));
-  for (const v of ['today', 'sick', 'growth', 'vax', 'more']) $('#view-' + v).hidden = v !== tab;
-  $('#fab').hidden = tab === 'more' || tab === 'vax' || !kid();
-  ({ today: renderToday, sick: renderSick, growth: renderGrowth, vax: renderVax, more: renderMore })[tab]();
+  for (const v of ['today', 'sick', 'growth', 'vax', 'checkups', 'more']) $('#view-' + v).hidden = v !== tab;
+  $('#fab').hidden = tab === 'more' || tab === 'vax' || tab === 'checkups' || !kid();
+  ({ today: renderToday, sick: renderSick, growth: renderGrowth, vax: renderVax, checkups: renderCheckups, more: renderMore })[tab]();
 }
 const exampleBanner = () => S.example ? `<div class="banner"><p>This is example data so you can see how it works. Nothing here is real.</p><button class="btn primary sm" data-act="clear-example">Start with my child</button></div>` : '';
 function greeting() { const h = new Date().getHours(); return h < 5 ? 'Late night' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; }
@@ -631,7 +636,7 @@ function renderToday() {
     <div class="row between"><h3>Log</h3><button class="btn sm" data-act="track-sheet">What to track</button></div>
     <div class="quick">${quick.map(k => `<button class="qb" data-add="${k}">${icon(k)}${TYPES[k].label}</button>`).join('')}</div>
     ${ep ? '' : `<button class="linkish" data-act="new-episode">${esc(c.name)} is sick? Start sick mode</button>`}
-    ${recallFeedLine()}${vaxLine(c)}
+    ${recallFeedLine()}${vaxLine(c)}${uLine(c)}
     <div>${timelineHtml(es.filter(e => shownType(e.type)), showDays)}</div>`;
 }
 function timelineHtml(es, days) {
@@ -1024,7 +1029,7 @@ function vaxItemSheet(k) {
   openSheet(`<div class="hd"><h2>${esc(v.l)}</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
     <p class="small muted" style="margin:0">Usually ${v.at.length > 1 ? v.at.length + ' doses: ' : ''}${esc(v.ages.join(', '))}.${v.note ? ' ' + esc(v.note) : ''}</p>
     <div>${s.given.map((d, i) => `<button class="vx-dose" data-vxdose="${d.id}"><span><b>Dose ${i + 1}</b> <span class="muted small num">${fmtDate(d.t)}${c.dob ? ' · ' + ageText(c, d.t) : ''}</span></span>${d.name || d.batch ? `<small>${esc([d.name, d.batch && 'batch ' + d.batch].filter(Boolean).join(' · '))}</small>` : ''}</button>`).join('') || '<p class="muted small" style="margin:0">None recorded yet.</p>'}</div>
-    <div class="sheet-actions"><button class="btn ghost" data-act="vax-skip" data-for="${k}">${skip ? 'Show as planned again' : 'Not planned for us'}</button><button class="btn primary" data-act="add-vax" data-for="${k}">Add a dose</button></div>`, { vaxItem: k });
+    <div class="sheet-actions"><button class="btn ghost" data-act="vax-skip" data-for="${k}">${skip ? 'Show as planned again' : 'Not planned for us'}</button><span class="row">${!skip && vaxEvent(c, v) ? `<button class="btn" data-act="cal-vax" data-for="${k}">Add to calendar</button>` : ''}<button class="btn primary" data-act="add-vax" data-for="${k}">Add a dose</button></span></div>`, { vaxItem: k });
 }
 function vaxPageSheet(id) {
   const p = S.vaccines.find(x => x.id === id);
@@ -1036,6 +1041,145 @@ function vaxPageSheet(id) {
 }
 const vaxListText = c => [`VACCINATIONS: ${c.name}${c.dob ? ', born ' + fmtDate(new Date(c.dob + 'T12:00').getTime()) : ''}`,
   ...vaxDoses(c).slice().reverse().map(d => `${fmtDate(d.t)}: ${vaxNames(d)}${d.name ? ' (' + d.name + ')' : ''}${d.batch ? ', batch ' + d.batch : ''}${d.by ? ', ' + d.by : ''}`)].join('\n');
+
+/* ---------- Checkups (U-Heft) ---------- */
+// The German child checkups as in the yellow U-Heft (G-BA Kinder-Richtlinie): what was recorded, photos of the
+// booklet's pages, and when each one is due. Ages count like the booklet does ("the 3rd to 10th day of life"): `at` is
+// the usual time and `win` the period in which the checkup can still be done, as [from, to, unit] with unit d(ay),
+// w(eek), m(onth) or y(ear) of life. U10 was added in August 2026 and is paid for once the change applies (2027).
+// A reminder of the published schedule only; the practice books the date and the pediatrician decides.
+const U_PLAN = [
+  { k: 'U1', at: [1, 1, 'd'], win: [1, 1, 'd'], ages: 'right after birth', note: 'Usually done in the hospital or by the midwife.' },
+  { k: 'U2', at: [3, 10, 'd'], win: [3, 14, 'd'], ages: 'day 3 to 10', note: 'Often still in the hospital, otherwise at the practice.' },
+  { k: 'U3', at: [4, 5, 'w'], win: [3, 8, 'w'], ages: 'week 4 to 5' },
+  { k: 'U4', at: [3, 4, 'm'], win: [2, 4.5, 'm'], ages: 'month 3 to 4' },
+  { k: 'U5', at: [6, 7, 'm'], win: [5, 8, 'm'], ages: 'month 6 to 7' },
+  { k: 'U6', at: [10, 12, 'm'], win: [9, 14, 'm'], ages: 'month 10 to 12' },
+  { k: 'U7', at: [21, 24, 'm'], win: [20, 27, 'm'], ages: 'month 21 to 24' },
+  { k: 'U7a', at: [34, 36, 'm'], win: [33, 38, 'm'], ages: 'month 34 to 36' },
+  { k: 'U8', at: [46, 48, 'm'], win: [43, 50, 'm'], ages: 'month 46 to 48' },
+  { k: 'U9', at: [60, 64, 'm'], win: [58, 66, 'm'], ages: 'month 60 to 64' },
+  { k: 'U10', at: [10, 11, 'y'], win: [10, 11, 'y'], ages: 'at 9 to 10 years', note: 'New in the U-Heft from 2027. Some health insurers already pay for it; ask yours.' },
+  { k: 'J1', at: [13, 14, 'y'], win: [13, 15, 'y'], ages: 'at 12 to 14 years', note: 'The teenage checkup. It can be done until the 15th birthday.' }];
+// Start (n = from) or end (n = to, exclusive) of the nth day, week, month or year of life.
+function lifeAt(dob, n, u, end) {
+  const k = end ? n : n - 1, b = startOfDay(new Date(dob + 'T12:00').getTime());
+  return u === 'd' ? b + k * DAY : u === 'w' ? b + k * 7 * DAY : startOfDay(atMonths(dob, k * (u === 'y' ? 12 : 1)));
+}
+const span = (dob, [a, b, u]) => [lifeAt(dob, a, u), lifeAt(dob, b, u, true)];
+const lastDay = t => t - DAY / 2;
+const uPlanOn = () => S.settings.uPlan !== 'none';
+const uOf = c => live(S.checkups || []).filter(x => x.childId === c.id);
+const uExams = c => uOf(c).filter(x => x.kind === 'exam').sort((a, b) => b.t - a.t);
+const uName = k => k === 'other' ? 'Other checkup' : k + ' checkup';
+// Where a child stands with one checkup: done, due now, soon (time to book), later, or its period is over.
+function uStatus(c, u) {
+  const given = uExams(c).filter(e => e.u === u.k), base = { given };
+  if (given.length) return { ...base, st: 'done', text: `Done · ${fmtDate(given[0].t)}` };
+  if (!c.dob) return { ...base, st: 'open', text: 'Usually ' + u.ages };
+  const now = Date.now(), [as, ae] = span(c.dob, u.at), [ws, we] = span(c.dob, u.win), best = u.k === 'U1' ? u.ages : `${fmtDate(as)} to ${fmtDate(lastDay(ae))}`;
+  Object.assign(base, { as, ae, ws, we, best });
+  if (now >= we) return { ...base, st: 'missed', text: `Not recorded · possible until ${fmtDate(lastDay(we))}` };
+  if (now >= ws) return { ...base, st: 'due', text: `Due · until ${fmtDate(lastDay(we))}${now < as ? ' · usual time ' + best : ''}` };
+  if (now >= ws - 28 * DAY) return { ...base, st: 'soon', text: `Time to book · from ${fmtDate(ws)} · usual time ${best}` };
+  return { ...base, st: 'later', text: `${best} · ${u.ages}` };
+}
+const uOpen = c => uPlanOn() && c?.dob ? U_PLAN.filter(u => ['due', 'soon'].includes(uStatus(c, u).st)) : [];
+const uLine = c => { const u = uOpen(c)[0]; if (!u) return ''; const s = uStatus(c, u);
+  return `<button class="linkish vax-line" data-tab="checkups">${u.k} checkup ${s.st === 'due' ? 'due until ' + fmtDate(lastDay(s.we)) : 'from ' + fmtDate(s.ws) + ': time to book'}</button>`; };
+// Calendar events for the open checkups and vaccinations (to book or to go to), from today on.
+function uEvent(c, u) {
+  const s = uStatus(c, u); if (!['due', 'soon', 'later'].includes(s.st)) return null;
+  return { uid: `${c.id}-${u.k}`, t: Math.max(s.as, startOfDay(Date.now())), title: `${u.k} checkup · ${c.name}`,
+    details: `${u.k} checkup (U-Heft), usually ${u.k === 'U1' ? u.ages : u.ages + ': ' + s.best}. It can be done from ${fmtDate(s.ws)} until ${fmtDate(lastDay(s.we))}. Book it with your pediatrician and bring the U-Heft and the vaccination book. From Aura.` };
+}
+function vaxEvent(c, v) {
+  const s = vaxStatus(c, v); if (!c.dob || !['due', 'late', 'later'].includes(s.st)) return null;
+  return { uid: `${c.id}-vax-${v.k}-${s.n + 1}`, t: Math.max(startOfDay(atMonths(c.dob, v.at[s.n])), startOfDay(Date.now())), title: `${v.s} vaccination · ${c.name}`,
+    details: `${v.l}${s.of > 1 ? `, dose ${s.n + 1} of ${s.of}` : ''}: usually ${v.ages[s.n]}, as in the STIKO schedule. Your pediatrician decides what your child gets and when. Bring the vaccination book. From Aura.` };
+}
+const nextEvents = c => [...(uPlanOn() ? U_PLAN.map(u => uEvent(c, u)) : []), ...(planOn() ? VAX_PLAN.filter(v => !(c.vaxSkip || []).includes(v.k)).map(v => vaxEvent(c, v)) : [])]
+  .filter(e => e && e.t < Date.now() + 365 * DAY).sort((a, b) => a.t - b.t);
+function renderCheckups() {
+  const el = $('#view-checkups'), c = kid();
+  if (!c) { el.innerHTML = header('Checkups', 'U-Heft') + `<div class="card empty"><p class="muted">Add your child to keep their checkups here.</p><button class="btn primary" data-kid="new">Add your child</button></div>`; return; }
+  const exams = uExams(c), pages = uOf(c).filter(x => x.kind === 'page').sort((a, b) => a.t - b.t), now = Date.now();
+  const row = u => { const s = uStatus(c, u);
+    return `<button class="vx-row ${s.st}" data-uitem="${u.k}"><span><b>${u.k}</b><small>${esc(s.text)}</small></span><span class="vx-dots" aria-label="${s.st === 'done' ? 'recorded' : 'not recorded'}"><i class="${s.st === 'done' ? 'on' : ''}"></i></span></button>`; };
+  const soon = U_PLAN.filter(u => !c.dob || uStatus(c, u).st !== 'later' || uStatus(c, u).ws < now + 400 * DAY), later = U_PLAN.filter(u => !soon.includes(u));
+  const evs = c.dob ? nextEvents(c) : [];
+  el.innerHTML = header('Checkups', `${esc(c.name)}${c.dob ? ' · ' + ageText(c) : ''}`) + exampleBanner() + `
+    <div class="row"><button class="btn primary" data-act="add-u">Add a checkup</button><button class="btn" data-act="u-photo">Photo of the U-Heft</button><input id="uPage" type="file" accept="image/*" hidden></div>
+    ${uPlanOn() ? `<div class="card set"><div class="row between"><h2>U-Heft</h2><span class="muted small">Germany</span></div>
+      ${!c.dob ? '<p class="small muted" style="margin:0">Add a birth date to see when each checkup is due.</p>' : ''}
+      <div>${soon.map(row).join('')}</div>
+      ${later.length ? `<details><summary class="small muted">Later in childhood (${later.length})</summary><div>${later.map(row).join('')}</div></details>` : ''}
+      ${evs.length ? `<div><button class="btn sm" data-act="cal-next">Add the next dates to my calendar</button></div>` : ''}
+      <p class="small muted" style="margin:0">Ages from the German child checkup rules (Kinder-Richtlinie). The first dates are the usual time; a checkup can still be done until the last day shown. Daycare and school often ask to see the U-Heft.</p></div>` : ''}
+    <div class="card set"><h2>Recorded</h2>
+      ${exams.length ? `<div>${exams.map(e => `<button class="vx-dose" data-uexam="${e.id}"><span><b>${esc(uName(e.u))}</b> <span class="muted small num">${fmtDate(e.t)}${c.dob ? ' · ' + ageText(c, e.t) : ''}</span></span>${e.by ? `<small>${esc(e.by)}</small>` : ''}${e.note ? `<small>${esc(e.note)}</small>` : ''}</button>`).join('')}</div>`
+        : '<p class="muted small" style="margin:0">Nothing recorded yet. After each checkup, add the date and what the doctor said, in your own words.</p>'}</div>
+    <div class="card set"><div class="row between"><h2>Pages of the U-Heft</h2><span class="muted small">${pages.length}</span></div>
+      ${pages.length ? `<div class="book">${pages.map(p => `<button data-upage="${p.id}" aria-label="Photo from ${fmtDate(p.t)}"><img src="${p.img}" alt=""></button>`).join('')}</div>` : ''}
+      <p class="small muted" style="margin:0">A photo of each filled page is a backup if the booklet gets lost. It syncs with your partner and goes into Drive backups.</p></div>
+    <div class="card set"><h2>Schedule to show</h2>
+      <div class="chips">${[['de', 'Germany (U-Heft)'], ['none', 'None, just my records']].map(([k, l]) => `<button data-uplan="${k}" class="${(S.settings.uPlan || 'de') === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>`;
+}
+function uSheet(id, preset) {
+  const c = kid(), e = id ? S.checkups.find(x => x.id === id) : { u: preset || (uOpen(c)[0]?.k) || '' }, m = e.measId ? S.measurements.find(x => x.id === e.measId && !x.deleted) || {} : {};
+  openSheet(`<div class="hd"><h2>${id ? 'Edit checkup' : 'Add a checkup'}</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+    <div class="field"><span>Which checkup</span><div class="chips" data-k="u">${[...U_PLAN.map(u => u.k), 'other'].map(k => `<button type="button" data-v="${k}" class="${e.u === k ? 'on' : ''}">${k === 'other' ? 'Other' : k}</button>`).join('')}</div></div>
+    <label class="field"><span>Date</span><input id="u_date" type="date" value="${toLocalInput(e.t || Date.now()).slice(0, 10)}" max="${toLocalInput(Date.now()).slice(0, 10)}"></label>
+    <label class="field"><span>Doctor or practice (optional)</span><input id="u_by" value="${esc(e.by || '')}" autocomplete="off"></label>
+    <label class="field"><span>Notes (optional)</span><textarea id="u_note" style="min-height:80px" placeholder="What the doctor said, in your own words">${esc(e.note || '')}</textarea></label>
+    <p class="small muted" style="margin:0">Measured at the checkup (optional, also shown under Growth)</p>
+    <div class="row">${MEAS.map(([k, l, u, st]) => `<label class="field" style="flex:1 1 90px"><span>${l} (${u})</span><input id="u_${k}" type="number" inputmode="decimal" step="${st}" value="${esc(m[k] ?? '')}"></label>`).join('')}</div>
+    <div class="sheet-actions">${id ? '<button class="btn ghost danger" data-act="del-u">Delete</button>' : '<span></span>'}<button class="btn primary" data-act="save-u">Save</button></div>`, { uexam: id || null, childId: c.id });
+}
+function uItemSheet(k) {
+  const c = kid(), u = U_PLAN.find(x => x.k === k), s = uStatus(c, u), ev = c.dob && uEvent(c, u);
+  openSheet(`<div class="hd"><h2>${u.k} checkup</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+    <p class="small muted" style="margin:0">Usually ${esc(u.ages)}${s.best && u.k !== 'U1' ? ` (${esc(s.best)})` : ''}.${s.ws && u.k !== 'U1' ? ` It can be done from ${fmtDate(s.ws)} until ${fmtDate(lastDay(s.we))}.` : ''}${u.note ? ' ' + esc(u.note) : ''}</p>
+    <div>${s.given.map(e => `<button class="vx-dose" data-uexam="${e.id}"><span><b>${fmtDate(e.t)}</b>${c.dob ? ` <span class="muted small num">${ageText(c, e.t)}</span>` : ''}</span>${e.by ? `<small>${esc(e.by)}</small>` : ''}${e.note ? `<small>${esc(e.note)}</small>` : ''}</button>`).join('') || '<p class="muted small" style="margin:0">Not recorded yet.</p>'}</div>
+    <div class="sheet-actions">${ev ? `<button class="btn" data-act="cal-u" data-for="${k}">Add to calendar</button>` : '<span></span>'}<button class="btn primary" data-act="add-u" data-for="${k}">${s.given.length ? 'Add another visit' : 'Record it'}</button></div>`, { uItem: k });
+}
+function uPageSheet(id) {
+  const p = S.checkups.find(x => x.id === id);
+  openSheet(`<div class="hd"><h2>Page of the U-Heft</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+    <img src="${p.img}" alt="U-Heft page" style="width:100%;border-radius:10px">
+    <label class="field"><span>Note (optional)</span><input id="up_note" value="${esc(p.note || '')}" placeholder="e.g. U5, pages 1 and 2"></label>
+    <p class="small muted" style="margin:0">Added ${fmtDate(p.t)}</p>
+    <div class="sheet-actions"><button class="btn ghost danger" data-act="del-upage">Delete photo</button><button class="btn primary" data-act="save-upage">Save</button></div>`, { upage: id });
+}
+
+/* ---------- Calendar ---------- */
+// Dates Aura already knows (checkups, vaccinations) go into the parent's own calendar without signing in to it:
+// Google Calendar gets a prefilled event, other calendars (Apple, Outlook) a calendar file. All-day events, so a
+// date never shifts with the time zone; the calendar app reminds at 9:00.
+const ymd = t => toLocalInput(t).slice(0, 10).replace(/-/g, '');
+const googleCalUrl = e => 'https://calendar.google.com/calendar/render?' + new URLSearchParams({ action: 'TEMPLATE', text: e.title, dates: `${ymd(e.t)}/${ymd(startOfDay(e.t) + 36 * H)}`, details: e.details });
+const icsEsc = s => String(s).replace(/[\;,]/g, m => '\\' + m).replace(/\r?\n/g, '\\n');
+const icsFold = l => l.length <= 70 ? l : l.match(/.{1,70}/gu).join('\r\n ');
+function icsText(evs) {
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
+  return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Aura//Baby log//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+    ...evs.flatMap(e => ['BEGIN:VEVENT', `UID:${e.uid}@aura`, `DTSTAMP:${stamp}`, `DTSTART;VALUE=DATE:${ymd(e.t)}`, `DTEND;VALUE=DATE:${ymd(startOfDay(e.t) + 36 * H)}`,
+      `SUMMARY:${icsEsc(e.title)}`, `DESCRIPTION:${icsEsc(e.details)}`, 'TRANSP:TRANSPARENT', 'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEsc(e.title)}`, 'TRIGGER:PT9H', 'END:VALARM', 'END:VEVENT']),
+    'END:VCALENDAR'].map(icsFold).join('\r\n') + '\r\n';
+}
+function saveIcs(evs) {
+  const blob = new Blob([icsText(evs)], { type: 'text/calendar' }), a = document.createElement('a'), url = URL.createObjectURL(blob);
+  a.href = url; a.download = evs.length === 1 ? `aura-${evs[0].title.split(' ·')[0].toLowerCase().replace(/[^a-z0-9]+/g, '-')}.ics` : 'aura-dates.ics';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+function calSheet(evs) {
+  const one = evs.length === 1 ? evs[0] : null;
+  openSheet(`<div class="hd"><h2>Add to calendar</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+    <div>${evs.map(e => `<div class="vx-dose"><b>${esc(e.title)}</b><small>${fmtDate(e.t)}</small></div>`).join('')}</div>
+    ${one ? `<a class="pick" data-gcal href="${esc(googleCalUrl(one))}" target="_blank" rel="noopener noreferrer"><b>Google Calendar</b><br><span class="small muted">Opens the event, ready to save.</span></a>` : ''}
+    <button class="pick" data-act="cal-ics"><b>${one ? 'Apple Calendar, Outlook or other' : `All ${evs.length} dates as a calendar file`}</b><br><span class="small muted">${one ? 'Downloads a calendar file; open it to add the event.' : 'Open it on your phone or computer to add them all. Google Calendar imports it on the website, under Settings, Import.'}</span></button>
+    <p class="small muted" style="margin:0">Aura doesn't sign in to your calendar. The event lands on the first day of the usual time; move it to your appointment once it's booked.</p>`, { cal: evs });
+}
 
 /* ---------- More ---------- */
 function renderMore() {
@@ -1392,7 +1536,7 @@ async function token(interactive) {
 }
 async function gapi(tok, url, opts = {}) { const r = await fetch(url, { ...opts, headers: { Authorization: 'Bearer ' + tok, ...(opts.headers || {}) } }); if (!r.ok) throw new Error(`Drive error ${r.status}`); return r; }
 const DRIVE = 'https://www.googleapis.com/drive/v3/files', UP = 'https://www.googleapis.com/upload/drive/v3/files';
-const SYNCED = ['children', 'episodes', 'entries', 'meds', 'measurements', 'growth', 'products', 'vaccines'];
+const SYNCED = ['children', 'episodes', 'entries', 'meds', 'measurements', 'growth', 'products', 'vaccines', 'checkups'];
 const shareable = () => ({ app: 'aura', v: SCHEMA, savedAt: Date.now(), ...Object.fromEntries(SYNCED.map(k => [k, S[k]])) });
 const enc = encodeURIComponent, JSON_H = { 'Content-Type': 'application/json' }, FOLDER_T = 'application/vnd.google-apps.folder';
 async function folderId(tok, name, parent) {
@@ -1727,6 +1871,7 @@ document.addEventListener('click', async ev => {
     if (b.dataset.rcountry) { toggleRecallCountry(b.dataset.rcountry); recallsShown = 5; persist(); return renderMore(); }
     if (b.dataset.themeSet) { S.settings.theme = b.dataset.themeSet; return commit(); }
     if (b.dataset.vaxplan) { S.settings.vaxPlan = b.dataset.vaxplan; persist(); return render(); }
+    if (b.dataset.uplan) { S.settings.uPlan = b.dataset.uplan; persist(); return render(); }
     if (box.hasAttribute('data-multi')) b.classList.toggle('on');
     else { const was = b.classList.contains('on'); box.querySelectorAll('button').forEach(x => x.classList.remove('on')); if (!was || box.dataset.k === 'kind') b.classList.add('on'); const c = box.querySelector('[data-custom]'); if (c) c.value = ''; }
     if (box.dataset.k === 'kind') syncShow();
@@ -1750,6 +1895,9 @@ document.addEventListener('click', async ev => {
   if (b.dataset.vxitem) return vaxItemSheet(b.dataset.vxitem);
   if (b.dataset.vxdose) return vaxSheet(b.dataset.vxdose);
   if (b.dataset.vxpage) return vaxPageSheet(b.dataset.vxpage);
+  if (b.dataset.uitem) return uItemSheet(b.dataset.uitem);
+  if (b.dataset.uexam) return uSheet(b.dataset.uexam);
+  if (b.dataset.upage) return uPageSheet(b.dataset.upage);
   if (b.dataset.tooth) return growthSheet('tooth', b.dataset.tooth);
   if (b.dataset.ms) return growthSheet('milestone', b.dataset.ms === 'new' ? null : b.dataset.ms);
   if (b.dataset.track) {
@@ -1828,6 +1976,29 @@ document.addEventListener('click', async ev => {
     case 'save-vxpage': { const p = S.vaccines.find(x => x.id === sheetCtx.vxpage); p.note = $('#vp_note').value.trim(); touch(p); closeSheet(); return commit(); }
     case 'del-vxpage': { const p = S.vaccines.find(x => x.id === sheetCtx.vxpage); p.deleted = true; touch(p); closeSheet(); commit(); return toast('Photo deleted'); }
     case 'copy-vax': return copyText(vaxListText(kid()));
+    case 'add-u': return uSheet(null, b.dataset.for);
+    case 'save-u': {
+      const u = readChips('u'), day = $('#u_date').value, noon = day ? new Date(day + 'T12:00').getTime() : NaN;
+      if (!u) return toast('Tap which checkup it was.');
+      if (!noon) return toast('Enter the date of the checkup.');
+      if (startOfDay(noon) > Date.now()) return toast('That date is in the future.');
+      const t = Math.min(noon, Date.now()), e = sheetCtx.uexam ? S.checkups.find(x => x.id === sheetCtx.uexam) : { id: uid(), childId: sheetCtx.childId, kind: 'exam' };
+      Object.assign(e, { u, t, by: $('#u_by').value.trim(), note: $('#u_note').value.trim() });
+      // Measurements from the checkup are kept with the other measurements, so Growth shows them too.
+      const vals = Object.fromEntries(MEAS.map(([k]) => { const v = $('#u_' + k).value; return [k, v === '' ? null : +v]; })), has = MEAS.some(([k]) => vals[k] != null);
+      let m = e.measId && S.measurements.find(x => x.id === e.measId && !x.deleted);
+      if (has) { if (!m) { m = { id: uid(), childId: e.childId }; S.measurements.push(m); e.measId = m.id; } Object.assign(m, vals, { t, note: uName(u) }); touch(m); }
+      else if (m) { m.deleted = true; touch(m); }
+      touch(e); if (!sheetCtx.uexam) S.checkups.push(e); closeSheet(); commit(); return toast('Checkup saved');
+    }
+    case 'del-u': { const e = S.checkups.find(x => x.id === sheetCtx.uexam); e.deleted = true; touch(e); closeSheet(); commit(); return toast(e.measId ? 'Deleted. Its measurements stay under Growth.' : 'Deleted'); }
+    case 'u-photo': return $('#uPage').click();
+    case 'save-upage': { const p = S.checkups.find(x => x.id === sheetCtx.upage); p.note = $('#up_note').value.trim(); touch(p); closeSheet(); return commit(); }
+    case 'del-upage': { const p = S.checkups.find(x => x.id === sheetCtx.upage); p.deleted = true; touch(p); closeSheet(); commit(); return toast('Photo deleted'); }
+    case 'cal-u': return calSheet([uEvent(kid(), U_PLAN.find(u => u.k === b.dataset.for))]);
+    case 'cal-vax': return calSheet([vaxEvent(kid(), VAX_PLAN.find(v => v.k === b.dataset.for))]);
+    case 'cal-next': return calSheet(nextEvents(kid()));
+    case 'cal-ics': saveIcs(sheetCtx.cal); closeSheet(); return toast('Calendar file saved. Open it to add the dates.');
     case 'save-growth': {
       const ctx = sheetCtx.growth, label = $('#g_label')?.value.trim();
       if (ctx.kind === 'milestone' && !ctx.key && !label) return toast('Write what happened first.');
@@ -1890,6 +2061,7 @@ document.addEventListener('change', ev => {
   if (t.id === 'clientId' || t.id === 'pickerKey') { S.settings[t.id] = t.value.trim(); persist(); }
   if (t.id === 'meName') { S.settings.me = t.value.trim(); persist(); }
   if (t.id === 'vaxPage' && t.files[0]) { const c = kid(); shrink(t.files[0], 1600).then(img => { S.vaccines.push(touch({ id: uid(), childId: c.id, kind: 'page', t: Date.now(), img, note: '' })); commit(); toast('Photo saved'); }).catch(e => toast(e.message)); t.value = ''; }
+  if (t.id === 'uPage' && t.files[0]) { const c = kid(); shrink(t.files[0], 1600).then(img => { S.checkups.push(touch({ id: uid(), childId: c.id, kind: 'page', t: Date.now(), img, note: '' })); commit(); toast('Photo saved'); }).catch(e => toast(e.message)); t.value = ''; }
   if (t.id === 'restoreFile' && t.files[0]) t.files[0].text().then(x => { mergeIn(JSON.parse(x)); commit(); toast('Backup restored'); }).catch(e => toast(e instanceof SyntaxError ? "That file isn't an Aura backup." : e.message));
 });
 function markTags() { const t = $('#f_symtext')?.value; document.querySelectorAll('#symTags [data-tag]').forEach(x => x.classList.toggle('on', hasTag(t, x.dataset.tag))); }
