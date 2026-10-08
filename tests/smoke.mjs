@@ -112,7 +112,7 @@ for (const theme of ['night', 'day']) {
   // Sick view tabs, Growth and More
   await page.click('[data-act="open-sick"]');
   for (const t of ['overview', 'chart', 'doctor']) { await page.click(`[data-sick="${t}"]`); if (await overflow()) fail(`${theme}: sick ${t} scrolls sideways`); }
-  for (const t of ['growth', 'more']) { await page.click(`.tabs [data-tab="${t}"]`); if (await overflow()) fail(`${theme}: ${t} scrolls sideways`); }
+  for (const t of ['growth', 'vax', 'more']) { await page.click(`.tabs [data-tab="${t}"]`); if (await overflow()) fail(`${theme}: ${t} scrolls sideways`); }
   // The illness's name, start and notes can be changed from the sick card on Today
   if (theme === 'day') {
     await page.click('.tabs [data-tab="today"]');
@@ -220,6 +220,66 @@ for (const theme of ['night', 'day']) {
   await page.waitForTimeout(300);
   const st = await getState(page);
   if (!st.entries.some(e => e.note === 'Grandma visited') || !st.children.some(c => c.name === 'Mia')) fail('backup file did not restore');
+  if (!st.vaccines?.some(v => v.kind === 'dose' && v.against.includes('6in1'))) fail('backup file did not restore vaccinations');
+  await page.close();
+}
+
+// Vaccinations: the schedule shows what is open, a dose from the book closes it, and book photos are kept
+{
+  const page = await newPage();
+  page.on('pageerror', e => fail(`vaccines: ${e.message}`));
+  await page.goto(url);
+  await page.waitForSelector('h1');
+  // The example child (2 years) has everything up to 15 months except the third meningococcus B dose
+  const line = () => page.locator('.vax-line').count();
+  if ((await line()) !== 1 || !(await page.innerText('.vax-line')).includes('Meningococcus B')) fail('vaccines: Today does not point to the open dose');
+  await page.click('.vax-line');
+  if (await page.isHidden('#view-vax')) fail('vaccines: Today line does not open the Vaccines tab');
+  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail('vaccines: tab scrolls sideways');
+  if ((await page.locator('.vx-row.late').count()) !== 1) fail('vaccines: expected exactly one dose past its usual age');
+  if ((await page.locator('.vx-row.done').count()) !== 5) fail(`vaccines: expected 5 finished vaccines, got ${await page.locator('.vx-row.done').count()}`);
+  // Not planned for us: the reminder goes away, and comes back when planned again
+  await page.click('[data-vxitem="menb"]');
+  await page.click('[data-act="vax-skip"]');
+  await page.click('.tabs [data-tab="today"]');
+  if ((await line()) !== 0) fail('vaccines: reminder shown for a vaccine marked not planned');
+  await page.click('.tabs [data-tab="vax"]');
+  await page.click('[data-vxitem="menb"]');
+  await page.click('[data-act="vax-skip"]');
+  // Adding the dose from the book closes it
+  await page.click('[data-vxitem="menb"]');
+  await page.click('#sheet [data-act="add-vax"]');
+  if ((await page.locator('.chips[data-k="against"] [data-v="menb"].on').count()) !== 1) fail('vaccines: dose sheet not set to the vaccine tapped');
+  await page.fill('#v_name', 'Bexsero'); await page.fill('#v_batch', 'XY123');
+  await page.click('[data-act="save-vax"]');
+  if ((await page.locator('.vx-row.late').count()) !== 0) fail('vaccines: dose did not close the open vaccine');
+  // A future date is refused
+  await page.click('[data-act="add-vax"]');
+  await page.fill('#v_date', '2999-01-01');
+  await page.click('.chips[data-k="against"] [data-v="flu"]');
+  await page.click('[data-act="save-vax"]');
+  if (await page.isHidden('#scrim')) fail('vaccines: a future date was saved');
+  await page.click('[data-act="close"]');
+  // A photo of a page of the book
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+  await page.setInputFiles('#vaxPage', { name: 'page.png', mimeType: 'image/png', buffer: png });
+  await page.waitForSelector('.book [data-vxpage]');
+  await reload(page); await page.waitForSelector('h1');
+  const st = await getState(page);
+  const dose = st.vaccines.find(v => v.batch === 'XY123');
+  if (!dose || !dose.updatedAt || dose.against.join() !== 'menb' || dose.name !== 'Bexsero') fail('vaccines: dose not saved');
+  if (!st.vaccines.some(v => v.kind === 'page' && v.img?.startsWith('data:image/') && v.updatedAt)) fail('vaccines: book photo not saved');
+  if (st.vaccines.some(v => v.against?.includes('flu'))) fail('vaccines: refused dose was saved');
+  if ((await line()) !== 0) fail('vaccines: Today still points to a recorded dose');
+  // The doctor summary mentions a vaccination given during the illness
+  await page.click('[data-act="open-sick"]');
+  await page.click('[data-sick="doctor"]');
+  if (!(await page.innerText('.facts')).includes('Vaccinated')) fail('vaccines: doctor summary does not mention the recent vaccination');
+  // Without a schedule only the records show
+  await page.click('.tabs [data-tab="vax"]');
+  await page.click('[data-vaxplan="none"]');
+  if ((await page.locator('.vx-row').count()) !== 0) fail('vaccines: schedule shown with no schedule chosen');
+  await page.click('.tabs [data-tab="today"]');
   await page.close();
 }
 
@@ -307,6 +367,7 @@ for (const theme of ['night', 'day']) {
   if (drive.patches !== 2) fail(`sync: expected a second write after the clash, got ${drive.patches}`);
   if (!drive.uploads.some(b => b.includes('aura-backup-'))) fail('sync: no backup saved before overwriting');
   if (!drive.queries.some(q => q.includes("name='backups'") && q.includes("'logdir' in parents"))) fail('sync: backups not kept next to the log (so a moved or renamed folder would lose them)');
+  if (!drive.file.vaccines?.some(v => v.kind === 'dose')) fail('sync: vaccinations not written to Drive');
   if (drive.file.future?.[0] !== 'kept') fail('sync: a part of the Drive file this version does not know was dropped');
   // With nothing changed on either side, a sync only asks Drive for the version number and downloads nothing
   let downloads = drive.downloads, patches = drive.patches;
