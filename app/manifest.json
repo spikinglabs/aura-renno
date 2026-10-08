@@ -5,5 +5,6 @@
   "display": "standalone",
   "background_color": "#1F1A17",
   "theme_color": "#1F1A17",
-  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }],
+  "shortcuts": [{ "name": "Emergency card", "short_name": "Emergency card", "description": "Allergies, doctor and who to call", "url": "./?open=card", "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }] }]
 }
