@@ -343,13 +343,25 @@ for (const theme of ['night', 'day']) {
   const page = await browser.newPage({ viewport: { width: 375, height: 800 } });
   page.on('pageerror', e => fail(`recalls: ${e.message}`));
   const feed = [
-    { id: 'https://example.org/r1', title: 'HiPP Bio Karotten mit Kartoffeln 190 g', url: 'https://example.org/r1', publish_datetime: '2026-09-20T12:00:00+02:00', country_sold_in: 'DE', source: 'Lebensmittelwarnung.de', reason: { en: 'Foreign bodies', de: 'Fremdkörper' }, company: 'HiPP GmbH, Pfaffenhofen', scraped_datetime: new Date().toISOString() },
-    { id: 'https://example.org/r2', title: 'Magic Sand', url: 'https://example.org/r2', publish_datetime: '2026-09-01T12:00:00Z', country_sold_in: 'US', source: 'FDA', reason: 'Lead', company: 'Toys Inc', scraped_datetime: new Date().toISOString() },
+    { id: 'https://example.org/r1', title: 'HiPP Bio Karotten mit Kartoffeln 190 g', url: 'https://example.org/r1', publish_datetime: new Date(Date.now() - 2 * 864e5).toISOString(), country_sold_in: 'DE', source: 'Lebensmittelwarnung.de', reason: { en: 'Foreign bodies', de: 'Fremdkörper' }, company: 'HiPP GmbH, Pfaffenhofen', scraped_datetime: new Date().toISOString() },
+    { id: 'https://example.org/r2', title: 'Magic Sand', url: 'https://example.org/r2', publish_datetime: new Date(Date.now() - 5 * 864e5).toISOString(), country_sold_in: 'US', source: 'FDA', reason: 'Lead', company: 'Toys Inc', scraped_datetime: new Date().toISOString() },
   ];
   let calls = 0;
   await page.route('**/processed.json', r => { calls++; r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(feed) }); });
   await page.goto(url);
   await page.waitForSelector('h1');
+  // A quiet line on Today opens the newest recalls; once seen, the line goes away
+  await page.waitForSelector('.recall-line');
+  if (!(await page.innerText('.recall-line')).startsWith('2 new')) fail('recalls: Today line does not count 2 new');
+  await page.click('.recall-line');
+  if ((await page.locator('#sheet .recall-row .new').count()) !== 2) fail('recalls: feed does not mark new recalls');
+  await page.click('#sheet [data-rcountry="US"]');
+  if ((await page.locator('#sheet .recall-row').count()) !== 1 || (await page.locator('#sheet .recall-row .new').count()) !== 1) fail('recalls: feed country filter');
+  await page.click('#sheet [data-rcountry="all"]');
+  await page.click('#sheet [data-act="close"]');
+  if ((await page.locator('.recall-line').count()) !== 0) fail('recalls: Today line still shown after opening the feed');
+  await page.reload(); await page.waitForSelector('h1');
+  if ((await page.locator('.recall-line').count()) !== 0) fail('recalls: Today line back after reload');
   await page.click('.tabs [data-tab="more"]');
   await page.waitForSelector('#recalls .recall-row');
   if ((await page.locator('#recalls .recall-row').count()) !== 2) fail('recalls: list not shown');

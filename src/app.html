@@ -75,6 +75,9 @@ a.btn { color: inherit; text-decoration: none; display: inline-block }
 .recall-row:first-of-type { border-top: 0 }
 .recall-row a { color: var(--accent-ink); font-size: .86rem; align-self: flex-start }
 .recall-row .hit { color: var(--alert); font-weight: 700 }
+.recall-row .new { color: var(--accent-ink); font-weight: 700; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em }
+.recall-line { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: .86rem; font-weight: 600 }
+.recall-line::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none }
 .alerts { border-radius: var(--r); padding: 12px 14px; background: var(--card); box-shadow: inset 0 0 0 1.5px var(--wait) }
 .alerts h3 { color: var(--wait); font-size: .98rem }
 .alerts ul { margin: 6px 0 0; padding-left: 20px } .alerts li { margin: 3px 0 }
@@ -599,6 +602,7 @@ function renderToday() {
     <div class="row between"><h3>Log</h3><button class="btn sm" data-act="track-sheet">What to track</button></div>
     <div class="quick">${quick.map(k => `<button class="qb" data-add="${k}">${icon(k)}${TYPES[k].label}</button>`).join('')}</div>
     ${ep ? '' : `<button class="linkish" data-act="new-episode">${esc(c.name)} is sick? Start sick mode</button>`}
+    ${recallFeedLine()}
     <div>${timelineHtml(es.filter(e => shownType(e.type)), showDays)}</div>`;
 }
 function timelineHtml(es, days) {
@@ -1379,6 +1383,8 @@ function recallMatch(r, prods = live(S.products)) {
 }
 const inEnglish = v => !v ? '' : typeof v === 'string' ? v : String(v.en || Object.values(v)[0] || '');
 const recallList = () => { const c = S.settings.recallCountry || 'all'; return (S.recalls?.items || []).filter(r => c === 'all' || r.country === c); };
+// New in the feed: recalls of the last 30 days the parent hasn't seen in the list yet (ids kept on this phone only).
+const recallNew = () => { const seen = new Set(S.recalls?.feedSeen || []), from = Date.now() - 30 * DAY; return recallList().filter(r => r.date >= from && !seen.has(r.id)); };
 const recallAlerts = () => { const seen = new Set(S.recalls?.seen || []); return recallList().map(r => ({ r, p: recallMatch(r) })).filter(x => x.p && !seen.has(x.r.id)); };
 // Checks for a new list at most every 12 hours (every hour after a failure); the last list stays usable offline.
 async function refreshRecalls(force) {
@@ -1392,7 +1398,7 @@ async function refreshRecalls(force) {
       date: Date.parse(x.publish_datetime) || 0, country: String(x.country_sold_in || ''), company: String(x.company || ''), reason: inEnglish(x.reason), source: String(x.source || '') }));
     const scraped = Math.max(0, ...data.map(x => Date.parse(x?.scraped_datetime) || 0));
     const ids = new Set(items.map(x => x.id));
-    S.recalls = { at: now, tried: now, items, scraped, seen: (R.seen || []).filter(id => ids.has(id)), error: '' };
+    S.recalls = { at: now, tried: now, items, scraped, seen: (R.seen || []).filter(id => ids.has(id)), feedSeen: (R.feedSeen || []).filter(id => ids.has(id)), error: '' };
   } catch (e) {
     S.recalls = { ...R, tried: now, error: e instanceof TypeError ? "couldn't reach the recall list" : e.message };
   }
@@ -1400,17 +1406,34 @@ async function refreshRecalls(force) {
 }
 const countryName = c => (RECALL_COUNTRIES.find(([k]) => k === c) || [c, c])[1];
 const recallBanner = () => recallAlerts().slice(0, 3).map(({ r, p }) => `<div class="banner recall-due"><p><b>Recall: ${esc(r.title)}</b><br><span class="small">This may be something you use (“${esc(p.name)}” on your list).${r.reason ? ' Reason: ' + esc(r.reason) + '.' : ''} Check the details before using it again.</span></p>${r.url ? `<a class="btn primary sm" href="${esc(r.url)}" target="_blank" rel="noopener">Details</a>` : ''}<button class="btn ghost sm" data-seen="${esc(r.id)}">Seen</button></div>`).join('');
+const recallFeedLine = () => { const n = recallNew().length; return n ? `<button class="linkish recall-line" data-act="recall-feed">${n} new product recall${n > 1 ? 's' : ''} · see the list</button>` : ''; };
+const recallCountryChips = () => `<div class="chips">${RECALL_COUNTRIES.map(([k, l]) => `<button data-rcountry="${k}" class="${(S.settings.recallCountry || 'all') === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+function recallRow(r, prods = live(S.products), isNew = false) {
+  const m = recallMatch(r, prods);
+  return `<div class="recall-row">${isNew ? '<span class="new">New</span>' : ''}<b>${esc(r.title)}</b><span class="small muted">${r.date ? fmtDay(r.date) : ''}${r.country ? ' · ' + esc(countryName(r.country)) : ''}${r.company ? ' · ' + esc(r.company.split(',')[0]) : ''}${r.reason ? ' · ' + esc(r.reason) : ''}</span>${m ? `<span class="small hit">May match “${esc(m.name)}” on your list</span>` : ''}${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">Details at ${esc(r.source || 'the source')}</a>` : ''}</div>`;
+}
+// The feed: the newest recalls in a sheet, opened from the quiet line on Today. Opening it marks them as seen.
+function recallFeedSheet() {
+  const fresh = sheetCtx?.fresh || new Set(recallNew().map(r => r.id)), list = recallList().sort((a, b) => b.date - a.date);
+  openSheet(`<div class="hd"><h2>Product recalls</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
+    ${recallCountryChips()}
+    <div>${list.slice(0, recallsShown).map(r => recallRow(r, undefined, fresh.has(r.id))).join('') || '<p class="small muted" style="margin:0">No recalls in the list for this country.</p>'}</div>
+    ${list.length > recallsShown ? `<div><button class="btn sm ghost" data-act="recalls-more">Show ${Math.min(10, list.length - recallsShown)} more</button></div>` : ''}
+    <p class="small muted" style="margin:0">Add the brands you use under More → Product recalls to get a warning when one is recalled.</p>`, { feed: true, fresh });
+  if (S.recalls) { S.recalls.feedSeen = [...new Set([...(S.recalls.feedSeen || []), ...fresh])]; persist(); }
+  if (tab === 'today') renderToday(); // the "new recalls" line goes away behind the sheet
+}
 function recallCard() {
-  const R = S.recalls || {}, list = recallList().sort((a, b) => b.date - a.date), prods = live(S.products), cc = S.settings.recallCountry || 'all';
-  const row = r => { const m = recallMatch(r, prods); return `<div class="recall-row"><b>${esc(r.title)}</b><span class="small muted">${r.date ? fmtDay(r.date) : ''}${r.country ? ' · ' + esc(countryName(r.country)) : ''}${r.company ? ' · ' + esc(r.company.split(',')[0]) : ''}${r.reason ? ' · ' + esc(r.reason) : ''}</span>${m ? `<span class="small hit">May match “${esc(m.name)}” on your list</span>` : ''}${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">Details at ${esc(r.source || 'the source')}</a>` : ''}</div>`; };
+  const R = S.recalls || {}, list = recallList().sort((a, b) => b.date - a.date), prods = live(S.products);
+  const row = r => recallRow(r, prods);
   const old = R.scraped && Date.now() - R.scraped > 14 * DAY ? ` The list itself was last updated ${fmtDay(R.scraped)}, so newer recalls may be missing.` : '';
   const status = recallLoading ? 'Checking for recalls…' : R.at ? `Checked ${ago(R.at)}.${old}${R.error ? ' Last check failed: ' + esc(R.error) + '.' : ''}` : R.error ? `Could not load recalls: ${esc(R.error)}.` : 'Not checked yet.';
   return `<div class="card set" id="recalls"><h2>Product recalls</h2>
-      <p class="small muted" style="margin:0">Aura checks the public list from the <a href="${RECALL_SITE}" target="_blank" rel="noopener" style="color:var(--accent-ink)">Recall Tracker</a> (baby and children's products, from Lebensmittelwarnung.de and the US FDA). Add the brands and products you use, and Today shows a warning when a recall names one of them. Your list syncs with your partner and is never sent anywhere else.</p>
+      <p class="small muted" style="margin:0">Aura checks the public list from the <a href="${RECALL_SITE}" target="_blank" rel="noopener" style="color:var(--accent-ink)">Recall Tracker</a> (baby and children's products, from Lebensmittelwarnung.de, the US FDA and the US CPSC). Add the brands and products you use, and Today shows a warning when a recall names one of them. Your list syncs with your partner and is never sent anywhere else.</p>
       <div class="field"><span>Things we use</span>
       ${prods.map(p => `<div class="list-row"><span>${esc(p.name)}</span><button class="btn ghost danger" data-delprod="${p.id}" aria-label="Remove ${esc(p.name)}">✕</button></div>`).join('') || '<p class="small muted" style="margin:0">Nothing listed yet.</p>'}
       <div class="row"><input id="newProd" placeholder="Brand or product, e.g. Hipp" style="flex:1" autocomplete="off"><button class="btn sm" data-act="add-prod">Add</button></div></div>
-      <div class="chips">${RECALL_COUNTRIES.map(([k, l]) => `<button data-rcountry="${k}" class="${cc === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+      ${recallCountryChips()}
       <div>${list.slice(0, recallsShown).map(row).join('') || (R.at ? '<p class="small muted" style="margin:0">No recalls in the list for this country.</p>' : '')}</div>
       ${list.length > recallsShown ? `<div><button class="btn sm ghost" data-act="recalls-more">Show ${Math.min(10, list.length - recallsShown)} more</button></div>` : ''}
       <div class="row between"><p class="small muted" style="margin:0;flex:1">${status}</p><button class="btn sm" data-act="recalls-check" ${recallLoading ? 'disabled' : ''}>Check now</button></div></div>`;
@@ -1458,7 +1481,7 @@ document.addEventListener('click', async ev => {
     if (b.dataset.unit) { S.settings.unit = b.dataset.unit; return commit(); }
     if (b.dataset.aikind) { S.settings.aiKind = b.dataset.aikind; S.settings.aiModel = ''; persist(); return renderMore(); }
     if (b.dataset.aibase) { S.settings.aiBase = b.dataset.aibase; persist(); return renderMore(); }
-    if (b.dataset.rcountry) { S.settings.recallCountry = b.dataset.rcountry; recallsShown = 5; persist(); return renderMore(); }
+    if (b.dataset.rcountry) { S.settings.recallCountry = b.dataset.rcountry; recallsShown = 5; persist(); return sheetCtx?.feed ? recallFeedSheet() : renderMore(); }
     if (b.dataset.themeSet) { S.settings.theme = b.dataset.themeSet; return commit(); }
     if (box.hasAttribute('data-multi')) b.classList.toggle('on');
     else { const was = b.classList.contains('on'); box.querySelectorAll('button').forEach(x => x.classList.remove('on')); if (!was || box.dataset.k === 'kind') b.classList.add('on'); const c = box.querySelector('[data-custom]'); if (c) c.value = ''; }
@@ -1548,7 +1571,8 @@ document.addEventListener('click', async ev => {
     case 'del-meas': { const m = S.measurements.find(x => x.id === sheetCtx.meas); m.deleted = true; touch(m); closeSheet(); commit(); return toast('Deleted'); }
     case 'add-prod': { const n = $('#newProd').value.trim(); if (!n) return toast('Type a brand or product first.'); S.products.push(touch({ id: uid(), name: n })); commit();
       const hits = recallList().filter(r => recallMatch(r, [{ name: n }])).length; return toast(hits ? `${hits} recall${hits > 1 ? 's' : ''} in the list may match. See Today.` : 'Added. No recall in the list matches it now.'); }
-    case 'recalls-more': recallsShown += 10; return renderMore();
+    case 'recalls-more': recallsShown += 10; return sheetCtx?.feed ? recallFeedSheet() : renderMore();
+    case 'recall-feed': recallsShown = 10; return recallFeedSheet();
     case 'recalls-check': return refreshRecalls(true);
     case 'add-med': { const n = $('#newMed').value.trim(); if (!n) return; S.meds.push(touch({ id: uid(), name: n, gapH: null })); return commit(); }
     case 'ai-parse': b.disabled = true; await aiParse(); b.disabled = false; return;
