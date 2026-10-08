@@ -22,7 +22,7 @@ const addPage = async (page, sel, files) => { await Promise.all([page.waitForEve
 // Pages get an empty recall list unless a test answers with its own (the newest route wins).
 const newPage = async () => { const page = await browser.newPage({ viewport: { width: 375, height: 800 } }); await page.route('**/processed.json', r => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: '[]' })); return page; };
 // Vaccinations and Checkups are opened from the Documents tab.
-const openTab = async (page, t) => { if (t === 'vax' || t === 'checkups') { await page.click('.tabs [data-tab="docs"]'); await page.click(`#view-docs [data-tab="${t}"]`); } else await page.click(`.tabs [data-tab="${t}"]`); };
+const openTab = async (page, t) => { if (['vax', 'checkups', 'dental'].includes(t)) { await page.click('.tabs [data-tab="docs"]'); await page.click(`#view-docs [data-tab="${t}"]`); } else await page.click(`.tabs [data-tab="${t}"]`); };
 
 for (const theme of ['night', 'day']) {
   const page = await newPage();
@@ -118,7 +118,7 @@ for (const theme of ['night', 'day']) {
   // Sick view tabs, Growth and More
   await page.click('[data-act="open-sick"]');
   for (const t of ['overview', 'chart', 'doctor']) { await page.click(`[data-sick="${t}"]`); if (await overflow()) fail(`${theme}: sick ${t} scrolls sideways`); }
-  for (const t of ['growth', 'docs', 'vax', 'checkups', 'more']) { await openTab(page, t); if (await overflow()) fail(`${theme}: ${t} scrolls sideways`); }
+  for (const t of ['growth', 'docs', 'vax', 'checkups', 'dental', 'more']) { await openTab(page, t); if (await overflow()) fail(`${theme}: ${t} scrolls sideways`); }
   // The illness's name, start and notes can be changed from the sick card on Today
   if (theme === 'day') {
     await page.click('.tabs [data-tab="today"]');
@@ -316,11 +316,11 @@ for (const theme of ['night', 'day']) {
   let ics = await icsOf('[data-act="cal-ics"]');
   if ((ics.match(/BEGIN:VEVENT/g) || []).length !== 1 || !/DTSTART;VALUE=DATE:\d{8}/.test(ics) || !ics.includes('SUMMARY:U7a checkup · Mia') || !ics.includes('\r\n')) fail('checkups: calendar file for one checkup is wrong');
   if (ics.split('\r\n').some(l => l.length > 75)) fail('checkups: calendar file has lines that are too long');
-  // The next dates together: the U7a and the open meningococcus B dose
+  // The next dates together: the U7a, the Z4 dental checkup and the open meningococcus B dose
   await page.click('[data-act="cal-next"]');
   if ((await page.locator('[data-gcal]').count()) !== 0) fail('checkups: Google link offered for several dates');
   ics = await icsOf('[data-act="cal-ics"]');
-  if ((ics.match(/BEGIN:VEVENT/g) || []).length !== 2 || !ics.includes('Meningococcus B vaccination')) fail('checkups: calendar file of the next dates is wrong');
+  if ((ics.match(/BEGIN:VEVENT/g) || []).length !== 3 || !ics.includes('Meningococcus B vaccination') || !ics.includes('SUMMARY:Z4 dental checkup · Mia')) fail('checkups: calendar file of the next dates is wrong');
   // A vaccination due later can go into the calendar too
   await openTab(page, 'vax');
   await page.click('[data-vxitem="menb"]');
@@ -347,7 +347,7 @@ for (const theme of ['night', 'day']) {
   await page.click('[data-act="save-u"]');
   if ((await page.locator('[data-uitem="U5"].done').count()) !== 1) fail('checkups: recording the U5 did not close it');
   await page.click('.tabs [data-tab="today"]');
-  if ((await page.locator('.vax-line', { hasText: 'checkup' }).count()) !== 0) fail('checkups: Today still shows the recorded U5');
+  if ((await page.locator('.vax-line', { hasText: 'U5' }).count()) !== 0) fail('checkups: Today still shows the recorded U5');
   let st = await getState(page);
   const ex = st.checkups.find(x => x.childId === 'kid-b' && x.u === 'U5'), m = ex && st.measurements.find(x => x.id === ex.measId);
   if (!ex || ex.by !== 'Dr. Weber' || ex.note !== 'All fine' || !ex.updatedAt) fail('checkups: checkup not saved');
@@ -373,6 +373,60 @@ for (const theme of ['night', 'day']) {
   await page.close();
 }
 
+// Dental checkups (Z1 to Z6): the schedule, the link with the teeth on Growth, a visit that adds teeth, the dental pass
+{
+  const page = await newPage();
+  page.on('pageerror', e => fail(`dental: ${e.message}`));
+  await page.goto(url);
+  await page.waitForSelector('h1');
+  if ((await page.locator('.vax-line', { hasText: 'dental' }).count()) !== 0) fail('dental: Today shows a dental checkup for the example child, whose next one is months away');
+  // Growth links to the dental checkups, and the Documents tab lists them
+  await page.click('.tabs [data-tab="growth"]');
+  await page.click('#view-growth [data-tab="dental"]');
+  if (await page.isHidden('#view-dental')) fail('dental: the teeth on Growth do not open the dental checkups');
+  if ((await page.locator('.tabs [data-tab="docs"][aria-selected="true"]').count()) !== 1) fail('dental: Documents tab not lit');
+  if ((await page.locator('[data-zitem].done').count()) !== 3 || (await page.locator('[data-zitem="Z4"].later').count()) !== 1) fail('dental: expected Z1 to Z3 done and Z4 later');
+  if ((await page.locator('#view-dental .tooth.in').count()) !== 16) fail('dental: tooth map not shown with the checkups');
+  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail('dental: screen scrolls sideways');
+  await page.click('[data-zitem="Z4"]');
+  await page.click('#sheet [data-act="cal-z"]');
+  if (!new URL(await page.getAttribute('[data-gcal]', 'href')).searchParams.get('text').startsWith('Z4 dental checkup · Mia')) fail('dental: Google Calendar link is wrong');
+  await page.click('[data-act="close"]');
+  await page.click('.tabs [data-tab="docs"]');
+  if (!(await page.innerText('#view-docs [data-tab="dental"]')).includes('Z3')) fail('dental: Documents row lacks the last checkup');
+  // A baby of seven months with two teeth: the Z1 is due, and the visit adds a tooth the dentist saw
+  const dob = new Date(Date.now() - 7.2 * 30.44 * 864e5).toISOString().slice(0, 10);
+  { const st = await getState(page); st.example = false; st.children.push({ id: 'kid-z', name: 'Ben', dob, updatedAt: Date.now() }); st.child = 'kid-z';
+    st.growth.push({ id: 't1', childId: 'kid-z', kind: 'tooth', key: 'L-A', t: Date.now() - 20 * 864e5, note: '', updatedAt: 1 }); await setState(page, st); }
+  await reload(page); await page.waitForSelector('h1');
+  const zl = page.locator('.vax-line', { hasText: 'Z1 dental checkup due' });
+  if ((await zl.count()) !== 1) fail('dental: Today does not show the due Z1');
+  await zl.click();
+  await page.click('[data-zitem="Z1"]');
+  await page.click('#sheet [data-act="add-z"]');
+  if ((await page.locator('.chips[data-k="z"] [data-v="Z1"].on').count()) !== 1) fail('dental: sheet not set to the checkup tapped');
+  if ((await page.locator('#sheet .tooth.in[disabled]').count()) !== 1) fail('dental: tooth already in not shown in the visit');
+  await page.click('#sheet [data-zt="L-B"]');
+  await page.fill('#z_by', 'Dr. Zahn'); await page.check('#z_fl');
+  await page.click('[data-act="save-z"]');
+  if ((await page.locator('[data-zitem="Z1"].done').count()) !== 1) fail('dental: recording the Z1 did not close it');
+  const st = await getState(page), ex = st.dental.find(x => x.childId === 'kid-z' && x.z === 'Z1');
+  if (!ex || ex.by !== 'Dr. Zahn' || !ex.fluoride || ex.teeth !== 2 || !ex.updatedAt) fail('dental: visit not saved');
+  if (!st.growth.some(g => g.childId === 'kid-z' && g.kind === 'tooth' && g.key === 'L-B' && !g.deleted)) fail('dental: tooth seen at the visit not added under Growth');
+  await page.click('.tabs [data-tab="today"]');
+  if ((await page.locator('.vax-line', { hasText: 'dental' }).count()) !== 0) fail('dental: Today still shows the recorded Z1');
+  // A page of the dental pass
+  await openTab(page, 'dental');
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+  await addPage(page, '#view-dental [data-act="doc-add"] >> nth=0', { name: 'page.png', mimeType: 'image/png', buffer: png });
+  await page.click('#sheet [data-act="close"]');
+  await page.waitForSelector('#view-dental .book [data-pg]');
+  if (!(await getState(page)).pages.some(p => p.docId === 'z-kid-z')) fail('dental: page of the dental pass not saved');
+  await page.click('[data-zplan="none"]');
+  if ((await page.locator('[data-zitem]').count()) !== 0) fail('dental: schedule shown with no schedule chosen');
+  await page.close();
+}
+
 // Emergency card: shown from Today, in English or German, edited, merged when two phones each started one, and in the doctor summary
 {
   const page = await newPage();
@@ -380,7 +434,7 @@ for (const theme of ['night', 'day']) {
   await page.goto(url);
   await page.waitForSelector('h1');
   // The card button sits next to the child at the top of every main screen and the sick view
-  for (const t of ['growth', 'docs', 'vax', 'checkups', 'more']) { await openTab(page, t); if ((await page.locator(`#view-${t} .head .sos`).count()) !== 1) fail(`card: no card button on ${t}`); }
+  for (const t of ['growth', 'docs', 'vax', 'checkups', 'dental', 'more']) { await openTab(page, t); if ((await page.locator(`#view-${t} .head .sos`).count()) !== 1) fail(`card: no card button on ${t}`); }
   await page.click('.tabs [data-tab="today"]');
   await page.click('[data-act="open-sick"]');
   if ((await page.locator('#view-sick .head .sos').count()) !== 1) fail('card: no card button in the sick view');
