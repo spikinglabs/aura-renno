@@ -17,6 +17,8 @@ const setState = async (page, s) => { for (let i = 0; i < 50 && !(await getState
 // only completes after the earlier ones, so a reload can't cut off a save that is still being written.
 const settle = page => page.evaluate(`(async () => { ${IDB} const d = await idb(); await new Promise(res => { const tx = d.transaction('kv', 'readwrite'); tx.objectStore('kv').get('state'); tx.oncomplete = res; }); d.close(); })()`);
 const reload = async page => { await settle(page); await page.reload(); };
+// Adds photos as pages of a document through the file picker; the new page then opens.
+const addPage = async (page, sel, files) => { await Promise.all([page.waitForEvent('filechooser').then(fc => fc.setFiles(files)), page.click(sel)]); await page.waitForSelector('#pageImg'); };
 // Pages get an empty recall list unless a test answers with its own (the newest route wins).
 const newPage = async () => { const page = await browser.newPage({ viewport: { width: 375, height: 800 } }); await page.route('**/processed.json', r => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: '[]' })); return page; };
 
@@ -270,13 +272,14 @@ for (const theme of ['night', 'day']) {
   if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail('vaccines: tab scrolls sideways with a travel vaccine');
   // A photo of a page of the book
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
-  await page.setInputFiles('#vaxPage', { name: 'page.png', mimeType: 'image/png', buffer: png });
-  await page.waitForSelector('.book [data-vxpage]');
+  await addPage(page, '#view-vax [data-act="doc-add"] >> nth=0', { name: 'page.png', mimeType: 'image/png', buffer: png });
+  await page.click('#sheet [data-act="close"]');
+  await page.waitForSelector('#view-vax .book [data-pg]');
   await reload(page); await page.waitForSelector('h1');
   const st = await getState(page);
   const dose = st.vaccines.find(v => v.batch === 'XY123');
   if (!dose || !dose.updatedAt || dose.against.join() !== 'menb' || dose.name !== 'Bexsero') fail('vaccines: dose not saved');
-  if (!st.vaccines.some(v => v.kind === 'page' && v.img?.startsWith('data:image/') && v.updatedAt)) fail('vaccines: book photo not saved');
+  if (!st.pages.some(p => p.docId === 'vax-' + st.child && p.img?.startsWith('data:image/') && p.updatedAt) || !st.docs.some(d => d.id === 'vax-' + st.child && d.type === 'vax')) fail('vaccines: page of the book not saved');
   if (st.vaccines.some(v => v.against?.includes('flu'))) fail('vaccines: refused dose was saved');
   if ((await line()) !== 0) fail('vaccines: Today still points to a recorded dose');
   // The doctor summary mentions a vaccination given during the illness
@@ -356,10 +359,11 @@ for (const theme of ['night', 'day']) {
   if (!st.measurements.find(x => x.id === ex.measId)?.deleted) fail('checkups: cleared weight still kept');
   // A photo of a page of the U-Heft
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
-  await page.setInputFiles('#uPage', { name: 'page.png', mimeType: 'image/png', buffer: png });
-  await page.waitForSelector('.book [data-upage]');
+  await addPage(page, '#view-checkups [data-act="doc-add"] >> nth=0', { name: 'page.png', mimeType: 'image/png', buffer: png });
+  await page.click('#sheet [data-act="close"]');
+  await page.waitForSelector('#view-checkups .book [data-pg]');
   st = await getState(page);
-  if (!st.checkups.some(v => v.kind === 'page' && v.childId === 'kid-b' && v.img?.startsWith('data:image/'))) fail('checkups: U-Heft photo not saved');
+  if (!st.pages.some(p => p.docId === 'u-kid-b' && p.childId === 'kid-b' && p.img?.startsWith('data:image/'))) fail('checkups: page of the U-Heft not saved');
   if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail('checkups: tab scrolls sideways with records');
   // Without a schedule only the records show
   await page.click('[data-uplan="none"]');
@@ -495,7 +499,7 @@ for (const theme of ['night', 'day']) {
   await page.addInitScript(() => { window.google = { accounts: { oauth2: { initTokenClient: o => ({ requestAccessToken: () => o.callback({ access_token: 't', expires_in: 3600 }) }) } } }; });
   const other = (id, t) => ({ id, child: 'kid-ex', type: 'note', t, note: 'From the other phone', updatedAt: t });
   // "future" stands for a part added by a later version of the app without a format change; it must be kept.
-  const drive = { file: { app: 'aura', v: 2, children: [], episodes: [], entries: [other('o1', 1000)], meds: [], measurements: [], growth: [], future: ['kept'] }, patches: 0, race: true, uploads: [], queries: [], version: 1, downloads: 0 };
+  const drive = { file: { app: 'aura', v: 3, children: [], episodes: [], entries: [other('o1', 1000)], meds: [], measurements: [], growth: [], future: ['kept'] }, patches: 0, race: true, uploads: [], queries: [], version: 1, downloads: 0 };
   const setFile = f => { drive.file = f; drive.version++; }; // a change by someone else bumps Drive's version number
   await page.route('https://www.googleapis.com/**', async route => {
     const req = route.request(), u = new URL(req.url()), m = req.method();
@@ -516,8 +520,9 @@ for (const theme of ['night', 'day']) {
   await page.goto(url);
   await page.waitForSelector('h1');
   const st = await getState(page); st.example = false; st.settings.clientId = 'x-y.apps.googleusercontent.com'; st.drive = { fileId: 'f1' };
-  st.checkups.push({ id: 'up1', childId: 'kid-ex', kind: 'page', t: 1000, img: 'data:image/jpeg;base64,/9j/UHEFT', note: '', updatedAt: Date.now() });
-  st.vaccines.push({ id: 'vp1', childId: 'kid-ex', kind: 'page', t: 1000, img: 'data:image/jpeg;base64,/9j/BOOK', note: '', updatedAt: Date.now() });
+  st.docs.push({ id: 'd1', childId: 'kid-ex', type: 'other', title: 'Allergy pass', note: '', updatedAt: Date.now() });
+  st.pages.push({ id: 'vp1', docId: 'vax-kid-ex', childId: 'kid-ex', t: 1000, img: 'data:image/jpeg;base64,/9j/BOOK', note: '', order: 0, updatedAt: Date.now() });
+  st.pages.push({ id: 'dp1', docId: 'd1', childId: 'kid-ex', t: 1000, img: 'data:image/jpeg;base64,/9j/ALLERGY', note: '', order: 0, updatedAt: Date.now() });
   await setState(page, st); await reload(page); await page.waitForSelector('h1');
   await page.click('[data-act="sync-tap"]');
   await page.waitForSelector('.sync.ok');
@@ -529,8 +534,8 @@ for (const theme of ['night', 'day']) {
   if (!drive.queries.some(q => q.includes("name='backups'") && q.includes("'logdir' in parents"))) fail('sync: backups not kept next to the log (so a moved or renamed folder would lose them)');
   if (!drive.file.vaccines?.some(v => v.kind === 'dose')) fail('sync: vaccinations not written to Drive');
   if (!drive.file.emergency?.some(x => x.childId === 'kid-ex' && x.allergies)) fail('sync: emergency card not written to Drive');
-  if (!drive.file.vaccines?.some(v => v.id === 'vp1' && v.img === 'data:image/jpeg;base64,/9j/BOOK')) fail('sync: photo of the vaccination book not written to Drive');
-  if (!drive.file.checkups?.some(v => v.id === 'up1' && v.img === 'data:image/jpeg;base64,/9j/UHEFT')) fail('sync: photo of the U-Heft not written to Drive');
+  if (!drive.file.pages?.some(v => v.id === 'vp1' && v.img === 'data:image/jpeg;base64,/9j/BOOK')) fail('sync: page of the vaccination book not written to Drive');
+  if (!drive.file.pages?.some(v => v.id === 'dp1' && v.img === 'data:image/jpeg;base64,/9j/ALLERGY') || !drive.file.docs?.some(d => d.id === 'd1' && d.title === 'Allergy pass')) fail('sync: other document not written to Drive');
   if (!drive.file.checkups?.some(v => v.kind === 'exam' && v.u === 'U7')) fail('sync: checkups not written to Drive');
   if (drive.file.future?.[0] !== 'kept') fail('sync: a part of the Drive file this version does not know was dropped');
   // With nothing changed on either side, a sync only asks Drive for the version number and downloads nothing
@@ -548,12 +553,20 @@ for (const theme of ['night', 'day']) {
   await page.click('[data-act="sync-tap"]');
   await page.waitForSelector('.sync.err');
   if (drive.patches !== before || drive.file.v !== 99) fail('sync: a newer log in Drive was overwritten');
-  // An older log in Drive is upgraded, after a copy of it as it was is kept as aura-log-before-v2.json
+  // An older log in Drive is upgraded, after a copy of it as it was is kept as aura-log-before-v3.json
   setFile({ app: 'sick-day-log', v: 1, children: [], episodes: [], entries: [other('old1', 500)], meds: [], measurements: [] }); before = drive.uploads.length;
   await page.click('[data-act="sync-tap"]');
   await page.waitForSelector('.sync.ok');
-  if (!drive.uploads.slice(before).some(b => b.includes('aura-log-before-v2.json') && b.includes('sick-day-log'))) fail('sync: no copy kept before upgrading the Drive log');
-  if (drive.file.v !== 2 || !drive.file.entries.some(e => e.id === 'old1')) fail('sync: older Drive log not upgraded');
+  if (!drive.uploads.slice(before).some(b => b.includes('aura-log-before-v3.json') && b.includes('sick-day-log'))) fail('sync: no copy kept before upgrading the Drive log');
+  if (drive.file.v !== 3 || !drive.file.entries.some(e => e.id === 'old1')) fail('sync: older Drive log not upgraded');
+  // A v2 Drive log (written by a phone that is not updated yet) has its book photos moved into pages too
+  setFile({ ...drive.file, v: 2, vaccines: [...drive.file.vaccines, { id: 'old-pg', childId: 'kid-ex', kind: 'page', t: 1, img: 'data:image/jpeg;base64,/9j/OLD', note: 'p. 4', updatedAt: 7 }] });
+  await page.click('[data-act="sync-tap"]');
+  for (let i = 0; i < 50 && drive.file.v !== 3; i++) await page.waitForTimeout(100);
+  await page.waitForFunction(() => !document.body.innerText.includes('Syncing…'));
+  await page.waitForSelector('.sync.ok');
+  if (drive.file.v !== 3 || !drive.file.pages.some(p => p.id === 'old-pg' && p.docId === 'vax-kid-ex' && p.img.endsWith('OLD') && p.note === 'p. 4')) fail('sync: book photo in an older Drive log not moved into pages ');
+  if (!drive.file.vaccines.some(v => v.id === 'old-pg' && v.deleted && !v.img)) fail('sync: book photo in an older Drive log left in vaccinations');
   // A damaged Drive file is never overwritten
   setFile('not json'); before = drive.patches;
   await page.click('[data-act="sync-tap"]');
@@ -589,7 +602,7 @@ for (const theme of ['night', 'day']) {
   await page.reload(); // the database was just deleted on purpose, so nothing to wait for
   if (!(await page.locator('h1').first().innerText()).includes('Leo')) fail('migration: child not carried over');
   if ((await page.locator('.sick-card').count()) !== 1) fail('migration: open illness not shown as sick mode');
-  if ((await getState(page, 'before-v2'))?.app !== 'sick-day-log') fail('migration: no copy kept of the log before the upgrade');
+  if ((await getState(page, 'before-v3'))?.app !== 'sick-day-log') fail('migration: no copy kept of the log before the upgrade');
   await page.close();
 }
 
@@ -676,34 +689,32 @@ for (const theme of ['night', 'day']) {
   await page.close();
 }
 
-// Scan a page: the parent's own AI service reads photos of the vaccination book and U-Heft, nothing is saved until
-// checked, entries already recorded are left out, and the photo is kept only if asked
+// Documents: the vaccination book and U-Heft are kept page by page; with AI reading on, a page that is added or
+// replaced is read, and the entries not recorded yet are proposed (nothing is saved until checked). Any other paper
+// document can be kept the same way.
 {
   const page = await newPage();
-  page.on('pageerror', e => fail(`scan: ${e.message}`));
+  page.on('pageerror', e => fail(`documents: ${e.message}`));
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+  const red = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==', 'base64');
+  const file = (name, buffer = png) => ({ name, mimeType: 'image/png', buffer });
   await page.goto(url);
   await page.waitForSelector('h1');
-  // Without an AI service: no photos go anywhere, and adding by hand or keeping a photo still works
+  // Without an AI service pages are just kept, and the page says how to have them read
   await page.click('.tabs [data-tab="vax"]');
-  await page.click('#view-vax [data-act="scan"]');
-  if ((await page.locator('#scanFiles').count()) !== 0 || (await page.locator('[data-act="scan-setup"]').count()) !== 1) fail('scan: offered without an AI service');
-  // Choosing photos just keeps them as pages of the book
-  await Promise.all([page.waitForEvent('filechooser').then(fc => fc.setFiles([{ name: 'a.png', mimeType: 'image/png', buffer: png }, { name: 'b.png', mimeType: 'image/png', buffer: png }])), page.click('[data-act="scan-pick"]')]);
-  await page.waitForSelector('#view-vax .book [data-vxpage] >> nth=1');
-  if ((await page.locator('#view-vax .book .pg').allInnerTexts()).join() !== '1,2') fail('scan: pages not numbered in order');
-  await page.click('#view-vax [data-act="scan"]');
-  await page.click('[data-act="scan-hand"]');
-  if ((await page.locator('#v_date').count()) !== 1) fail('scan: Add by hand does not open the vaccination sheet');
-  await page.click('[data-act="close"]');
+  await addPage(page, '#view-vax [data-act="doc-add"] >> nth=0', [file('a.png'), file('b.png')]);
+  if ((await page.innerText('#sheet h2')) !== 'Page 1 of 2') fail(`documents: new page opens as ${await page.innerText('#sheet h2')}`);
+  if ((await page.locator('#sheet [data-act="doc-setup"]').count()) !== 1 || (await page.locator('#scanOk').count()) !== 0) fail('documents: reading offered without an AI service');
+  await page.click('#sheet [data-act="close"]');
+  if ((await page.locator('#view-vax .book .pg').allInnerTexts()).join() !== '1,2') fail('documents: pages not numbered in order');
 
   let st = await getState(page);
   const old = st.vaccines.find(v => v.kind === 'dose' && v.against.includes('mmr')), oldDay = new Date(old.t - new Date(old.t).getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
   Object.assign(st.settings, { aiKind: 'openai', aiBase: 'https://ai.example.com/v1', aiModel: 'vision-model', apiKey: 'k1' });
   await setState(page, st); await reload(page); await page.waitForSelector('h1');
-  let body = null;
+  let body = null, calls = 0;
   await page.route('https://ai.example.com/v1/chat/completions', async route => {
-    body = route.request().postDataJSON();
+    body = route.request().postDataJSON(); calls++;
     const vax = /vaccination record/.test(body.messages[0].content);
     const content = JSON.stringify(vax ? { doses: [
       { date: oldDay, against: ['mmr', 'var'], name: 'Priorix-Tetra', batch: 'AB1', by: 'Dr. Weber' },
@@ -715,87 +726,135 @@ for (const theme of ['night', 'day']) {
   });
   await page.click('.tabs [data-tab="vax"]');
   const doses = async () => (await getState(page)).vaccines.filter(v => v.kind === 'dose' && !v.deleted).length, before = await doses();
-  await page.click('#view-vax [data-act="scan"]');
-  // The first scan asks once where the photos go
-  if (await page.isChecked('#scanOk')) fail('scan: photo sending allowed before asking');
-  await page.click('[data-act="scan-pick"]');
-  if (body) fail('scan: photo sent without agreeing');
+  // A new page: kept at once, and read only after the parent agrees once
+  await addPage(page, '#view-vax [data-act="doc-add"] >> nth=0', file('c.png'));
+  if ((await page.innerText('#sheet h2')) !== 'Page 3 of 3') fail('documents: new page not added at the end');
+  if (calls) fail('documents: photo sent before agreeing');
+  await page.click('[data-act="page-read"]');
+  if (calls) fail('documents: photo sent without ticking the box');
   await page.check('#scanOk');
-  await Promise.all([page.waitForEvent('filechooser').then(fc => fc.setFiles({ name: 'page.png', mimeType: 'image/png', buffer: png })), page.click('[data-act="scan-pick"]')]);
+  await page.click('[data-act="page-read"]');
   await page.waitForSelector('#scanOut .scan-item');
   const user = body.messages[1].content;
-  if (!Array.isArray(user) || !user.some(p => p.type === 'image_url' && p.image_url.url.startsWith('data:image/'))) fail('scan: photo not sent to the AI service');
-  if (JSON.stringify(body).includes('Mia') || JSON.stringify(body).includes('20' + '24-')) fail('scan: name or birth date sent with the photo');
-  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail('scan: review scrolls sideways');
-  if ((await page.locator('#scanOut .scan-item').count()) !== 3) fail(`scan: expected 3 new doses to check, got ${await page.locator('#scanOut .scan-item').count()}`);
-  if (!(await page.innerText('#scanOut')).includes('Already recorded')) fail('scan: already recorded dose not left out');
-  if ((await page.locator('#scanOut [data-si]:checked').count()) !== 1) fail('scan: lines without a readable date are ticked');
-  if ((await doses()) !== before) fail('scan: saved before checking');
-  // A line without a date can't be added until it has one
+  if (!Array.isArray(user) || user.filter(p => p.type === 'image_url' && p.image_url.url.startsWith('data:image/')).length !== 1) fail('documents: the new page was not the photo sent');
+  if (JSON.stringify(body).includes('Mia') || JSON.stringify(body).includes('20' + '24-')) fail('documents: name or birth date sent with the photo');
+  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail('documents: page sheet scrolls sideways');
+  if ((await page.locator('#scanOut .scan-item').count()) !== 3) fail(`documents: expected 3 new doses to check, got ${await page.locator('#scanOut .scan-item').count()}`);
+  if (!(await page.innerText('#scanOut')).includes('Already recorded')) fail('documents: already recorded dose not left out');
+  if ((await page.locator('#scanOut [data-si]:checked').count()) !== 1) fail('documents: lines without a readable date are ticked');
+  if ((await doses()) !== before) fail('documents: saved before checking');
   await page.check('#scanOut [data-si="1"]');
   await page.click('[data-act="scan-add"]');
-  if (await page.isHidden('#scrim')) fail('scan: added a dose without a date');
+  if ((await doses()) !== before) fail('documents: added a dose without a date');
   await page.fill('#scanOut [data-sd="1"]', '2025-11-03');
-  await page.uncheck('#scanKeep');
   await page.click('[data-act="scan-add"]');
-  await page.waitForSelector('#scrim', { state: 'hidden' });
+  await page.waitForFunction(() => !document.querySelector('#scanOut .scan-item'));
   st = await getState(page);
   const tbe = st.vaccines.find(v => v.batch === 'K42'), flu = st.vaccines.find(v => v.name === 'Fluenz');
-  if (!tbe || tbe.against.join() !== 'fsme' || tbe.by !== 'Praxis Sonne' || !tbe.updatedAt) fail('scan: read dose not saved');
-  if (!flu || new Date(flu.t).getDate() !== 3) fail('scan: corrected date not used');
-  if ((await doses()) !== before + 2) fail(`scan: expected 2 doses added, got ${(await doses()) - before}`);
-  if (st.vaccines.filter(v => v.kind === 'page' && !v.deleted).length !== 2) fail('scan: photo kept after unticking');
-  if (!st.settings.scanOk) fail('scan: agreement not remembered');
+  if (!tbe || tbe.against.join() !== 'fsme' || tbe.by !== 'Praxis Sonne' || !tbe.updatedAt) fail('documents: read dose not saved');
+  if (!flu || new Date(flu.t).getDate() !== 3) fail('documents: corrected date not used');
+  if ((await doses()) !== before + 2) fail(`documents: expected 2 doses added, got ${(await doses()) - before}`);
+  if (!st.settings.scanOk) fail('documents: agreement not remembered');
+  // Replacing a page reads it again by itself, now that the parent agreed
+  calls = 0;
+  await Promise.all([page.waitForEvent('filechooser').then(fc => fc.setFiles(file('newer.png', red))), page.click('[data-act="page-replace"]')]);
+  await page.waitForSelector('#scanOut .parsed');
+  if (calls !== 1) fail('documents: replaced page not read');
+  const again = await page.innerText('#scanOut');
+  if ((await page.locator('#scanOut .scan-item').count()) !== 2 || again.includes('FSME-Immun') && !again.includes('Already recorded') || !/Already recorded.*TBE/s.test(again)) fail('documents: entries added from the first reading proposed again');
+  st = await getState(page);
+  if (st.pages.filter(p => p.docId === 'vax-' + st.child && !p.deleted).length !== 3) fail('documents: replacing added a page instead of replacing it');
 
-  // The U-Heft: a recorded checkup is left out, a new one with its measurements is added, and the photo kept when asked
+  // The U-Heft: a recorded checkup is left out, a new one with its measurements is added
+  await page.click('#sheet [data-act="close"]');
   await page.click('.tabs [data-tab="checkups"]');
-  await page.click('#view-checkups [data-act="scan"]');
-  if (!(await page.isChecked('#scanOk'))) fail('scan: asks again after agreeing');
-  if (!(await page.isChecked('#scanKeep').catch(() => true))) fail('scan: keeping the photo is not the default');
-  await Promise.all([page.waitForEvent('filechooser').then(fc => fc.setFiles({ name: 'page.png', mimeType: 'image/png', buffer: png })), page.click('[data-act="scan-pick"]')]);
+  await addPage(page, '#view-checkups [data-act="doc-add"] >> nth=0', file('u.png'));
   await page.waitForSelector('#scanOut .scan-item');
-  if (!/U-Heft/.test(body.messages[0].content)) fail('scan: U-Heft prompt not used');
-  if ((await page.locator('#scanOut .scan-item').count()) !== 1 || !(await page.innerText('#scanOut')).includes('U6')) fail('scan: recorded U6 not left out');
-  await page.check('#scanKeep');
+  if (!/U-Heft/.test(body.messages[0].content)) fail('documents: U-Heft prompt not used');
+  if ((await page.locator('#scanOut .scan-item').count()) !== 1 || !(await page.innerText('#scanOut')).includes('U6')) fail('documents: recorded U6 not left out');
   await page.click('[data-act="scan-add"]');
-  await page.waitForSelector('#scrim', { state: 'hidden' });
-  if ((await page.locator('[data-uitem="U7a"].done').count()) !== 1) fail('scan: scanned U7a not shown as done');
+  await page.click('#sheet [data-act="close"]');
+  if ((await page.locator('[data-uitem="U7a"].done').count()) !== 1) fail('documents: read U7a not shown as done');
   st = await getState(page);
   const ex = st.checkups.find(x => x.u === 'U7a' && !x.deleted), m = ex && st.measurements.find(x => x.id === ex.measId);
-  if (!ex || ex.by !== 'Praxis Sonne') fail('scan: checkup not saved');
-  if (!m || m.weightKg !== 12.5 || m.headCm !== 48 || m.heightCm != null) fail('scan: checkup measurements not saved for Growth');
-  if (!st.checkups.some(x => x.kind === 'page' && x.img?.startsWith('data:image/'))) fail('scan: photo kept by default not saved');
+  if (!ex || ex.by !== 'Praxis Sonne') fail('documents: checkup not saved');
+  if (!m || m.weightKg !== 12.5 || m.headCm !== 48 || m.heightCm != null) fail('documents: checkup measurements not saved for Growth');
 
-  // AI reading turned off: the photo is only kept as a page, and nothing goes to the AI
-  body = null;
-  await page.click('#view-checkups [data-act="scan"]');
+  // Reading turned off: a new page is only kept
+  calls = 0;
+  await page.click('#view-checkups .book [data-pg] >> nth=0');
   await page.uncheck('#scanRead');
-  if (await page.isVisible('#scanOk')) fail('scan: AI notice shown with reading off');
-  await Promise.all([page.waitForEvent('filechooser').then(fc => fc.setFiles({ name: 'c.png', mimeType: 'image/png', buffer: png })), page.click('[data-act="scan-pick"]')]);
-  await page.waitForSelector('#view-checkups .book [data-upage] >> nth=1');
-  if (body) fail('scan: photo sent to the AI with reading off');
-  if ((await getState(page)).settings.scanRead !== false) fail('scan: reading off not remembered');
-
-  // The book page by page: turn pages, replace one with a newer photo, move it, delete it
-  const red = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==', 'base64');
-  await page.click('#view-checkups .book [data-upage] >> nth=0');
-  if ((await page.innerText('#sheet h2')) !== 'Page 1 of 2') fail(`book: viewer says ${await page.innerText('#sheet h2')}`);
-  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail('book: viewer scrolls sideways');
-  await page.click('#sheet [aria-label="Next page"]');
-  if ((await page.innerText('#sheet h2')) !== 'Page 2 of 2') fail('book: next page does not turn');
-  const second = (await page.getAttribute('#pageImg', 'src')), pid = (await getState(page)).checkups.find(x => x.kind === 'page' && !x.deleted && x.order === 1)?.id;
-  await Promise.all([page.waitForEvent('filechooser').then(fc => fc.setFiles({ name: 'new.png', mimeType: 'image/png', buffer: red })), page.click('[data-act="page-replace"]')]);
-  await page.waitForFunction(old => document.querySelector('#pageImg')?.src !== old, second);
-  await page.fill('#pg_note', 'U7a');
-  await page.click('[data-act="page-move"][data-for="-1"]');
-  if ((await page.innerText('#sheet h2')) !== 'Page 1 of 2') fail('book: moved page not first');
-  st = await getState(page);
-  const moved = st.checkups.find(x => x.id === pid), pages = st.checkups.filter(x => x.kind === 'page' && !x.deleted);
-  if (!moved || moved.img === second || moved.note !== 'U7a' || moved.order !== 0 || pages.length !== 2) fail('book: replaced page not saved in place');
-  await page.click('[data-act="page-del"]');
-  if ((await page.innerText('#sheet h2')) !== 'Page 1 of 1') fail('book: delete does not move to the remaining page');
   await page.click('#sheet [data-act="close"]');
-  if ((await page.locator('#view-checkups .book [data-upage]').count()) !== 1) fail('book: deleted page still shown');
+  await addPage(page, '#view-checkups [data-act="doc-add"] >> nth=0', file('u2.png'));
+  await page.waitForTimeout(300);
+  if (calls) fail('documents: page read with reading off');
+  if ((await getState(page)).settings.scanRead !== false) fail('documents: reading off not remembered');
+
+  // Turning pages, moving one, and deleting one
+  await page.click('#sheet [aria-label="Previous page"]');
+  if ((await page.innerText('#sheet h2')) !== 'Page 1 of 2') fail('documents: previous page does not turn');
+  const firstId = (await getState(page)).pages.find(p => p.docId.startsWith('u-') && p.order === 0)?.id;
+  await page.fill('#pg_note', 'U7a');
+  await page.click('[data-act="page-move"][data-for="1"]');
+  if ((await page.innerText('#sheet h2')) !== 'Page 2 of 2') fail('documents: moved page not second');
+  st = await getState(page);
+  const moved = st.pages.find(p => p.id === firstId);
+  if (!moved || moved.note !== 'U7a' || moved.order !== 1) fail('documents: moved page or its note not saved');
+  await page.click('[data-act="page-del"]');
+  if ((await page.innerText('#sheet h2')) !== 'Page 1 of 1') fail('documents: delete does not move to the remaining page');
+  await page.click('#sheet [data-act="close"]');
+  if ((await page.locator('#view-checkups .book [data-pg]').count()) !== 1) fail('documents: deleted page still shown');
+
+  // Any other document: name it, add pages, find it under More, delete it only after a second tap
+  await page.click('.tabs [data-tab="more"]');
+  await page.click('[data-act="doc-new"]');
+  await page.fill('#doc_title', 'Allergy pass');
+  await Promise.all([page.waitForEvent('filechooser').then(fc => fc.setFiles([file('x.png'), file('y.png')])), page.click('[data-act="doc-save"]')]);
+  await page.waitForSelector('#pageImg');
+  if ((await page.locator('#scanOk, #scanRead, [data-act="page-read"]').count()) !== 0) fail('documents: reading offered for a document without a reader');
+  await page.click('#sheet [data-act="close"]');
+  const row = page.locator('#view-more [data-docid]', { hasText: 'Allergy pass' });
+  if ((await row.count()) !== 1 || !(await row.innerText()).includes('2 pages')) fail('documents: other document not listed with its pages');
+  if ((await page.locator('#view-more [data-docid]', { hasText: 'Vaccination book' }).count()) !== 1) fail('documents: vaccination book not listed under More');
+  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail('documents: More scrolls sideways');
+  await row.click();
+  await page.click('[data-act="doc-del"]');
+  if (await page.isHidden('#scrim')) fail('documents: deleted without a second tap');
+  await page.click('[data-act="doc-del"]');
+  st = await getState(page);
+  const ap = st.docs.find(d => d.title === 'Allergy pass');
+  if (!ap?.deleted || st.pages.some(p => p.docId === ap.id && !p.deleted)) fail('documents: deleted document or its pages still kept');
+  await page.close();
+}
+
+// Upgrade from v2: photos of the book inside vaccinations and checkups become pages of documents, and the log as it was is kept
+{
+  const page = await newPage();
+  page.on('pageerror', e => fail(`upgrade v3: ${e.message}`));
+  await page.goto(url);
+  await page.waitForSelector('h1');
+  const st = await getState(page);
+  Object.assign(st, { v: 2, example: false, docs: undefined, pages: undefined });
+  st.vaccines.push({ id: 'p1', childId: st.child, kind: 'page', t: 2000, img: 'data:image/jpeg;base64,/9j/P1', note: 'pages 4 and 5', updatedAt: 10 },
+    { id: 'p0', childId: st.child, kind: 'page', t: 1000, img: 'data:image/jpeg;base64,/9j/P0', note: '', updatedAt: 9 },
+    { id: 'p9', childId: st.child, kind: 'page', deleted: true, t: 1, updatedAt: 3 });
+  st.checkups.push({ id: 'q1', childId: st.child, kind: 'page', t: 3000, img: 'data:image/jpeg;base64,/9j/Q1', note: '', order: 0, updatedAt: 11 });
+  delete st.docs; delete st.pages;
+  await setState(page, st); await reload(page); await page.waitForSelector('h1');
+  const up = await getState(page), kept = await getState(page, 'before-v3');
+  if (up.v !== 3) fail('upgrade v3: log not upgraded');
+  if (kept?.v !== 2 || !kept.vaccines.some(v => v.id === 'p1' && v.img.endsWith('P1'))) fail('upgrade v3: no copy kept of the log before the upgrade');
+  const vb = up.pages.filter(p => p.docId === 'vax-' + st.child);
+  if (vb.length !== 2 || !vb.some(p => p.id === 'p1' && p.img.endsWith('P1') && p.note === 'pages 4 and 5' && p.updatedAt === 10)) fail('upgrade v3: book photos not moved into pages');
+  if (up.pages.some(p => p.id === 'p9')) fail('upgrade v3: a deleted photo came back');
+  if (!up.pages.some(p => p.id === 'q1' && p.docId === 'u-' + st.child && p.order === 0)) fail('upgrade v3: U-Heft photo not moved into pages');
+  if (!up.vaccines.filter(v => v.kind === 'page').every(v => v.deleted && !v.img) || !up.checkups.filter(v => v.kind === 'page').every(v => v.deleted && !v.img)) fail('upgrade v3: old photo records not cleared');
+  if (!up.docs.some(d => d.id === 'vax-' + st.child && d.type === 'vax') || !up.docs.some(d => d.id === 'u-' + st.child && d.type === 'u')) fail('upgrade v3: documents not made');
+  if (up.vaccines.filter(v => v.kind === 'dose').length !== st.vaccines.filter(v => v.kind === 'dose').length) fail('upgrade v3: vaccinations changed');
+  await page.click('.tabs [data-tab="vax"]');
+  if ((await page.locator('#view-vax .book [data-pg]').count()) !== 2) fail('upgrade v3: moved pages not shown');
+  await page.click('#view-vax .book [data-pg] >> nth=0');
+  if ((await page.getAttribute('#pageImg', 'src')) !== 'data:image/jpeg;base64,/9j/P0') fail('upgrade v3: pages not in the order they were added');
   await page.close();
 }
 

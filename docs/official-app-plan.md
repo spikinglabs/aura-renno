@@ -75,7 +75,7 @@ Known limits and what comes later:
 - In sick mode there is a **Sound** button. It records up to 30 seconds from the microphone, with a note ("whistling when breathing in"). The clip plays back in the timeline, in the sick overview and in "For the doctor".
 - Clips are small (compressed speech-quality audio, about 100 KB for 30 seconds) and are stored and synced like photos, so a partner sees them too.
 - Instead of recording, a parent can paste a link to a video kept elsewhere (Google Photos, iCloud), for example a video of breathing that shows the chest.
-- Sounds and photos are never sent to AI, except pages of the vaccination book or U-Heft the parent chooses to scan (see the Vaccines and Checkups tabs).
+- Sounds and photos are never sent to AI, except pages of the vaccination book or U-Heft when the parent turns on reading them (see Documents).
 
 Later: when there are many photos and clips, move them out of the log file into their own Drive files (the picker can then grant the partner access to them too), so each sync stays small.
 
