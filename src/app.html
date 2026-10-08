@@ -365,7 +365,7 @@ function persist() {
   allowShrink = false;
   const done = () => { savedCount = n; savedExample = !!S.example; };
   if (!db) { try { localStorage.setItem(LS_KEY, JSON.stringify(S)); done(); } catch { fail(); } return; }
-  try { const tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').put(S, 'state'); tx.oncomplete = done; tx.onerror = fail; } catch { fail(); }
+  try { const tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').put(S, 'state'); tx.oncomplete = done; tx.onerror = fail; tx.commit?.(); } catch { fail(); }
 }
 function commit() { S.changedAt = Date.now(); persist(); render(); scheduleSync(); }
 const touch = o => (o.updatedAt = Date.now(), o);
