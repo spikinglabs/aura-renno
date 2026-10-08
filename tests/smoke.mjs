@@ -8,15 +8,24 @@ const fail = m => { errors.push(m); };
 // The app keeps its log in IndexedDB ('aura' database, 'kv' store, key 'state').
 const IDB = `const idb = mode => new Promise((res, rej) => { const r = indexedDB.open('aura', 1); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });`;
 const getState = (page, key = 'state') => page.evaluate(`(async () => { ${IDB} const d = await idb(); return await new Promise(res => { const q = d.transaction('kv').objectStore('kv').get('${key}'); q.onsuccess = () => { d.close(); res(q.result); }; }); })()`);
-const setState = (page, s) => page.evaluate(`(async () => { ${IDB} const d = await idb(); await new Promise(res => { const tx = d.transaction('kv', 'readwrite'); tx.objectStore('kv').put(${JSON.stringify(s)}, 'state'); tx.oncomplete = res; }); d.close(); })()`);
+const writeState = (page, s) => page.evaluate(`(async () => { ${IDB} const d = await idb(); await new Promise(res => { const tx = d.transaction('kv', 'readwrite'); tx.objectStore('kv').put(${JSON.stringify(s)}, 'state'); tx.oncomplete = res; }); d.close(); })()`);
+// The app checks the recall list once on opening and then saves its copy of the log. Wait for that before writing,
+// or the app's save (even one from a check cut off by a reload) can land on top of what the test wrote.
+const setState = async (page, s) => { for (let i = 0; i < 50 && !(await getState(page))?.recalls?.tried; i++) await page.waitForTimeout(100); await writeState(page, s); };
+// Waits until the app's last save has reached IndexedDB, then reloads. A readwrite transaction on the same store
+// only completes after the earlier ones, so a reload can't cut off a save that is still being written.
+const settle = page => page.evaluate(`(async () => { ${IDB} const d = await idb(); await new Promise(res => { const tx = d.transaction('kv', 'readwrite'); tx.objectStore('kv').get('state'); tx.oncomplete = res; }); d.close(); })()`);
+const reload = async page => { await settle(page); await page.reload(); };
+// Pages get an empty recall list unless a test answers with its own (the newest route wins).
+const newPage = async () => { const page = await browser.newPage({ viewport: { width: 375, height: 800 } }); await page.route('**/processed.json', r => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: '[]' })); return page; };
 
 for (const theme of ['night', 'day']) {
-  const page = await browser.newPage({ viewport: { width: 375, height: 800 } });
+  const page = await newPage();
   page.on('pageerror', e => fail(`${theme}: ${e.message}`));
   await page.goto(url);
   await page.waitForSelector('h1');
   { const s = await getState(page); s.settings.theme = theme; await setState(page, s); }
-  await page.reload();
+  await reload(page);
   const overflow = () => page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
   if ((await page.evaluate(() => document.documentElement.dataset.mode)) !== theme) fail(`${theme}: theme not applied`);
   if (await overflow()) fail(`${theme}: Today scrolls sideways`);
@@ -45,7 +54,7 @@ for (const theme of ['night', 'day']) {
     await page.click('[data-track="diaper"]');
     await page.click('[data-act="close"]');
     if ((await tile()) !== 0 || (await page.locator('.quick [data-add="diaper"], .tl .t-diaper').count()) !== 0) fail('diaper still shown after turning it off');
-    await page.reload();
+    await reload(page);
     if ((await tile()) !== 0) fail('diaper setting not saved');
     await page.click('[data-act="track-sheet"]');
     await page.click('[data-track="diaper"]');
@@ -58,7 +67,7 @@ for (const theme of ['night', 'day']) {
     await page.click('[data-view="day"]');
     if ((await page.locator('.quick [data-add="symptom"]').count()) !== 0) fail('everyday view still shows sick buttons');
     if ((await page.locator('[data-view="sick"]').count()) !== 1) fail('everyday view lost the way back to sick view');
-    await page.reload();
+    await reload(page);
     if ((await page.locator('[data-view="day"].on').count()) !== 1) fail('view choice not remembered');
     await page.click('[data-view="sick"]');
     if ((await page.locator('.quick [data-add="symptom"]').count()) !== 1) fail('sick view missing sick buttons');
@@ -94,7 +103,7 @@ for (const theme of ['night', 'day']) {
     await page.fill('#g_label', 'First haircut');
     await page.click('[data-act="save-growth"]');
     if ((await page.locator('.ms-row', { hasText: 'First haircut' }).count()) !== 1) fail('custom milestone missing');
-    await page.reload();
+    await reload(page);
     await page.click('.tabs [data-tab="growth"]');
     if ((await teeth()) !== before + 1) fail('tooth not saved');
     await page.click('.tabs [data-tab="today"]');
@@ -104,20 +113,55 @@ for (const theme of ['night', 'day']) {
   await page.click('[data-act="open-sick"]');
   for (const t of ['overview', 'chart', 'doctor']) { await page.click(`[data-sick="${t}"]`); if (await overflow()) fail(`${theme}: sick ${t} scrolls sideways`); }
   for (const t of ['growth', 'more']) { await page.click(`.tabs [data-tab="${t}"]`); if (await overflow()) fail(`${theme}: ${t} scrolls sideways`); }
-  // Ending sick mode asks first, then Today returns to everyday tracking
+  // The illness's name, start and notes can be changed from the sick card on Today
   if (theme === 'day') {
     await page.click('.tabs [data-tab="today"]');
+    await page.click('.sick-card [data-act="edit-episode"]');
+    const local = t => { const d = new Date(t), p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
+    const start = new Date(local(Date.now() - 4 * 864e5)).getTime();
+    await page.fill('#f_title', 'Ear infection');
+    await page.fill('#f_start', local(start));
+    await page.fill('#f_epnote', 'Started after daycare');
+    await page.click('[data-act="save-episode"]');
+    await reload(page);
+    const ep = (await getState(page)).episodes.find(e => !e.deleted && !e.end);
+    if (ep?.title !== 'Ear infection' || ep.start !== start || ep.note !== 'Started after daycare') fail(`illness edit not saved: ${JSON.stringify(ep)}`);
+    if (!(await page.locator('.sick-card').innerText()).includes('Ear infection')) fail('sick card does not show the new name');
+    // A start in the future is refused and nothing changes
+    await page.click('.sick-card [data-act="edit-episode"]');
+    await page.fill('#f_start', local(Date.now() + 2 * 864e5));
+    await page.click('[data-act="save-episode"]');
+    if ((await getState(page)).episodes.find(e => e.id === ep.id).start !== start) fail('future illness start was saved');
+    await page.click('[data-act="close"]');
+
+    // Ending sick mode asks first (and when they got better), then Today returns to everyday tracking
     await page.click('[data-act="end-ask"]');
+    await page.fill('#f_better', local(Date.now() - 864e5));
     await page.click('[data-act="end-episode"]');
     if ((await page.locator('.sick, .sick-card, [data-view]').count()) !== 0) fail('sick mode still shown after ending it');
     if ((await page.locator('[data-act="new-episode"]').count()) !== 1) fail('no way to start sick mode again');
+    const end = (await getState(page)).episodes.find(e => e.id === ep.id).end;
+    if (end !== new Date(local(Date.now() - 864e5)).getTime()) fail('chosen end time not saved');
+
+    // A past illness's end can be changed under More, but not to before its start
+    await page.click('.tabs [data-tab="more"]');
+    await page.click(`[data-act="edit-episode"][data-for="${ep.id}"]`);
+    await page.fill('#f_epend', local(start - 864e5));
+    await page.click('[data-act="save-episode"]');
+    if ((await getState(page)).episodes.find(e => e.id === ep.id).end !== end) fail('illness end before its start was saved');
+    const end2 = new Date(local(start + 2 * 864e5)).getTime();
+    await page.fill('#f_epend', local(end2));
+    await page.click('[data-act="save-episode"]');
+    const saved = (await getState(page)).episodes.find(e => e.id === ep.id);
+    if (saved.end !== end2 || saved.note !== 'Started after daycare') fail(`past illness edit not saved: ${JSON.stringify(saved)}`);
+    if (await overflow()) fail('More scrolls sideways with illness buttons');
   }
   await page.close();
 }
 
 // Sound recordings, saying it without AI, backups, and what the AI is sent
 {
-  const page = await browser.newPage({ viewport: { width: 375, height: 800 } });
+  const page = await newPage();
   page.on('pageerror', e => fail(`extras: ${e.message}`));
   // A stand-in for the claude.ai AI that records the prompt and answers with the placeholder.
   await page.addInitScript(() => { window.__sent = []; const sample = async p => { window.__sent.push(p); return { text: '[CHILD] has had a fever for three days.' }; }; sample.json = async p => { window.__sent.push(p); return { entries: [] }; }; window.claude = { use: async () => sample }; });
@@ -181,7 +225,7 @@ for (const theme of ['night', 'day']) {
 
 // Backups are required: a new log asks for one and Today keeps reminding until a copy exists off the phone
 {
-  const page = await browser.newPage({ viewport: { width: 375, height: 800 } });
+  const page = await newPage();
   page.on('pageerror', e => fail(`backup: ${e.message}`));
   await page.goto(url);
   await page.waitForSelector('h1');
@@ -201,7 +245,7 @@ for (const theme of ['night', 'day']) {
 
 // AI through any OpenAI-style service the parent chooses, still without names
 {
-  const page = await browser.newPage({ viewport: { width: 375, height: 800 } });
+  const page = await newPage();
   page.on('pageerror', e => fail(`ai service: ${e.message}`));
   let body = null, auth = null;
   await page.route('https://ai.example.com/v1/chat/completions', async route => {
@@ -228,7 +272,7 @@ for (const theme of ['night', 'day']) {
 
 // Drive sync against a fake Drive: a second phone saving at the same moment, and a damaged Drive file
 {
-  const page = await browser.newPage({ viewport: { width: 375, height: 800 } });
+  const page = await newPage();
   page.on('pageerror', e => fail(`sync: ${e.message}`));
   await page.addInitScript(() => { window.google = { accounts: { oauth2: { initTokenClient: o => ({ requestAccessToken: () => o.callback({ access_token: 't', expires_in: 3600 }) }) } } }; });
   const other = (id, t) => ({ id, child: 'kid-ex', type: 'note', t, note: 'From the other phone', updatedAt: t });
@@ -254,7 +298,7 @@ for (const theme of ['night', 'day']) {
   await page.goto(url);
   await page.waitForSelector('h1');
   const st = await getState(page); st.example = false; st.settings.clientId = 'x-y.apps.googleusercontent.com'; st.drive = { fileId: 'f1' };
-  await setState(page, st); await page.reload(); await page.waitForSelector('h1');
+  await setState(page, st); await reload(page); await page.waitForSelector('h1');
   await page.click('[data-act="sync-tap"]');
   await page.waitForSelector('.sync.ok');
   const mine = (await getState(page)).entries;
@@ -295,12 +339,12 @@ for (const theme of ['night', 'day']) {
 
 // A stored log with missing parts still opens, and nothing is lost on the next save
 {
-  const page = await browser.newPage({ viewport: { width: 375, height: 800 } });
+  const page = await newPage();
   page.on('pageerror', e => fail(`robust: ${e.message}`));
   await page.goto(url);
   await page.waitForSelector('h1');
   const st = await getState(page); const n = st.entries.length; delete st.growth; delete st.measurements; st.settings = null;
-  await setState(page, st); await page.reload(); await page.waitForSelector('h1');
+  await setState(page, st); await reload(page); await page.waitForSelector('h1');
   await page.click('[data-add="note"]'); await page.fill('#f_note', 'Still works'); await page.click('[data-act="save-entry"]');
   const after = await getState(page);
   if (after.entries.length !== n + 1 || !Array.isArray(after.growth)) fail('robust: log with missing parts not repaired');
@@ -309,7 +353,7 @@ for (const theme of ['night', 'day']) {
 
 // Data from the earlier Sick Day Log is migrated
 {
-  const page = await browser.newPage({ viewport: { width: 375, height: 800 } });
+  const page = await newPage();
   page.on('pageerror', e => fail(`migration: ${e.message}`));
   await page.goto(url);
   await page.waitForSelector('h1');
@@ -317,7 +361,7 @@ for (const theme of ['night', 'day']) {
   await page.evaluate(() => { localStorage.clear(); localStorage.setItem('sickdaylog.v1', JSON.stringify({ app: 'sick-day-log', v: 1, example: false,
     children: [{ id: 'c1', name: 'Leo', dob: '2025-01-01' }], episodes: [{ id: 'e1', childId: 'c1', start: Date.now() - 864e5, end: null }],
     entries: [{ id: 'x1', ep: 'e1', type: 'temp', t: Date.now() - 36e5, tempC: 38.8 }], meds: [], measurements: [], settings: { unit: 'C' } })); });
-  await page.reload();
+  await page.reload(); // the database was just deleted on purpose, so nothing to wait for
   if (!(await page.locator('h1').first().innerText()).includes('Leo')) fail('migration: child not carried over');
   if ((await page.locator('.sick-card').count()) !== 1) fail('migration: open illness not shown as sick mode');
   if ((await getState(page, 'before-v2'))?.app !== 'sick-day-log') fail('migration: no copy kept of the log before the upgrade');
@@ -326,12 +370,12 @@ for (const theme of ['night', 'day']) {
 
 // A log saved by a newer version of the app is shown but never changed by this one
 {
-  const page = await browser.newPage({ viewport: { width: 375, height: 800 } });
+  const page = await newPage();
   page.on('pageerror', e => fail(`newer: ${e.message}`));
   await page.goto(url);
   await page.waitForSelector('h1');
   const st = await getState(page); st.example = false; st.v = 99; const n = st.entries.length;
-  await setState(page, st); await page.reload(); await page.waitForSelector('h1');
+  await setState(page, st); await reload(page); await page.waitForSelector('h1');
   await page.click('[data-add="note"]'); await page.fill('#f_note', 'Should not be saved'); await page.click('[data-act="save-entry"]');
   const after = await getState(page);
   if (after.v !== 99 || after.entries.length !== n) fail('newer: a log from a newer version was changed');
@@ -340,7 +384,7 @@ for (const theme of ['night', 'day']) {
 
 // Product recalls: the public list is loaded, products on the family's list are matched, and a warning shows until seen
 {
-  const page = await browser.newPage({ viewport: { width: 375, height: 800 } });
+  const page = await newPage();
   page.on('pageerror', e => fail(`recalls: ${e.message}`));
   const feed = [
     { id: 'https://example.org/r1', title: 'HiPP Bio Karotten mit Kartoffeln 190 g', url: 'https://example.org/r1', publish_datetime: new Date(Date.now() - 2 * 864e5).toISOString(), country_sold_in: 'DE', source: 'Lebensmittelwarnung.de', reason: { en: 'Foreign bodies', de: 'Fremdkörper' }, company: 'HiPP GmbH, Pfaffenhofen', scraped_datetime: new Date().toISOString() },
@@ -357,7 +401,7 @@ for (const theme of ['night', 'day']) {
   if ((await page.locator('#sheet .recall-row .new').count()) !== 2) fail('recalls: feed does not mark new recalls');
   await page.click('#sheet [data-act="close"]');
   if ((await page.locator('.recall-line').count()) !== 0) fail('recalls: Today line still shown after opening the feed');
-  await page.reload(); await page.waitForSelector('h1');
+  await reload(page); await page.waitForSelector('h1');
   if ((await page.locator('.recall-line').count()) !== 0) fail('recalls: Today line back after reload');
   await page.click('.tabs [data-tab="more"]');
   await page.waitForSelector('#recalls .recall-row');
@@ -365,7 +409,7 @@ for (const theme of ['night', 'day']) {
   // Countries to track: turning the USA off leaves the German recall, and the choice is kept
   await page.click('[data-rcountry="US"]');
   if ((await page.locator('#recalls .recall-row').count()) !== 1) fail('recalls: country filter not applied');
-  await page.reload(); await page.waitForSelector('h1'); await page.click('.tabs [data-tab="more"]');
+  await reload(page); await page.waitForSelector('h1'); await page.click('.tabs [data-tab="more"]');
   if ((await page.locator('[data-rcountry="US"].on').count()) !== 0 || (await page.locator('[data-rcountry="DE"].on').count()) !== 1) fail('recalls: country choice not saved');
   if ((await page.locator('#recalls .recall-row').count()) !== 1) fail('recalls: country filter lost after reload');
   await page.fill('#newProd', 'hipp');
@@ -375,7 +419,7 @@ for (const theme of ['night', 'day']) {
   await page.click('.tabs [data-tab="today"]');
   if ((await page.locator('.recall-due').count()) !== 1) fail('recalls: no warning on Today');
   await page.click('.recall-due [data-seen]');
-  await page.reload(); await page.waitForSelector('h1');
+  await reload(page); await page.waitForSelector('h1');
   if ((await page.locator('.recall-due').count()) !== 0) fail('recalls: warning back after Seen');
   if (calls !== 1) fail(`recalls: list fetched ${calls} times, expected once`);
   const st = await getState(page);
