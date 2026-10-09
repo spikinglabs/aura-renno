@@ -5,6 +5,10 @@
   "display": "standalone",
   "background_color": "#1F1A17",
   "theme_color": "#1F1A17",
-  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }],
-  "shortcuts": [{ "name": "Emergency card", "short_name": "Emergency card", "description": "Allergies, doctor and who to call", "url": "./?open=card", "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }] }]
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" },
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "shortcuts": [{ "name": "Emergency card", "short_name": "Emergency card", "description": "Allergies, doctor and who to call", "url": "./?open=card", "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }, { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }] }]
 }
