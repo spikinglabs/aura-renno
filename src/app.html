@@ -651,7 +651,7 @@ function header(title, sub) {
 
 function renderToday() {
   const el = $('#view-today'), c = kid();
-  if (!c) { el.innerHTML = header('Welcome', greeting()) + exampleBanner() + recallBanner() + `<div class="card empty"><h2>Who are we looking after?</h2><p class="muted">Add your child to start logging feeds, sleep, diapers and more. If they get sick, sick mode keeps everything the doctor will ask about in one place.</p><button class="btn primary" data-kid="new">Add your child</button></div>`; return; }
+  if (!c) { el.innerHTML = header('Welcome', greeting()) + exampleBanner() + recallBanner() + `<div class="card empty"><h2>Who are we looking after?</h2><p class="muted">Add your child to start logging feeds, sleep, diapers and more. If they get sick, sick mode keeps everything the doctor will ask about in one place.</p><button class="btn primary" data-kid="new">Add your child</button></div>${S.drive?.fileId ? '' : `<div class="card"><h2>Already use Aura?</h2><p class="muted">On a new phone or at a new address, your log comes back from Google Drive. Bring it back before adding your child, so they aren't added twice.</p><div class="row"><button class="btn sm" data-act="drive-sync">Connect Google Drive</button><button class="btn ghost sm" data-act="join">Join a shared log</button></div></div>`}`; return; }
   const es = kidEntries(), now = Date.now(), t0 = startOfDay(now), ep = activeEp();
   const lastFeed = es.find(e => e.type === 'feed' || e.type === 'drink');
   const todayEs = es.filter(e => e.t >= t0);

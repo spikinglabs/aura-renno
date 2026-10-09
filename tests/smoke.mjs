@@ -1145,6 +1145,21 @@ for (const theme of ['night', 'day']) {
   await page.close();
 }
 
+// A fresh phone (or the app at a new address) offers to bring the log back from Drive before a child is added twice.
+{
+  const page = await newPage();
+  page.on('pageerror', e => fail(`welcome: ${e.message}`));
+  await page.goto(url); await page.waitForSelector('h1');
+  { const st = await getState(page); st.example = false; st.children = []; st.child = null; await setState(page, st); }
+  await reload(page);
+  const back = page.locator('#view-today .card', { hasText: 'Already use Aura?' });
+  if ((await back.count()) !== 1) fail('welcome: no way to bring a log back from Drive');
+  await back.locator('[data-act="join"]').click();
+  if ((await page.locator('.sheet h2', { hasText: 'Join a shared log' }).count()) !== 1) fail('welcome: Join a shared log does not open');
+  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail('welcome: scrolls sideways');
+  await page.close();
+}
+
 await browser.close();
 if (errors.length) { console.error('Smoke test failed:\n- ' + errors.join('\n- ')); process.exit(1); }
 console.log('Smoke test passed');
