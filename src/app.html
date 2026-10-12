@@ -1712,7 +1712,7 @@ function renderMore() {
       ${live(S.meds).map(m => `<div class="list-row medrow"><span>${esc(m.name)}</span><span class="row"><input type="number" min="0" step="0.5" value="${m.gapH ?? ''}" data-gap="${m.id}" aria-label="Hours between doses for ${esc(m.name)}"> h <button class="btn ghost danger" data-delmed="${m.id}" aria-label="Remove">✕</button></span></div>`).join('')}
       <div class="row"><input id="newMed" placeholder="Add a medicine" style="flex:1"><button class="btn sm" data-act="add-med">Add</button></div></div>
     <div class="card set"><h2>Google Drive backup and sync</h2>
-      <p class="small muted" style="margin:0">Your log is saved as <span class="num">${DRIVE_FILE}</span> in an “${DRIVE_FOLDER}” folder in your own Drive (you can move or rename it), with a backup copy saved before each change (hourly for two days, then daily for ${KEEP_DAYS} days). Photos, document pages and sound recordings are part of the log, so they sync and are backed up too; backups keep each one once, in a “media” folder next to them. The app can only see files it created or that you picked. There is no other server. <a href="privacy.html" style="color:var(--accent-ink)">Privacy policy</a></p>
+      <p class="small muted" style="margin:0">Your log is saved as <span class="num">${DRIVE_FILE}</span> in an “${DRIVE_FOLDER}” folder in your own Drive (you can move or rename it), with a backup copy saved before each change (hourly for two days, then daily for ${KEEP_DAYS} days). Photos, document pages and sound recordings are part of the log, so they sync and are backed up too; backups keep each one once, in a “media” folder next to them. Each document is also kept as a PDF of all its pages, in a “documents” folder next to the log. The app can only see files it created or that you picked. There is no other server. <a href="privacy.html" style="color:var(--accent-ink)">Privacy policy</a></p>
       ${GOOGLE_CLIENT_ID ? `<details class="small"><summary class="muted">Advanced: use your own Google project</summary>${googleOwnFields(st)}</details>` : googleOwnFields(st)}
       <div class="row"><button class="btn primary sm" data-act="drive-sync" ${syncing ? 'disabled' : ''}>${syncing ? 'Syncing…' : d.fileId ? 'Sync now' : 'Connect Google Drive'}</button>${d.fileId ? '<button class="btn sm" data-act="drive-backups">Restore from a Drive backup</button><button class="btn ghost sm" data-act="drive-forget">Disconnect</button>' : '<button class="btn sm" data-act="join">Join a shared log</button>'}</div>
       <p class="small muted" style="margin:0">${d.lastSync ? 'Last synced ' + ago(d.lastSync) + '.' : 'Not connected yet.'}${d.owner ? ' Shared with you by ' + esc(d.owner) + '.' : ''}${d.error ? ' Last error: ' + esc(d.error) : ''}</p></div>
@@ -2046,7 +2046,7 @@ function docCard(c, type) {
   return `<div class="card set"><div class="row between"><h2>Pages of the ${what}</h2><span class="muted small">${pages.length ? pages.length + (pages.length > 1 ? ' pages' : ' page') : ''}</span></div>
     ${pagesGrid(pages)}
     <p class="small muted" style="margin:0">Keep the ${what} here page by page: add a page when a new one is filled in, and replace a page when more is written on it.${readOn() ? ' Aura then reads the new entries on that page and asks you to check them.' : aiKeySet() ? ' Reading the entries with AI is off.' : ' To have Aura read the entries for you, set up an AI service that understands pictures under More.'} Pages sync with your partner and go into Drive backups.</p>
-    <div><button class="btn sm" data-act="doc-add" data-type="${type}">Add a page</button></div></div>`;
+    <div class="row"><button class="btn sm" data-act="doc-add" data-type="${type}">Add a page</button>${pages.length ? `<button class="btn ghost sm" data-act="doc-pdf" data-doc="${d.id}">Save as PDF</button>` : ''}</div></div>`;
 }
 let addTo = null; // where the photos chosen next go: { type } or { doc }
 function pickPages(target) { addTo = target; $('#docFiles').click(); }
@@ -2183,7 +2183,7 @@ function docSheet(id, kita) {
     ${typed ? `<p class="small muted" style="margin:0">Its entries are under Documents → ${d.type === 'vax' ? 'Vaccinations' : 'Checkups'}.</p>` : `<label class="field"><span>Name</span><input id="doc_title" value="${esc(d.title)}" autocomplete="off"></label>${kitaChips(d.kita)}`}
     ${d.kita === 'measles' ? measlesLine(c) : ''}
     ${pagesGrid(pages) || '<p class="small muted" style="margin:0">No pages yet.</p>'}
-    <div><button class="btn sm" data-act="doc-add" data-doc="${d.id}">Add a page</button></div>
+    <div class="row"><button class="btn sm" data-act="doc-add" data-doc="${d.id}">Add a page</button>${pages.length ? `<button class="btn ghost sm" data-act="doc-pdf" data-doc="${d.id}">Save as PDF</button>` : ''}</div>
     <div class="field"><span>Appointments</span>${otherAppts(c).filter(a => a.docId === d.id).reverse().map(a => `<button class="vx-dose" data-act="appt" data-appt="${a.id}"><span><b>${esc(a.title)}</b> <span class="muted small num">${esc(apptWhen(a))}</span></span></button>`).join('')}<div><button class="btn sm" data-act="appt" data-plan="other" data-doc="${d.id}">Add an appointment</button></div></div>
     <label class="field"><span>Note (optional)</span><textarea id="doc_note" style="min-height:64px" placeholder="e.g. where the paper is kept">${esc(d.note || '')}</textarea></label>
     <div class="sheet-actions">${typed ? '<span></span>' : `<button class="btn ghost danger" data-act="doc-del">Delete document</button>`}<button class="btn primary" data-act="doc-save">Save</button></div>`, { docEdit: d.id, kita: d.kita || '' });
@@ -2254,6 +2254,77 @@ async function startRec(btn) {
   tick(); recorder.timer = setInterval(tick, 250);
 }
 
+/* ---------- Documents as PDF ---------- */
+// A document's pages, in order, as one PDF made on the phone: each page photo is one PDF page, A4 wide, as tall as the photo.
+// JPEG photos go in as they are (no quality lost); anything else is turned into a JPEG first.
+const loadImg = src => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('A page could not be read.')); i.src = src; });
+async function pdfImage(src) {
+  const img = await loadImg(src), w = img.naturalWidth, h = img.naturalHeight;
+  if (/^data:image\/jpe?g;base64,/.test(src)) return { w, h, bytes: b64bytes(src.slice(src.indexOf(',') + 1)) };
+  const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); g.drawImage(img, 0, 0);
+  const u = c.toDataURL('image/jpeg', 0.9); return { w, h, bytes: b64bytes(u.slice(u.indexOf(',') + 1)) };
+}
+const pdfText = t => '<FEFF' + [...String(t)].map(ch => { const u = ch.codePointAt(0); return u > 0xffff ? [0xd800 + ((u - 0x10000) >> 10), 0xdc00 + ((u - 0x10000) & 0x3ff)] : [u]; }).flat().map(n => n.toString(16).padStart(4, '0')).join('') + '>';
+async function docPdf(d) {
+  const imgs = []; for (const p of docPages(d)) imgs.push(await pdfImage(p.img));
+  const te = new TextEncoder(), parts = [], offs = []; let len = 0;
+  const put = x => { const b = typeof x === 'string' ? te.encode(x) : x; parts.push(b); len += b.length; };
+  const obj = (n, body, stream) => { offs[n] = len; put(`${n} 0 obj\n${body}\n`); if (stream) { put('stream\n'); put(stream); put('\nendstream\n'); } put('endobj\n'); };
+  put('%PDF-1.4\n%\xe2\xe3\xcf\xd3\n');
+  const W = 595.28, kids = imgs.map((_, i) => 4 + i * 3);
+  obj(1, '<< /Type /Catalog /Pages 2 0 R >>');
+  obj(2, `<< /Type /Pages /Kids [${kids.map(k => k + ' 0 R').join(' ')}] /Count ${imgs.length} >>`);
+  obj(3, `<< /Title ${pdfText(docTitle(d))} /Producer (Aura) >>`);
+  imgs.forEach((im, i) => {
+    const n = kids[i], H = +(W * im.h / im.w).toFixed(2), draw = te.encode(`q ${W} 0 0 ${H} 0 0 cm /P Do Q`);
+    obj(n, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /XObject << /P ${n + 2} 0 R >> >> /Contents ${n + 1} 0 R >>`);
+    obj(n + 1, `<< /Length ${draw.length} >>`, draw);
+    obj(n + 2, `<< /Type /XObject /Subtype /Image /Width ${im.w} /Height ${im.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${im.bytes.length} >>`, im.bytes);
+  });
+  const size = 4 + imgs.length * 3, xref = len;
+  put(`xref\n0 ${size}\n0000000000 65535 f \n${Array.from({ length: size - 1 }, (_, i) => String(offs[i + 1]).padStart(10, '0') + ' 00000 n \n').join('')}`);
+  put(`trailer\n<< /Size ${size} /Root 1 0 R /Info 3 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
+  return new Blob(parts, { type: 'application/pdf' });
+}
+const pdfName = d => `${docTitle(d)} - ${S.children.find(k => k.id === d.childId)?.name || 'Aura'}.pdf`.replace(/[\\/:*?"<>|]+/g, ' ');
+async function savePdf(d) {
+  if (!docPages(d).length) return toast('Add a page first.');
+  let blob; try { blob = await docPdf(d); } catch (e) { return toast(e.message || 'The PDF could not be made.'); }
+  const name = pdfName(d), file = new File([blob], name, { type: 'application/pdf' });
+  if (navigator.canShare?.({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: docTitle(d) }); return; } catch (e) { if (e?.name === 'AbortError') return; }
+  }
+  const a = document.createElement('a'), url = URL.createObjectURL(blob);
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000);
+  toast('PDF saved');
+}
+// After a sync, each document with pages is kept as a PDF in a "documents" folder next to the log in this person's own Drive.
+// Only documents whose name or pages changed are made again; a deleted document's PDF goes to the Drive trash.
+// S.drive.pdfs (on this phone only): document id -> { sig, id } of its PDF in Drive.
+const pdfSig = d => sha256(JSON.stringify([pdfName(d), docPages(d).map(p => [p.id, p.updatedAt || 0])]));
+let pdfsBusy = false;
+async function pdfsToDrive(tok) {
+  if (pdfsBusy) return; pdfsBusy = true;
+  try {
+    const have = S.drive.pdfs || (S.drive.pdfs = {}); let dir = null;
+    for (const d of S.docs || []) {
+      const old = have[d.id], pages = d.deleted ? [] : docPages(d);
+      if (!pages.length) {
+        if (old) { try { await gapi(tok, `${DRIVE}/${old.id}`, { method: 'PATCH', headers: JSON_H, body: JSON.stringify({ trashed: true }) }); } catch {} delete have[d.id]; persist(); }
+        continue;
+      }
+      const sig = await pdfSig(d); if (old?.sig === sig) continue;
+      const blob = await docPdf(d), name = pdfName(d); let id = null;
+      if (old) try {
+        await gapi(tok, `${UP}/${old.id}?uploadType=media`, { method: 'PATCH', headers: { 'Content-Type': 'application/pdf' }, body: blob });
+        await gapi(tok, `${DRIVE}/${old.id}`, { method: 'PATCH', headers: JSON_H, body: JSON.stringify({ name, trashed: false }) }); id = old.id;
+      } catch {}
+      if (!id) id = await uploadBlob(tok, name, dir || (dir = await folderId(tok, 'documents', await auraDir(tok))), 'application/pdf', blob);
+      have[d.id] = { sig, id }; persist();
+    }
+  } catch {} finally { pdfsBusy = false; }
+}
+
 /* ---------- Google Drive sync ---------- */
 let gTok = null, syncTimer = null, syncing = false, syncMsg = '';
 function loadGis() {
@@ -2306,12 +2377,15 @@ async function findOrCreateFile(tok) {
 const KEEP_RECENT = 48, KEEP_DAYS = 60;
 // Backups go in a "backups" folder next to the log, so the parent can move or rename the Aura folder in Drive.
 // A partner can't write in the owner's folder, so their backups go in an Aura folder in their own Drive.
-let backupsHome = null;
-async function backupsDir(tok, fileId = S.drive?.fileId) {
-  if (backupsHome) return backupsHome;
+let backupsHome = null, auraHome = null;
+async function auraDir(tok, fileId = S.drive?.fileId) {
+  if (auraHome) return auraHome;
   let home = null;
   if (fileId) try { const f = await (await gapi(tok, `${DRIVE}/${fileId}?fields=parents,ownedByMe`)).json(); if (f.ownedByMe) home = f.parents?.[0] || null; } catch {}
-  return backupsHome = await folderId(tok, 'backups', home || await folderId(tok, DRIVE_FOLDER));
+  return auraHome = home || await folderId(tok, DRIVE_FOLDER);
+}
+async function backupsDir(tok, fileId = S.drive?.fileId) {
+  return backupsHome || (backupsHome = await folderId(tok, 'backups', await auraDir(tok, fileId)));
 }
 // Before a format upgrade, the Drive file as it was is saved once as backups/aura-log-before-vN.json and never pruned.
 async function keepBeforeDrive(tok, fileId, raw) {
@@ -2456,6 +2530,7 @@ async function sync(interactive) {
     S.drive = { ...(S.drive || {}), fileId: id, lastSync: Date.now(), syncedAt: started, version: ver, error: '' }; S.backedUpAt = Date.now();
     if (S.drive.mine === undefined) { const m = await (await gapi(tok, `${DRIVE}/${id}?fields=ownedByMe,owners(displayName,emailAddress)`)).json(); S.drive.mine = !!m.ownedByMe; S.drive.owner = m.ownedByMe ? '' : m.owners?.[0]?.displayName || m.owners?.[0]?.emailAddress || 'someone'; }
     persist(); if (interactive) toast('Synced. Your log in Drive is up to date.');
+    pdfsToDrive(tok);
   } catch (e) { S.drive = { ...(S.drive || {}), error: e.message }; persist(); if (interactive) toast(e.message); if (/same time/.test(e.message)) setTimeout(() => sync(false), 20e3); }
   finally { syncing = false; syncMsg = ''; (interactive ? render : softRender)(); }
 }
@@ -2816,6 +2891,7 @@ document.addEventListener('click', async ev => {
     case 'cal-z': { const c = kid(); return calSheet((b.dataset.for ? Z_PLAN.filter(z => z.k === b.dataset.for) : Z_PLAN).map(z => zEvent(c, z)).filter(e => e && (b.dataset.for || e.t < Date.now() + 365 * DAY))); }
     case 'doc-add': return pickPages(b.dataset.doc ? { doc: b.dataset.doc } : { type: b.dataset.type });
     case 'doc-new': return docSheet('new', b.dataset.kita);
+    case 'doc-pdf': { const d = S.docs.find(x => x.id === b.dataset.doc); return d && savePdf(d); }
     case 'doc-save': return saveDoc();
     case 'doc-del': return deleteDoc();
     case 'doc-setup': closeSheet(); tab = 'more'; render(); $('#aiStatus')?.scrollIntoView({ block: 'center' }); return;

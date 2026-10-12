@@ -1157,6 +1157,68 @@ for (const theme of ['night', 'day']) {
   await page.close();
 }
 
+// Documents as PDF: saved from a document, and kept in Drive's documents folder, made again only when the pages change
+{
+  const page = await newPage();
+  page.on('pageerror', e => fail(`pdf: ${e.message}`));
+  await page.addInitScript(() => { window.google = { accounts: { oauth2: { initTokenClient: o => ({ requestAccessToken: () => o.callback({ access_token: 't', expires_in: 3600 }) }) } } }; });
+  const drive = { file: null, version: 1, pdfs: [], patched: [], trashed: [] };
+  await page.route('https://www.googleapis.com/**', async route => {
+    const req = route.request(), u = new URL(req.url()), m = req.method(), id = u.pathname.split('/').pop();
+    const json = b => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(b) });
+    if (u.pathname.startsWith('/upload') && m === 'PATCH' && id === 'f1') { drive.file = JSON.parse(req.postData()); return json({ version: String(++drive.version) }); }
+    if (u.pathname.startsWith('/upload') && m === 'PATCH') { drive.patched.push({ id, type: req.headers()['content-type'], body: req.postDataBuffer() }); return json({}); }
+    if (u.pathname.startsWith('/upload') && m === 'POST') {
+      const raw = req.postDataBuffer().toString('latin1'), meta = JSON.parse(raw.split('\r\n\r\n')[1].split('\r\n')[0]);
+      if (meta.name.endsWith('.pdf')) { drive.pdfs.push({ ...meta, body: raw }); return json({ id: 'pdf' + drive.pdfs.length }); }
+      return json({ id: 'up' + Math.random() });
+    }
+    if (u.pathname === '/drive/v3/files' && m === 'POST') return json({ id: JSON.parse(req.postData()).name });
+    if (/^\/drive\/v3\/files\/pdf/.test(u.pathname) && m === 'PATCH') { const b = JSON.parse(req.postData()); if (b.trashed) drive.trashed.push(id); return json({}); }
+    if (id === 'f1' && u.searchParams.get('alt') === 'media') return json(drive.file);
+    if (id === 'f1') return json({ ownedByMe: true, parents: ['logdir'], version: String(drive.version) });
+    if (u.pathname === '/drive/v3/files') return json({ files: [] });
+    return json({});
+  });
+  await page.goto(url);
+  await page.waitForSelector('h1');
+  const jpg = await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 40; c.height = 60; const g = c.getContext('2d'); g.fillStyle = '#c33'; g.fillRect(0, 0, 40, 60); return c.toDataURL('image/jpeg', 0.8); });
+  const st = await getState(page); st.example = false; st.settings.clientId = 'x-y.apps.googleusercontent.com'; st.drive = { fileId: 'f1' };
+  drive.file = { app: 'aura', v: st.v, entries: [] };
+  st.docs.push({ id: 'k1', childId: st.child, type: 'other', kita: 'contract', title: 'Kita contract', note: '', updatedAt: Date.now() });
+  st.pages.push({ id: 'kp1', docId: 'k1', childId: st.child, t: 1, img: jpg, note: '', order: 0, updatedAt: Date.now() }, { id: 'kp2', docId: 'k1', childId: st.child, t: 2, img: jpg, note: '', order: 1, updatedAt: Date.now() });
+  await setState(page, st); await reload(page); await page.waitForSelector('h1');
+  // Saved from the document's sheet
+  await page.click('.tabs [data-tab="docs"]');
+  await page.click('#kitaCard [data-docid="k1"]');
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#sheet [data-act="doc-pdf"]')]);
+  const pdf = readFileSync(await dl.path()).toString('latin1');
+  if (!pdf.startsWith('%PDF-1.4') || !pdf.includes('/Count 2') || (pdf.match(/\/DCTDecode/g) || []).length !== 2 || !pdf.trimEnd().endsWith('%%EOF')) fail('pdf: saved PDF is not the two pages');
+  const xref = +pdf.match(/startxref\n(\d+)/)[1]; if (pdf.slice(xref, xref + 4) !== 'xref') fail('pdf: cross-reference table offset wrong');
+  if (!dl.suggestedFilename().startsWith('Kita contract - ')) fail('pdf: file name lacks the document name');
+  await page.click('#sheet [data-act="close"]');
+  // Drive: one PDF per document, in a documents folder next to the log
+  const syncNow = async () => { await page.evaluate(() => { document.getElementById('toast').hidden = true; }); await page.click('[data-act="sync-tap"]:visible'); await page.waitForSelector('#toast:not([hidden])'); };
+  const settled = () => page.waitForTimeout(1000); // PDFs go up after the sync has finished
+  const edit = async f => { const x = await getState(page); f(x); x.changedAt = Date.now(); await setState(page, x); await reload(page); await page.waitForSelector('h1'); };
+  await syncNow(); await settled();
+  const up = drive.pdfs.filter(f => f.name.startsWith('Kita contract'));
+  if (up.length !== 1 || up[0].parents[0] !== 'documents' || !up[0].body.includes('/Count 2')) fail('pdf: document not kept as a PDF in Drive');
+  const n = drive.pdfs.length;
+  await edit(x => { const e = x.entries.find(y => !y.deleted); e.note = 'changed'; e.updatedAt = Date.now(); });
+  await syncNow(); await settled();
+  if (drive.pdfs.length !== n || drive.patched.length) fail('pdf: an unchanged document was made again');
+  // A replaced page updates the same PDF; a deleted document's PDF goes to the trash
+  await edit(x => { const p = x.pages.find(y => y.id === 'kp2'); p.order = 0; p.updatedAt = Date.now(); x.pages.find(y => y.id === 'kp1').order = 1; });
+  await syncNow(); await settled();
+  const pid = up[0] && 'pdf' + (drive.pdfs.indexOf(up[0]) + 1);
+  if (!drive.patched.some(x => x.id === pid && x.type === 'application/pdf')) fail('pdf: changed document not updated in Drive');
+  await edit(x => { const d = x.docs.find(y => y.id === 'k1'); d.deleted = true; d.updatedAt = Date.now(); });
+  await syncNow(); await settled();
+  if (!drive.trashed.includes(pid)) fail('pdf: deleted document still kept as a PDF');
+  await page.close();
+}
+
 // Upgrade from v2: photos of the book inside vaccinations and checkups become pages of documents, and the log as it was is kept
 {
   const page = await newPage();
