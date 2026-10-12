@@ -530,14 +530,15 @@ const TYPES = {
 };
 const QUICK_DAY = ['feed', 'sleep', 'diaper', 'solids', 'temp', 'med', 'doctor', 'photo', 'note'];
 const QUICK_SICK = ['temp', 'med', 'symptom', 'feed', 'sleep', 'diaper', 'vomit', 'sound', 'solids', 'doctor', 'photo', 'note'];
-// What each child's daily log tracks. Until a parent customizes it, the set follows the child's age.
+// What each child's daily log tracks, with a separate set for sick mode (child.track and child.trackSick; changing one
+// never changes the other). Until a parent customizes a set, it follows the child's age.
 const TRACKERS = [
   ['feed', 'Feeds', 'Breast, bottle or cup, with a breastfeeding timer'],
   ['sleep', 'Sleep', 'Naps and nights, with a timer'],
   ['diaper', 'Diapers', 'Wet and dirty diapers'],
   ['solids', 'Solids and meals', 'What they ate and how much'],
-  ['temp', 'Temperature', 'Always available in sick mode'],
-  ['med', 'Medicine', 'Always available in sick mode'],
+  ['temp', 'Temperature', 'Fever readings'],
+  ['med', 'Medicine', 'Doses, and when the minimum gap has passed'],
   ['doctor', "Doctor's notes", 'What a doctor or nurse said'],
   ['photo', 'Photos', 'A rash, a stool, a first smile'],
   ['note', 'Notes', 'Anything else, in your own words']];
@@ -548,11 +549,19 @@ function suggestedTrack(c) {
   if (m == null || m >= 5) on.add('solids');
   return Object.fromEntries(TRACKERS.map(([k]) => [k, on.has(k)]));
 }
-const trackMap = c => ({ ...suggestedTrack(c), ...(c?.track || {}) });
-const tracks = (k, c = kid()) => !c || trackMap(c)[k] !== false;
+const SICK_ONLY = [
+  ['symptom', 'Symptoms', 'What you notice, in your own words'],
+  ['vomit', 'Vomit', 'When and how much'],
+  ['sound', 'Sound', 'A cough or breathing, up to 30 seconds']];
+const trackerList = mode => mode === 'sick' ? QUICK_SICK.map(k => [...TRACKERS, ...SICK_ONLY].find(([x]) => x === k)) : TRACKERS;
+const suggestedSick = c => ({ ...suggestedTrack(c), ...Object.fromEntries(['temp', 'med', 'symptom', 'vomit', 'sound'].map(k => [k, true])) });
+// Today shows the sick set while sick mode is on and its sick view is open, the everyday set otherwise.
+const trackMode = (c = kid()) => c && activeEp(c.id) && S.todayView !== 'day' ? 'sick' : 'day';
+const trackMap = (c, mode = trackMode(c)) => mode === 'sick' ? { ...suggestedSick(c), ...(c?.trackSick || {}) } : { ...suggestedTrack(c), ...(c?.track || {}) };
+const tracks = (k, c = kid(), mode) => !c || trackMap(c, mode)[k] !== false;
 const TRACKER_OF = { food: 'solids', drink: 'feed' };
 // Entries of a type the parent turned off stay saved but leave the daily timeline (sick-mode types stay while sick).
-const shownType = (t, c = kid()) => { const k = TRACKER_OF[t] || t; return !TRACKERS.some(([x]) => x === k) || tracks(k, c) || ((k === 'temp' || k === 'med') && activeEp(c?.id)); };
+const shownType = (t, c = kid()) => { const k = TRACKER_OF[t] || t; return !(k in trackMap(c)) || tracks(k, c) || ((k === 'temp' || k === 'med') && activeEp(c?.id)); };
 const DOC_FIELDS = [['diagnosis', 'Thinks'], ['advice', 'Advice'], ['prescribed', 'Medicine'], ['followUp', 'Come back if']];
 const docText = d => [d.who && d.who + (d.how ? ' (' + dvl(d.how) + ')' : ''), ...DOC_FIELDS.filter(([k]) => d[k]).map(([k, l]) => dt(l) + ': ' + d[k]), d.note].filter(Boolean).join('\n');
 
@@ -679,8 +688,7 @@ function renderToday() {
       : '');
 
   }
-  const quick = sickView ? ['temp', 'med', 'symptom', ...['feed', 'sleep', 'diaper'].filter(k => tracks(k)), 'vomit', 'sound', ...['solids', 'doctor', 'photo', 'note'].filter(k => tracks(k))]
-    : QUICK_DAY.filter(k => tracks(k));
+  const quick = (sickView ? QUICK_SICK : QUICK_DAY).filter(k => tracks(k));
   const lastMeal = es.find(e => e.type === 'solids' || e.type === 'food');
   const since = e => now - e.t < 60000 ? 'now' : dur(now - e.t);
   const tiles = [
@@ -733,8 +741,8 @@ function sickOverview(ep, es, el) {
     ${al.length ? `<div class="alerts"><h3>Worth a call to your doctor</h3><ul>${al.map(a => `<li>${esc(a)}</li>`).join('')}</ul><p class="small muted" style="margin:8px 0 0">These are reminders, not a diagnosis. If you are worried, call your doctor or emergency services.</p></div>` : ''}
     <div class="sum two">
       <div class="tile ${lastT && lastT.tempC >= FEVER_C ? 'hot' : ''}"><small>Last temperature</small><strong class="num">${lastT ? showT(lastT.tempC) : '–'}</strong><em>${lastT ? ago(lastT.t) : 'none logged'}</em></div>
-      ${tracks('feed', childOf(ep)) || fl24 ? `<div class="tile"><small>Fluids, 24 h</small><strong class="num">${fl24 ? fl24 + ' ml' : '–'}</strong><em>bottle, cup and drinks</em></div>` : ''}
-      ${tracks('diaper', childOf(ep)) || wets.length ? `<div class="tile"><small>Wet diapers, 24 h</small><strong class="num">${wet24}</strong><em>${wets.length ? 'last ' + ago(wets[0].t) : 'none logged'}</em></div>` : ''}
+      ${tracks('feed', childOf(ep), 'sick') || fl24 ? `<div class="tile"><small>Fluids, 24 h</small><strong class="num">${fl24 ? fl24 + ' ml' : '–'}</strong><em>bottle, cup and drinks</em></div>` : ''}
+      ${tracks('diaper', childOf(ep), 'sick') || wets.length ? `<div class="tile"><small>Wet diapers, 24 h</small><strong class="num">${wet24}</strong><em>${wets.length ? 'last ' + ago(wets[0].t) : 'none logged'}</em></div>` : ''}
       <div class="tile"><small>Illness day</small><strong class="num">${dayNo(ep.end || now, ep)}</strong><em>since ${fmtDay(ep.start)}</em></div>
       ${doses ? `<div class="tile wide-tile"><small>Last doses</small>${doses}</div>` : ''}
     </div>
@@ -799,7 +807,7 @@ function summaryFacts(es, ep) {
   return f;
 }
 function dayCols(rows, ep) {
-  const c = childOf(ep), show = (k, has) => tracks(k, c) || rows.some(has);
+  const c = childOf(ep), show = (k, has) => tracks(k, c, 'sick') || rows.some(has);
   return [
     [dt('Fluids'), 'r num', r => r.ml ? r.ml + ' ml' : '–', show('feed', r => r.ml), r => dt('fluidsIs', r.ml || 0)],
     [dt('Ate'), '', r => esc(r.ate || '–'), show('solids', r => r.ate), r => dt('ateIs', r.ate || '–')],
@@ -1846,13 +1854,15 @@ function kidPicker() {
     ${kids().map(c => `<button class="pick ${c.id === kid()?.id ? 'on' : ''}" data-pickkid="${c.id}"><b>${esc(c.name)}</b><br><span class="small muted">${c.dob ? ageText(c) : ''}${activeEp(c.id) ? ' · sick mode on' : ''}</span></button>`).join('')}
     <div class="sheet-actions"><span></span><button class="btn" data-kid="new">Add a child</button></div>`);
 }
-function trackSheet(id = kid()?.id) {
+function trackSheet(id = kid()?.id, mode) {
   const c = S.children.find(k => k.id === id); if (!c) return kidSheet('new');
-  const on = trackMap(c);
+  mode = mode || trackMode(c);
+  const on = trackMap(c, mode), own = mode === 'sick' ? c.trackSick : c.track;
   openSheet(`<div class="hd"><h2>What to track for ${esc(c.name)}</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
-    <p class="small muted" style="margin:0">Turn off anything you don't need. Its button, summary card and timeline entries are hidden. Nothing you already logged is deleted, and it all comes back if you turn it on again.</p>
-    <div>${TRACKERS.map(([k, l, d]) => `<div class="track-row">${icon(k)}<span><b>${l}</b><small>${d}</small></span><button class="tog" role="switch" aria-checked="${on[k] !== false}" aria-label="${l}" data-track="${k}"></button></div>`).join('')}</div>
-    <div class="sheet-actions">${c.track ? `<button class="btn ghost" data-act="track-reset">Use suggestions${c.dob ? ' for ' + ageText(c) : ''}</button>` : `<span class="small muted" style="align-self:center">Suggested for ${c.dob ? ageText(c) : 'young children'}</span>`}<button class="btn primary" data-act="close">Done</button></div>`, { trackKid: c.id });
+    <div class="seg" role="tablist" aria-label="Which list"><button data-trackmode="day" class="${mode === 'day' ? 'on' : ''}">Everyday</button><button data-trackmode="sick" class="${mode === 'sick' ? 'on' : ''}">Sick mode</button></div>
+    <p class="small muted" style="margin:0">${mode === 'sick' ? 'This list is used while sick mode is on. It is kept apart from the everyday list, so changing one leaves the other as it is.' : 'This list is used every day. Sick mode keeps its own list.'} Turn off anything you don't need. Its button${mode === 'sick' ? '' : ', summary card'} and timeline entries are hidden. Nothing you already logged is deleted, and it all comes back if you turn it on again.</p>
+    <div>${trackerList(mode).map(([k, l, d]) => `<div class="track-row">${icon(k)}<span><b>${l}</b><small>${d}</small></span><button class="tog" role="switch" aria-checked="${on[k] !== false}" aria-label="${l}" data-track="${k}"></button></div>`).join('')}</div>
+    <div class="sheet-actions">${own ? `<button class="btn ghost" data-act="track-reset">Use suggestions${c.dob ? ' for ' + ageText(c) : ''}</button>` : `<span class="small muted" style="align-self:center">Suggested for ${c.dob ? ageText(c) : 'young children'}</span>`}<button class="btn primary" data-act="close">Done</button></div>`, { trackKid: c.id, trackMode: mode });
 }
 function kidSheet(id) {
   const c = id === 'new' ? {} : S.children.find(k => k.id === id);
@@ -2810,9 +2820,10 @@ document.addEventListener('click', async ev => {
   if (b.dataset.zt) { b.classList.toggle('in'); b.setAttribute('aria-pressed', String(b.classList.contains('in'))); return; }
   if (b.dataset.tooth) return growthSheet('tooth', b.dataset.tooth);
   if (b.dataset.ms) return growthSheet('milestone', b.dataset.ms === 'new' ? null : b.dataset.ms);
+  if (b.dataset.trackmode) return trackSheet(sheetCtx.trackKid, b.dataset.trackmode);
   if (b.dataset.track) {
-    const c = S.children.find(k => k.id === sheetCtx.trackKid), on = b.getAttribute('aria-checked') !== 'true';
-    c.track = { ...trackMap(c), [b.dataset.track]: on }; touch(c); b.setAttribute('aria-checked', String(on)); commit(); return;
+    const c = S.children.find(k => k.id === sheetCtx.trackKid), on = b.getAttribute('aria-checked') !== 'true', f = sheetCtx.trackMode === 'sick' ? 'trackSick' : 'track';
+    c[f] = { ...trackMap(c, sheetCtx.trackMode), [b.dataset.track]: on }; touch(c); b.setAttribute('aria-checked', String(on)); commit(); return;
   }
   if (b.dataset.backup) return restoreDrive(b.dataset.backup);
   if (b.dataset.snap) { try { mergeIn(await dbGet(b.dataset.snap)); closeSheet(); commit(); toast('Copy restored'); } catch (e) { toast(e.message); } return; }
@@ -2823,7 +2834,7 @@ document.addEventListener('click', async ev => {
   switch (b.dataset.act) {
     case 'close': return closeSheet();
     case 'track-sheet': return trackSheet(b.dataset.for || kid()?.id);
-    case 'track-reset': { const c = S.children.find(k => k.id === sheetCtx.trackKid); delete c.track; touch(c); commit(); return trackSheet(c.id); }
+    case 'track-reset': { const c = S.children.find(k => k.id === sheetCtx.trackKid), m = sheetCtx.trackMode; delete c[m === 'sick' ? 'trackSick' : 'track']; touch(c); commit(); return trackSheet(c.id, m); }
     case 'pick-kid': return kids().length ? kidPicker() : kidSheet('new');
     case 'sync-tap': if (S.drive?.fileId) return sync(true); tab = 'more'; render(); return window.scrollTo(0, 0);
     case 'say': aiParsed = null; return saySheet(true); // starts listening right away; tap the microphone to stop
