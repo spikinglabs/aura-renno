@@ -2229,13 +2229,20 @@ const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const micBtn = id => SR ? `<button type="button" class="mic" data-mic="${id}" aria-label="Dictate"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS.say}</svg></button>` : '';
 let dictation = null;
 function stopDictation() { if (!dictation) return; const d = dictation; dictation = null; d.btn?.classList.remove('on'); try { d.r.stop(); } catch {} }
+// The text is rebuilt from the whole result list on every event. Chrome on Android lists each step of a phrase
+// as its own result ("this", "this is", "this is a test"), so a result that repeats the one before it replaces it.
+function speechText(parts) {
+  const out = [], low = t => t.toLowerCase();
+  for (const p of parts) { const t = p.trim(), last = out[out.length - 1]; if (!t) continue;
+    if (last && low(t).startsWith(low(last))) out[out.length - 1] = t; else if (!last || !low(last).startsWith(low(t))) out.push(t); }
+  return out.join(' ');
+}
 function dictate(id, btn) {
   if (dictation) { const same = dictation.id === id; stopDictation(); if (same) return; }
   const box = document.getElementById(id); if (!box || !SR) return;
   const r = new SR(), base = box.value.replace(/\s+$/, ''); r.lang = navigator.language || 'en-US'; r.continuous = true; r.interimResults = true;
-  let done = '';
-  r.onresult = ev => { let live = ''; for (let i = ev.resultIndex; i < ev.results.length; i++) { const t = ev.results[i][0].transcript; if (ev.results[i].isFinal) done += t; else live += t; }
-    box.value = [base, (done + live).trim()].filter(Boolean).join(base && /[.!?]$/.test(base) ? ' ' : base ? ', ' : ''); box.dispatchEvent(new Event('input', { bubbles: true })); };
+  r.onresult = ev => { const said = speechText(Array.from(ev.results, x => x[0].transcript));
+    box.value = [base, said].filter(Boolean).join(base && /[.!?]$/.test(base) ? ' ' : base ? ', ' : ''); box.dispatchEvent(new Event('input', { bubbles: true })); };
   r.onerror = ev => { if (ev.error === 'not-allowed') toast('Microphone access was not allowed.'); else if (ev.error !== 'no-speech' && ev.error !== 'aborted') toast("Dictation stopped. Your keyboard's microphone key works too."); };
   r.onend = () => { if (dictation?.r === r) { dictation = null; btn.classList.remove('on'); } };
   try { r.start(); dictation = { r, id, btn }; btn.classList.add('on'); } catch { toast("Dictation isn't available here. Use your keyboard's microphone key instead."); }

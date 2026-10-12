@@ -1268,6 +1268,26 @@ for (const theme of ['night', 'day']) {
   await page.close();
 }
 
+// Dictation: Chrome on Android lists each step of a phrase as its own result; the box must get the words once.
+{
+  const page = await newPage();
+  page.on('pageerror', e => fail(`dictation: ${e.message}`));
+  await page.addInitScript(() => { window.SpeechRecognition = class { start() { window.__sr = this; } stop() { this.onend?.(); } }; });
+  await page.goto(url); await page.waitForSelector('h1');
+  await page.click('[data-add="solids"]');
+  await page.click('[data-mic="f_note"]');
+  const say = list => page.evaluate(l => { const results = l.map(([t, f]) => Object.assign([{ transcript: t }], { isFinal: f })); window.__sr.onresult({ resultIndex: results.length - 1, results }); }, list);
+  await say([['this', true], ['this is', true], ['this is a', false]]);
+  await say([['this', true], ['this is', true], ['this is a', true], ['this is a test', true], ["I'm", true], ["I'm testing", true], ["I'm testing this", true]]);
+  if ((await page.inputValue('#f_note')) !== "this is a test I'm testing this") fail(`dictation: Android results repeated: ${await page.inputValue('#f_note')}`);
+  await page.click('[data-mic="f_note"]');
+  await page.fill('#f_note', 'Fed well.');
+  await page.click('[data-mic="f_note"]');
+  await say([[' slept', true], [' after lunch', false]]);
+  if ((await page.inputValue('#f_note')) !== 'Fed well. slept after lunch') fail(`dictation: desktop results wrong: ${await page.inputValue('#f_note')}`);
+  await page.close();
+}
+
 await browser.close();
 if (errors.length) { console.error('Smoke test failed:\n- ' + errors.join('\n- ')); process.exit(1); }
 console.log('Smoke test passed');
