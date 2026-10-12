@@ -68,6 +68,33 @@ for (const theme of ['night', 'day']) {
     if ((await tile()) !== 1) fail('diaper card not back after turning it on');
   }
 
+  // Sick mode keeps its own list: changing it leaves the everyday list alone, and each comes back with its view
+  if (theme === 'night') {
+    const kidOf = async () => (await getState(page)).children.find(k => !k.deleted);
+    const everyday = JSON.stringify((await kidOf()).track);
+    await page.click('[data-view="sick"]');
+    await page.click('[data-act="track-sheet"]');
+    if ((await page.locator('[data-trackmode="sick"].on').count()) !== 1) fail('sick view did not open the sick-mode list');
+    await page.click('[data-track="vomit"]');
+    await page.click('[data-track="feed"]');
+    await page.click('[data-act="close"]');
+    if ((await page.locator('.quick [data-add="vomit"], .quick [data-add="feed"]').count()) !== 0) fail('sick list change not shown in sick view');
+    const k1 = await kidOf();
+    if (JSON.stringify(k1.track) !== everyday || k1.trackSick?.vomit !== false || k1.trackSick?.feed !== false) fail(`sick list not kept apart: ${JSON.stringify([k1.track, k1.trackSick])}`);
+    await page.click('[data-view="day"]');
+    if ((await page.locator('.quick [data-add="feed"]').count()) !== 1) fail('everyday feed button lost after changing the sick list');
+    await page.click('[data-act="track-sheet"]');
+    if ((await page.locator('[data-trackmode="day"].on').count()) !== 1) fail('everyday view did not open the everyday list');
+    await page.click('[data-trackmode="sick"]');
+    if ((await page.getAttribute('[data-track="vomit"]', 'aria-checked')) !== 'false') fail('sick list not shown from the switch');
+    await page.click('[data-act="track-reset"]');
+    await page.click('[data-act="close"]');
+    if ((await kidOf()).trackSick) fail('sick list not reset to suggestions');
+    await reload(page);
+    await page.click('[data-view="sick"]');
+    if ((await page.locator('.quick [data-add="vomit"]').count()) !== 1) fail('sick suggestions not back after reset');
+  }
+
   // While sick, Today switches between sick and everyday views without ending sick mode
   if (theme === 'night') {
     await page.click('[data-view="day"]');
