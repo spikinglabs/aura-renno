@@ -1099,17 +1099,27 @@ for (const theme of ['night', 'day']) {
   if ((await page.innerText('#sheet h2')) !== 'Page 1 of 1') fail('documents: delete does not move to the remaining page');
   await page.click('#sheet [data-act="close"]');
   if ((await page.locator('#view-checkups .book [data-pg]').count()) !== 1) fail('documents: deleted page still shown');
+  // A note for the whole U-Heft, from its card; a page with a note is marked in the grid
+  await page.click('#view-checkups [data-act="doc-note"]');
+  await page.fill('#doc_note', 'Kept in the blue folder');
+  await page.click('#sheet [data-act="doc-save"]');
+  if ((await getState(page)).docs.find(d => d.id.startsWith('u-'))?.note !== 'Kept in the blue folder' || !(await page.innerText('#view-checkups')).includes('Kept in the blue folder')) fail('documents: note on the whole U-Heft not saved or shown');
+  await page.click('#view-checkups .book [data-pg]');
+  await page.fill('#pg_note', 'U8 page'); await page.click('#sheet h2');
+  await page.click('#sheet [data-act="close"]');
+  if ((await page.locator('#view-checkups .book .pg.nt').count()) !== 1) fail('documents: page with a note not marked');
 
   // Any other document: name it, add pages, find it under Documents, delete it only after a second tap
   await page.click('.tabs [data-tab="docs"]');
   await page.click('[data-act="doc-new"]');
   await page.fill('#doc_title', 'Allergy pass');
+  await page.fill('#doc_note', 'From the clinic');
   await choosePhoto(page, '[data-act="doc-save"]', [file('x.png'), file('y.png')]);
   await page.waitForSelector('#pageImg');
   if ((await page.locator('#scanOk, #scanRead, [data-act="page-read"]').count()) !== 0) fail('documents: reading offered for a document without a reader');
   await page.click('#sheet [data-act="close"]');
   const row = page.locator('#view-docs [data-docid]', { hasText: 'Allergy pass' });
-  if ((await row.count()) !== 1 || !(await row.innerText()).includes('2 pages')) fail('documents: other document not listed with its pages');
+  if ((await row.count()) !== 1 || !(await row.innerText()).includes('2 pages') || !(await row.innerText()).includes('From the clinic')) fail('documents: other document not listed with its pages');
   if (!(await page.innerText('#view-docs [data-tab="vax"]')).includes('page')) fail('documents: vaccination book pages not counted under Documents');
   if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail('documents: Documents tab scrolls sideways');
   await row.click();
