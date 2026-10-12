@@ -1114,6 +1114,49 @@ for (const theme of ['night', 'day']) {
   await page.close();
 }
 
+// Kita papers: added from their own card with a kind, measles doses shown next to the proof, other documents can move in
+{
+  const page = await newPage();
+  page.on('pageerror', e => fail(`kita: ${e.message}`));
+  await page.goto(url);
+  await page.waitForSelector('h1');
+  { const st = await getState(page); st.docs.push({ id: 'd2', childId: st.child, type: 'other', title: 'Daycare contract', note: '', updatedAt: Date.now() }); await setState(page, st); }
+  await reload(page); await page.waitForSelector('h1');
+  await page.click('.tabs [data-tab="docs"]');
+  const s0 = await getState(page), mmr = s0.vaccines.filter(v => v.kind === 'dose' && !v.deleted && v.childId === s0.child && v.against?.includes('mmr')).length;
+  if (!(await page.innerText('#kitaCard')).includes(mmr ? `Measles doses recorded in Aura: ${mmr}` : 'No measles dose')) fail('kita: measles doses not shown');
+  await page.click('#kitaCard [data-act="doc-new"]');
+  if ((await page.inputValue('#doc_title')) !== 'Kita contract') fail('kita: name not filled in from the kind');
+  await page.click('#sheet [data-kitakind="measles"]');
+  if ((await page.inputValue('#doc_title')) !== 'Measles proof') fail('kita: name does not follow the kind');
+  await addPage(page, '#sheet [data-act="doc-save"]', { name: 'page.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64') });
+  await page.click('#sheet [data-act="close"]');
+  let st = await getState(page);
+  const m = st.docs.find(d => d.kita === 'measles');
+  if (!m || m.type !== 'other' || m.title !== 'Measles proof' || !st.pages.some(p => p.docId === m.id && !p.deleted)) fail('kita: measles proof not saved with its page');
+  // A document added before moves into the Kita card
+  await page.click('#view-docs [data-docid="d2"]');
+  await page.click('#sheet [data-kitakind="contract"]');
+  if ((await page.inputValue('#doc_title')) !== 'Daycare contract') fail('kita: kind overwrote a name the parent typed');
+  await page.click('#sheet [data-act="doc-save"]');
+  st = await getState(page);
+  if (st.docs.find(d => d.id === 'd2')?.kita !== 'contract') fail('kita: kind not saved on an existing document');
+  const kc = await page.innerText('#kitaCard');
+  if (!kc.includes('Daycare contract') || !kc.includes('Measles proof') || kc.indexOf('Daycare contract') > kc.indexOf('Measles proof')) fail('kita: card does not list the papers in order');
+  if ((await page.locator('#view-docs .card:not(#kitaCard) [data-docid="d2"]').count()) !== 0) fail('kita: paper still under other documents');
+  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail('kita: Documents scrolls sideways');
+  // Taken out of the Kita again
+  await page.click('#kitaCard [data-docid="d2"]');
+  await page.click('#sheet [data-kitakind=""]');
+  await page.click('#sheet [data-act="doc-save"]');
+  if ((await getState(page)).docs.find(d => d.id === 'd2')?.kita) fail('kita: could not take a paper out of the Kita');
+  // From the measles proof to the vaccinations
+  await page.click(`#kitaCard [data-docid="${m.id}"]`);
+  await page.click('#sheet [data-tab="vax"]');
+  if (await page.isHidden('#view-vax') || !(await page.isHidden('#scrim'))) fail('kita: measles proof does not lead to the vaccinations');
+  await page.close();
+}
+
 // Upgrade from v2: photos of the book inside vaccinations and checkups become pages of documents, and the log as it was is kept
 {
   const page = await newPage();
