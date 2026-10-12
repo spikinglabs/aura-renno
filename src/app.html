@@ -235,6 +235,10 @@ tr:last-child td { border-bottom: 0 }
 /* Sheet */
 .scrim { position: fixed; inset: 0; background: rgb(10 6 4 / .55); z-index: 20; display: flex; align-items: flex-end; justify-content: center }
 .scrim[hidden] { display: none }
+.picker { position: fixed; inset: 0; z-index: 25; background: rgb(10 6 4 / .45); display: flex; align-items: flex-end; justify-content: center }
+.picker[hidden] { display: none }
+.picker > div { background: var(--card); width: 100%; max-width: 600px; border-radius: 26px 26px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 10px }
+.picker .btn { width: 100%; padding: 14px 18px }
 .sheet { background: var(--card); width: 100%; max-width: 600px; max-height: 92%; overflow-y: auto; border-radius: 26px 26px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 14px }
 .sheet .hd { display: flex; justify-content: space-between; align-items: center; gap: 10px }
 .chips { display: flex; flex-wrap: wrap; gap: 6px }
@@ -288,7 +292,8 @@ tr:last-child td { border-bottom: 0 }
 <div class="scrim" id="scrim" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
 <button class="fab" id="fab" data-act="say" hidden aria-label="Say it: log anything by talking or typing"><svg viewBox="0 0 24 24" aria-hidden="true"></svg>Say it</button>
 <div class="toast" id="toast" hidden></div>
-<input id="docFiles" type="file" accept="image/*" multiple hidden><input id="pageFile" type="file" accept="image/*" hidden>
+<div class="picker" id="picker" hidden><div role="dialog" aria-modal="true" aria-label="Add a photo"><button class="btn primary" data-pick="cam">Take a photo</button><button class="btn" data-pick="lib">Choose from photos</button><button class="btn ghost" data-pick="no">Cancel</button></div></div>
+<input id="docFiles" type="file" accept="image/*" multiple hidden><input id="pageFile" type="file" accept="image/*" hidden><input id="camFile" type="file" accept="image/*" capture="environment" hidden>
 
 <script>
 (() => {
@@ -2049,7 +2054,15 @@ function docCard(c, type) {
     <div class="row"><button class="btn sm" data-act="doc-add" data-type="${type}">Add a page</button>${pages.length ? `<button class="btn ghost sm" data-act="doc-pdf" data-doc="${d.id}">Save as PDF</button>` : ''}</div></div>`;
 }
 let addTo = null; // where the photos chosen next go: { type } or { doc }
-function pickPages(target) { addTo = target; $('#docFiles').click(); }
+let pickFor = null; // 'add' or 'replace': what the photo from the camera or the gallery is for
+function pickPages(target) { addTo = target; askPhoto('add'); }
+// The phone's file chooser on Android only offers the gallery, so ask first: camera or photos.
+function askPhoto(what) { pickFor = what; $('#picker').hidden = false; }
+function photoPicked(how) {
+  $('#picker').hidden = true; if (how === 'no') { addTo = null; pickFor = null; return; }
+  if (how === 'cam') return $('#camFile').click();
+  $(pickFor === 'replace' ? '#pageFile' : '#docFiles').click();
+}
 function pagesChosen(files) {
   const c = kid(), target = addTo; addTo = null; if (!c || !target) return;
   Promise.all(files.map(f => shrink(f, 1600))).then(imgs => {
@@ -2738,6 +2751,7 @@ function syncShow() { const v = readChips('kind'); $('#sheet').querySelectorAll(
 document.addEventListener('click', async ev => {
   const tr = ev.target.closest('tr[data-meas]'); if (tr) return measSheet(tr.dataset.meas);
   const b = ev.target.closest('button'); if (!b) return;
+  if (b.dataset.pick) return photoPicked(b.dataset.pick);
   if (b.dataset.mic) return dictate(b.dataset.mic, b);
   if (b.dataset.tab) { if (b.closest('#sheet')) closeSheet(); tab = b.dataset.tab; showDays = 3; render(); window.scrollTo(0, 0); return; }
   if (b.dataset.tag) { const box = $('#f_symtext'); box.value = toggleTag(box.value, b.dataset.tag); markTags(); return; }
@@ -2897,7 +2911,7 @@ document.addEventListener('click', async ev => {
     case 'doc-setup': closeSheet(); tab = 'more'; render(); $('#aiStatus')?.scrollIntoView({ block: 'center' }); return;
     case 'page-go': return pageSheet(b.dataset.for);
     case 'page-move': return movePage(+b.dataset.for);
-    case 'page-replace': return $('#pageFile').click();
+    case 'page-replace': return askPhoto('replace');
     case 'page-del': return deletePage();
     case 'page-read': {
       const ok = $('#scanOk'); if (ok && !ok.checked) return toast('Tick the box first, so you know where the photo goes.');
@@ -2981,17 +2995,20 @@ document.addEventListener('change', ev => {
   if (t.id === 'clientId' || t.id === 'pickerKey') { S.settings[t.id] = t.value.trim(); persist(); }
   if (t.id === 'meName') { S.settings.me = t.value.trim(); persist(); }
   if (t.id === 'docFiles' && t.files.length) { pagesChosen([...t.files]); t.value = ''; }
+  if (t.id === 'camFile' && t.files[0]) { const f = t.files[0]; t.value = ''; if (pickFor === 'replace') replacePage(f); else pagesChosen([f]); }
   if (t.id === 'scanRead') { S.settings.scanRead = t.checked; persist(); }
   if (t.id === 'pg_note' && sheetCtx?.page) { const p = S.pages.find(x => x.id === sheetCtx.page); p.note = t.value.trim(); touch(p); commit(); }
-  if (t.id === 'pageFile' && t.files[0]) { const id = sheetCtx.page, p = S.pages.find(x => x.id === id);
-    shrink(t.files[0], 1600).then(img => { Object.assign(p, { img, t: Date.now() }); touch(p); commit(); toast('Page replaced'); pageSheet(id, [id]); }).catch(e => toast(e.message)); t.value = ''; }
+  if (t.id === 'pageFile' && t.files[0]) { replacePage(t.files[0]); t.value = ''; }
   if (t.id === 'restoreFile' && t.files[0]) t.files[0].text().then(x => { mergeIn(JSON.parse(x)); commit(); toast('Backup restored'); }).catch(e => toast(e instanceof SyntaxError ? "That file isn't an Aura backup." : e.message));
 });
 function markTags() { const t = $('#f_symtext')?.value; document.querySelectorAll('#symTags [data-tag]').forEach(x => x.classList.toggle('on', hasTag(t, x.dataset.tag))); }
 document.addEventListener('input', ev => { if (ev.target.id === 'f_symtext') markTags(); });
 document.addEventListener('input', ev => { if (ev.target.matches('[data-custom]') && ev.target.value) ev.target.closest('.chips').querySelectorAll('button').forEach(x => x.classList.remove('on')); });
+function replacePage(f) { const id = sheetCtx?.page, p = S.pages.find(x => x.id === id); if (!p) return;
+  shrink(f, 1600).then(img => { Object.assign(p, { img, t: Date.now() }); touch(p); commit(); toast('Page replaced'); pageSheet(id, [id]); }).catch(e => toast(e.message)); }
+$('#picker').addEventListener('click', ev => { if (ev.target.id === 'picker') photoPicked('no'); });
 $('#scrim').addEventListener('click', ev => { if (ev.target.id === 'scrim') closeSheet(); });
-document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && !$('#scrim').hidden) closeSheet(); });
+document.addEventListener('keydown', ev => { if (ev.key !== 'Escape') return; if (!$('#picker').hidden) photoPicked('no'); else if (!$('#scrim').hidden) closeSheet(); });
 document.addEventListener('visibilitychange', () => { if (S && !document.hidden && $('#scrim').hidden) { render(); scheduleSync(); refreshRecalls(); } });
 if ('serviceWorker' in navigator && location.protocol === 'https:' && !window.claude) navigator.serviceWorker.register('sw.js').catch(() => {});
 load().then(() => {
