@@ -220,6 +220,8 @@ tr:last-child td { border-bottom: 0 }
 .book img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block }
 .book button { position: relative }
 .book .pg { position: absolute; left: 6px; bottom: 6px; min-width: 22px; padding: 1px 6px; border-radius: 99px; background: var(--card); color: var(--ink); font-size: 12px; font-weight: 600; text-align: center }
+.book .pg.nt { left: auto; right: 6px }
+.doc-note { margin: 0; white-space: pre-wrap }
 .pager { display: grid; grid-template-columns: 36px minmax(0, 1fr) 36px; align-items: center; gap: 4px }
 .pager .btn { padding: 8px 0; font-size: 22px }
 .pager img { width: 100%; max-height: 62vh; object-fit: contain; border-radius: 10px; touch-action: pan-y pinch-zoom }
@@ -235,6 +237,10 @@ tr:last-child td { border-bottom: 0 }
 /* Sheet */
 .scrim { position: fixed; inset: 0; background: rgb(10 6 4 / .55); z-index: 20; display: flex; align-items: flex-end; justify-content: center }
 .scrim[hidden] { display: none }
+.picker { position: fixed; inset: 0; z-index: 25; background: rgb(10 6 4 / .45); display: flex; align-items: flex-end; justify-content: center }
+.picker[hidden] { display: none }
+.picker > div { background: var(--card); width: 100%; max-width: 600px; border-radius: 26px 26px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 10px }
+.picker .btn { width: 100%; padding: 14px 18px }
 .sheet { background: var(--card); width: 100%; max-width: 600px; max-height: 92%; overflow-y: auto; border-radius: 26px 26px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 14px }
 .sheet .hd { display: flex; justify-content: space-between; align-items: center; gap: 10px }
 .chips { display: flex; flex-wrap: wrap; gap: 6px }
@@ -288,7 +294,8 @@ tr:last-child td { border-bottom: 0 }
 <div class="scrim" id="scrim" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
 <button class="fab" id="fab" data-act="say" hidden aria-label="Say it: log anything by talking or typing"><svg viewBox="0 0 24 24" aria-hidden="true"></svg>Say it</button>
 <div class="toast" id="toast" hidden></div>
-<input id="docFiles" type="file" accept="image/*" multiple hidden><input id="pageFile" type="file" accept="image/*" hidden>
+<div class="picker" id="picker" hidden><div role="dialog" aria-modal="true" aria-label="Add a photo"><button class="btn primary" data-pick="cam">Take a photo</button><button class="btn" data-pick="lib">Choose from photos</button><button class="btn ghost" data-pick="no">Cancel</button></div></div>
+<input id="docFiles" type="file" accept="image/*" multiple hidden><input id="pageFile" type="file" accept="image/*" hidden><input id="camFile" type="file" accept="image/*" capture="environment" hidden>
 
 <script>
 (() => {
@@ -2038,18 +2045,27 @@ function addPages(d, imgs) {
   const pages = docPages(d); setOrder(pages);
   return imgs.map((img, i) => { const p = touch({ id: uid(), docId: d.id, childId: d.childId, t: Date.now(), img, note: '', order: pages.length + i }); S.pages.push(p); return p; });
 }
-const pagesGrid = pages => pages.length ? `<div class="book">${pages.map((p, i) => `<button data-pg="${p.id}" aria-label="Page ${i + 1}"><img src="${p.img}" alt=""><span class="pg num">${i + 1}</span></button>`).join('')}</div>` : '';
+const pagesGrid = pages => pages.length ? `<div class="book">${pages.map((p, i) => `<button data-pg="${p.id}" aria-label="Page ${i + 1}${p.note ? ': ' + esc(p.note) : ''}"><img src="${p.img}" alt=""><span class="pg num">${i + 1}</span>${p.note ? '<span class="pg nt" aria-hidden="true">✎</span>' : ''}</button>`).join('')}</div>` : '';
 const readOn = () => aiKeySet() && S.settings.scanRead !== false;
 // The card on the Vaccinations and Checkups screens (under Documents).
 function docCard(c, type) {
   const d = typedDoc(c, type), pages = docPages(d), what = { vax: 'vaccination book', u: 'U-Heft', z: 'dental pass' }[type];
   return `<div class="card set"><div class="row between"><h2>Pages of the ${what}</h2><span class="muted small">${pages.length ? pages.length + (pages.length > 1 ? ' pages' : ' page') : ''}</span></div>
     ${pagesGrid(pages)}
+    ${d?.note ? `<p class="small doc-note">${esc(d.note)}</p>` : ''}
     <p class="small muted" style="margin:0">Keep the ${what} here page by page: add a page when a new one is filled in, and replace a page when more is written on it.${readOn() ? ' Aura then reads the new entries on that page and asks you to check them.' : aiKeySet() ? ' Reading the entries with AI is off.' : ' To have Aura read the entries for you, set up an AI service that understands pictures under More.'} Pages sync with your partner and go into Drive backups.</p>
-    <div class="row"><button class="btn sm" data-act="doc-add" data-type="${type}">Add a page</button>${pages.length ? `<button class="btn ghost sm" data-act="doc-pdf" data-doc="${d.id}">Save as PDF</button>` : ''}</div></div>`;
+    <div class="row"><button class="btn sm" data-act="doc-add" data-type="${type}">Add a page</button><button class="btn ghost sm" data-act="doc-note" data-type="${type}">${d?.note ? 'Edit note' : 'Add a note'}</button>${pages.length ? `<button class="btn ghost sm" data-act="doc-pdf" data-doc="${d.id}">Save as PDF</button>` : ''}</div></div>`;
 }
 let addTo = null; // where the photos chosen next go: { type } or { doc }
-function pickPages(target) { addTo = target; $('#docFiles').click(); }
+let pickFor = null; // 'add' or 'replace': what the photo from the camera or the gallery is for
+function pickPages(target) { addTo = target; askPhoto('add'); }
+// The phone's file chooser on Android only offers the gallery, so ask first: camera or photos.
+function askPhoto(what) { pickFor = what; $('#picker').hidden = false; }
+function photoPicked(how) {
+  $('#picker').hidden = true; if (how === 'no') { addTo = null; pickFor = null; return; }
+  if (how === 'cam') return $('#camFile').click();
+  $(pickFor === 'replace' ? '#pageFile' : '#docFiles').click();
+}
 function pagesChosen(files) {
   const c = kid(), target = addTo; addTo = null; if (!c || !target) return;
   Promise.all(files.map(f => shrink(f, 1600))).then(imgs => {
@@ -2068,7 +2084,7 @@ function pageSheet(id, fresh) {
   openSheet(`<div class="hd"><h2>Page ${i + 1} of ${n}</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
     <button class="linkish small" data-docid="${d.id}">${esc(docTitle(d))}</button>
     <div class="pager">${nav(i - 1, '‹', 'Previous page')}<img id="pageImg" src="${p.img}" alt="Page ${i + 1} of ${esc(docTitle(d))}">${nav(i + 1, '›', 'Next page')}</div>
-    <label class="field"><span>Note (optional)</span><input id="pg_note" value="${esc(p.note || '')}" placeholder="${d.type === 'vax' ? 'e.g. pages 4 and 5' : d.type === 'u' ? 'e.g. U5, pages 1 and 2' : 'e.g. front side'}" autocomplete="off"></label>
+    <label class="field"><span>Note on this page (optional)</span><textarea id="pg_note" style="min-height:64px" placeholder="${d.type === 'vax' ? 'e.g. pages 4 and 5' : d.type === 'u' ? 'e.g. U5, pages 1 and 2' : 'e.g. front side'}">${esc(p.note || '')}</textarea></label>
     <p class="small muted" style="margin:0">Photo from ${fmtDate(p.t)}</p>
     <div class="row"><button class="btn" data-act="page-replace">Replace with a newer photo</button>${n > 1 ? `<button class="btn ghost sm" data-act="page-move" data-for="-1" ${i ? '' : 'disabled'}>Move earlier</button><button class="btn ghost sm" data-act="page-move" data-for="1" ${i < n - 1 ? '' : 'disabled'}>Move later</button>` : ''}</div>
     ${reader ? readerHtml(d) : ''}
@@ -2177,21 +2193,22 @@ function docSheet(id, kita) {
     <p class="small muted" style="margin:0">A digital copy of a paper document for ${esc(c.name)}, page by page. Keep it up to date by replacing a page when something new is written on it.</p>
     ${kita ? kitaChips(kita) : ''}
     <label class="field"><span>What is it?</span><input id="doc_title" value="${esc(kitaTitle(kita))}" placeholder="e.g. Allergy pass, hospital letter" autocomplete="off" ${kita ? '' : 'autofocus'}></label>
+    <label class="field"><span>Note on the whole document (optional)</span><textarea id="doc_note" style="min-height:64px" placeholder="e.g. where the paper is kept"></textarea></label>
     <div class="sheet-actions"><span></span><button class="btn primary" data-act="doc-save">Add pages</button></div>`, { docEdit: 'new', kita: kita || '' });
   const pages = docPages(d), typed = d.type !== 'other';
   openSheet(`<div class="hd"><h2>${esc(docTitle(d))}</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
-    ${typed ? `<p class="small muted" style="margin:0">Its entries are under Documents → ${d.type === 'vax' ? 'Vaccinations' : 'Checkups'}.</p>` : `<label class="field"><span>Name</span><input id="doc_title" value="${esc(d.title)}" autocomplete="off"></label>${kitaChips(d.kita)}`}
+    ${typed ? `<p class="small muted" style="margin:0">Its entries are under Documents → ${{ vax: 'Vaccinations', u: 'Checkups', z: 'Dental checkups' }[d.type] || 'Checkups'}.</p>` : `<label class="field"><span>Name</span><input id="doc_title" value="${esc(d.title)}" autocomplete="off"></label>${kitaChips(d.kita)}`}
     ${d.kita === 'measles' ? measlesLine(c) : ''}
     ${pagesGrid(pages) || '<p class="small muted" style="margin:0">No pages yet.</p>'}
     <div class="row"><button class="btn sm" data-act="doc-add" data-doc="${d.id}">Add a page</button>${pages.length ? `<button class="btn ghost sm" data-act="doc-pdf" data-doc="${d.id}">Save as PDF</button>` : ''}</div>
     <div class="field"><span>Appointments</span>${otherAppts(c).filter(a => a.docId === d.id).reverse().map(a => `<button class="vx-dose" data-act="appt" data-appt="${a.id}"><span><b>${esc(a.title)}</b> <span class="muted small num">${esc(apptWhen(a))}</span></span></button>`).join('')}<div><button class="btn sm" data-act="appt" data-plan="other" data-doc="${d.id}">Add an appointment</button></div></div>
-    <label class="field"><span>Note (optional)</span><textarea id="doc_note" style="min-height:64px" placeholder="e.g. where the paper is kept">${esc(d.note || '')}</textarea></label>
+    <label class="field"><span>Note on the whole document (optional)</span><textarea id="doc_note" style="min-height:64px" placeholder="e.g. where the paper is kept">${esc(d.note || '')}</textarea></label>
     <div class="sheet-actions">${typed ? '<span></span>' : `<button class="btn ghost danger" data-act="doc-del">Delete document</button>`}<button class="btn primary" data-act="doc-save">Save</button></div>`, { docEdit: d.id, kita: d.kita || '' });
 }
 function saveDoc() {
   const id = sheetCtx.docEdit, title = $('#doc_title')?.value.trim(), note = $('#doc_note')?.value.trim() ?? '';
   const kita = sheetCtx.kita || undefined;
-  if (id === 'new') { if (!title) return toast('Give it a name first.'); const d = touch({ id: uid(), childId: kid().id, type: 'other', title, note: '', t: Date.now(), ...(kita ? { kita } : {}) }); S.docs.push(d); commit(); docSheet(d.id); return pickPages({ doc: d.id }); }
+  if (id === 'new') { if (!title) return toast('Give it a name first.'); const d = touch({ id: uid(), childId: kid().id, type: 'other', title, note, t: Date.now(), ...(kita ? { kita } : {}) }); S.docs.push(d); commit(); docSheet(d.id); return pickPages({ doc: d.id }); }
   const d = S.docs.find(x => x.id === id); if (d.type === 'other' && !title) return toast('Give it a name.');
   if (d.type === 'other') { d.title = title; if (kita) d.kita = kita; else delete d.kita; } d.note = note; touch(d); closeSheet(); commit();
 }
@@ -2738,6 +2755,7 @@ function syncShow() { const v = readChips('kind'); $('#sheet').querySelectorAll(
 document.addEventListener('click', async ev => {
   const tr = ev.target.closest('tr[data-meas]'); if (tr) return measSheet(tr.dataset.meas);
   const b = ev.target.closest('button'); if (!b) return;
+  if (b.dataset.pick) return photoPicked(b.dataset.pick);
   if (b.dataset.mic) return dictate(b.dataset.mic, b);
   if (b.dataset.tab) { if (b.closest('#sheet')) closeSheet(); tab = b.dataset.tab; showDays = 3; render(); window.scrollTo(0, 0); return; }
   if (b.dataset.tag) { const box = $('#f_symtext'); box.value = toggleTag(box.value, b.dataset.tag); markTags(); return; }
@@ -2889,6 +2907,7 @@ document.addEventListener('click', async ev => {
     case 'save-z': return saveZ();
     case 'del-z': { const e = S.dental.find(x => x.id === sheetCtx.zexam); e.deleted = true; touch(e); closeSheet(); commit(); return toast('Deleted. Teeth it added stay under Growth.'); }
     case 'cal-z': { const c = kid(); return calSheet((b.dataset.for ? Z_PLAN.filter(z => z.k === b.dataset.for) : Z_PLAN).map(z => zEvent(c, z)).filter(e => e && (b.dataset.for || e.t < Date.now() + 365 * DAY))); }
+    case 'doc-note': { const d = typedDoc(kid(), b.dataset.type, true); commit(); docSheet(d.id); return $('#doc_note')?.focus(); }
     case 'doc-add': return pickPages(b.dataset.doc ? { doc: b.dataset.doc } : { type: b.dataset.type });
     case 'doc-new': return docSheet('new', b.dataset.kita);
     case 'doc-pdf': { const d = S.docs.find(x => x.id === b.dataset.doc); return d && savePdf(d); }
@@ -2897,7 +2916,7 @@ document.addEventListener('click', async ev => {
     case 'doc-setup': closeSheet(); tab = 'more'; render(); $('#aiStatus')?.scrollIntoView({ block: 'center' }); return;
     case 'page-go': return pageSheet(b.dataset.for);
     case 'page-move': return movePage(+b.dataset.for);
-    case 'page-replace': return $('#pageFile').click();
+    case 'page-replace': return askPhoto('replace');
     case 'page-del': return deletePage();
     case 'page-read': {
       const ok = $('#scanOk'); if (ok && !ok.checked) return toast('Tick the box first, so you know where the photo goes.');
@@ -2981,17 +3000,21 @@ document.addEventListener('change', ev => {
   if (t.id === 'clientId' || t.id === 'pickerKey') { S.settings[t.id] = t.value.trim(); persist(); }
   if (t.id === 'meName') { S.settings.me = t.value.trim(); persist(); }
   if (t.id === 'docFiles' && t.files.length) { pagesChosen([...t.files]); t.value = ''; }
+  if (t.id === 'camFile' && t.files[0]) { const f = t.files[0]; t.value = ''; if (pickFor === 'replace') replacePage(f); else pagesChosen([f]); }
   if (t.id === 'scanRead') { S.settings.scanRead = t.checked; persist(); }
+  if (t.id === 'doc_note' && sheetCtx?.docEdit && sheetCtx.docEdit !== 'new') { const d = S.docs.find(x => x.id === sheetCtx.docEdit); if (d) { d.note = t.value.trim(); touch(d); commit(); } }
   if (t.id === 'pg_note' && sheetCtx?.page) { const p = S.pages.find(x => x.id === sheetCtx.page); p.note = t.value.trim(); touch(p); commit(); }
-  if (t.id === 'pageFile' && t.files[0]) { const id = sheetCtx.page, p = S.pages.find(x => x.id === id);
-    shrink(t.files[0], 1600).then(img => { Object.assign(p, { img, t: Date.now() }); touch(p); commit(); toast('Page replaced'); pageSheet(id, [id]); }).catch(e => toast(e.message)); t.value = ''; }
+  if (t.id === 'pageFile' && t.files[0]) { replacePage(t.files[0]); t.value = ''; }
   if (t.id === 'restoreFile' && t.files[0]) t.files[0].text().then(x => { mergeIn(JSON.parse(x)); commit(); toast('Backup restored'); }).catch(e => toast(e instanceof SyntaxError ? "That file isn't an Aura backup." : e.message));
 });
 function markTags() { const t = $('#f_symtext')?.value; document.querySelectorAll('#symTags [data-tag]').forEach(x => x.classList.toggle('on', hasTag(t, x.dataset.tag))); }
 document.addEventListener('input', ev => { if (ev.target.id === 'f_symtext') markTags(); });
 document.addEventListener('input', ev => { if (ev.target.matches('[data-custom]') && ev.target.value) ev.target.closest('.chips').querySelectorAll('button').forEach(x => x.classList.remove('on')); });
+function replacePage(f) { const id = sheetCtx?.page, p = S.pages.find(x => x.id === id); if (!p) return;
+  shrink(f, 1600).then(img => { Object.assign(p, { img, t: Date.now() }); touch(p); commit(); toast('Page replaced'); pageSheet(id, [id]); }).catch(e => toast(e.message)); }
+$('#picker').addEventListener('click', ev => { if (ev.target.id === 'picker') photoPicked('no'); });
 $('#scrim').addEventListener('click', ev => { if (ev.target.id === 'scrim') closeSheet(); });
-document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && !$('#scrim').hidden) closeSheet(); });
+document.addEventListener('keydown', ev => { if (ev.key !== 'Escape') return; if (!$('#picker').hidden) photoPicked('no'); else if (!$('#scrim').hidden) closeSheet(); });
 document.addEventListener('visibilitychange', () => { if (S && !document.hidden && $('#scrim').hidden) { render(); scheduleSync(); refreshRecalls(); } });
 if ('serviceWorker' in navigator && location.protocol === 'https:' && !window.claude) navigator.serviceWorker.register('sw.js').catch(() => {});
 load().then(() => {
