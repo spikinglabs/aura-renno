@@ -378,7 +378,7 @@ function readLS(k) { try { const r = localStorage.getItem(k); return r ? JSON.pa
 const SCHEMA = 3;
 const MIGRATIONS = {
   1: o => { // v1 sick-day log: entries belonged to an illness; give each one its child.
-    const s = { ...emptyState(), ...o }; Object.assign(s, { children: o.children || [], episodes: o.episodes || [], measurements: o.measurements || [], meds: o.meds || s.meds, drive: {} });
+    const e = emptyState(), s = { ...e, ...o, app: e.app }; Object.assign(s, { children: o.children || [], episodes: o.episodes || [], measurements: o.measurements || [], meds: o.meds || s.meds, drive: {} });
     s.settings = { ...s.settings, ...(o.settings || {}) };
     const epChild = Object.fromEntries((o.episodes || []).map(e => [e.id, e.childId]));
     s.entries = (o.entries || []).map(e => ({ ...e, child: e.child || epChild[e.ep] }));
