@@ -378,7 +378,7 @@ function readLS(k) { try { const r = localStorage.getItem(k); return r ? JSON.pa
 const SCHEMA = 3;
 const MIGRATIONS = {
   1: o => { // v1 sick-day log: entries belonged to an illness; give each one its child.
-    const s = emptyState(); Object.assign(s, { children: o.children || [], episodes: o.episodes || [], measurements: o.measurements || [], meds: o.meds || s.meds, drive: {} });
+    const s = { ...emptyState(), ...o }; Object.assign(s, { children: o.children || [], episodes: o.episodes || [], measurements: o.measurements || [], meds: o.meds || s.meds, drive: {} });
     s.settings = { ...s.settings, ...(o.settings || {}) };
     const epChild = Object.fromEntries((o.episodes || []).map(e => [e.id, e.childId]));
     s.entries = (o.entries || []).map(e => ({ ...e, child: e.child || epChild[e.ep] }));
@@ -435,12 +435,12 @@ const wellFormed = st => !!st && typeof st === 'object' && !!st.settings && SYNC
 // Keeps the log as it was before a format upgrade, as "before-vN" (N = the new version); daily copies never delete it.
 function keepBefore(raw) { if (!db) return; try { db.transaction('kv', 'readwrite').objectStore('kv').put(raw, 'before-v' + SCHEMA); } catch {} }
 function persist() {
-  const fail = () => toast('Could not save on this device. Storage may be full.');
+  const fail = () => toast('Could not save on this device. Storage may be full.'), shrinkOk = allowShrink;
+  allowShrink = false;
   if (tooNew(S)) { toast(NEWER); return; }
   if (!wellFormed(S)) { toast('Something went wrong, so this change was not saved. Your saved log is unchanged.'); return; }
   const n = itemCount(S);
-  if (savedCount != null && n < savedCount && !savedExample && !allowShrink) { toast('Something went wrong, so this change was not saved. Your saved log is unchanged.'); return; }
-  allowShrink = false;
+  if (savedCount != null && n < savedCount && !savedExample && !shrinkOk) { toast('Something went wrong, so this change was not saved. Your saved log is unchanged.'); return; }
   const done = () => { savedCount = n; savedExample = !!S.example; };
   if (!db) { try { localStorage.setItem(LS_KEY, JSON.stringify(S)); done(); } catch { fail(); } return; }
   try { const tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').put(S, 'state'); tx.oncomplete = done; tx.onerror = fail; tx.commit?.(); } catch { fail(); }
@@ -1104,7 +1104,7 @@ const fmtDate = t => new Date(t).toLocaleDateString([], { day: 'numeric', month:
 const vaxOf = c => live(S.vaccines || []).filter(v => v.childId === c.id);
 const vaxDoses = c => vaxOf(c).filter(v => v.kind === 'dose').sort((a, b) => b.t - a.t);
 const planOn = () => S.settings.vaxPlan !== 'none';
-function atMonths(dob, m) { const d = new Date(dob + 'T12:00'); if (m % 1) return d.getTime() + m * 30.44 * DAY; d.setMonth(d.getMonth() + m); return d.getTime(); }
+function atMonths(dob, m) { const d = new Date(dob + 'T12:00'); if (m % 1) return d.getTime() + m * 30.44 * DAY; const day = d.getDate(); d.setDate(1); d.setMonth(d.getMonth() + m); d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate())); return d.getTime(); }
 /* ---------- Appointments ---------- */
 // A booked appointment for one item of a schedule (a checkup, a dental checkup, or the next dose of a vaccination)
 // matters more than the usual time, so it shows in its place until the visit is recorded. Synced `appts`
@@ -1631,8 +1631,13 @@ const calWhen = e => fmtDate(e.t) + (e.time ? ', ' + fmtTime(e.t) : '');
 const googleCalUrl = e => 'https://calendar.google.com/calendar/render?' + new URLSearchParams({ action: 'TEMPLATE', text: e.title, dates: calSpan(e).join('/'), details: e.details, ...(e.location ? { location: e.location } : {}) });
 // A booked appointment with a time reminds the day before and an hour before; other dates at 9:00 on the day.
 const icsAlarm = (e, trigger) => ['BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEsc(e.title)}`, `TRIGGER:${trigger}`, 'END:VALARM'];
-const icsEsc = s => String(s).replace(/[\;,]/g, m => '\\' + m).replace(/\r?\n/g, '\\n');
-const icsFold = l => l.length <= 70 ? l : l.match(/.{1,70}/gu).join('\r\n ');
+const icsEsc = s => String(s).replace(/[\\;,]/g, m => '\\' + m).replace(/\r?\n/g, '\\n');
+// Lines are at most 75 octets (RFC 5545); continuation lines start with a space, which counts, and a character is never split.
+function icsFold(l) {
+  const out = []; let cur = '', n = 0;
+  for (const ch of l) { const b = new TextEncoder().encode(ch).length; if (n + b > (out.length ? 74 : 75)) { out.push(cur); cur = ''; n = 0; } cur += ch; n += b; }
+  return [...out, cur].join('\r\n ');
+}
 function icsText(evs) {
   const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
   return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Aura//Baby log//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
@@ -1927,8 +1932,9 @@ async function apiCall(system, user, schema, images = []) {
 // with one exception the parent opts into: pages of the vaccination book or U-Heft to be read (`images`), which only go to their own AI service.
 let lastSent = null;
 function nameMap(cid) {
-  const cs = kids().slice().sort((a, b) => (b.id === cid) - (a.id === cid)), map = cs.map((c, i) => [c.name.trim(), i ? `[CHILD ${i + 1}]` : '[CHILD]']);
-  [...new Set([S.settings.me, ...live(S.entries).map(e => e.by)].filter(Boolean))].forEach((n, i) => map.push([n.trim(), `[PARENT ${i + 1}]`]));
+  // Deleted children and entries are included: their names can still be in notes.
+  const cs = [...kids().sort((a, b) => (b.id === cid) - (a.id === cid)), ...S.children.filter(c => c.deleted)].filter(c => c.name), map = cs.map((c, i) => [c.name.trim(), i ? `[CHILD ${i + 1}]` : '[CHILD]']);
+  [...new Set([S.settings.me, ...S.entries.map(e => e.by)].filter(Boolean))].forEach((n, i) => map.push([n.trim(), `[PARENT ${i + 1}]`]));
   return map.filter(([n]) => n.length > 1).sort((a, b) => b[0].length - a[0].length);
 }
 const redact = (t, map) => map.reduce((s, [n, p]) => s.replace(new RegExp(`(^|[^\\p{L}])${reEsc(n)}(?=$|[^\\p{L}])`, 'giu'), `$1${p}`), String(t));
