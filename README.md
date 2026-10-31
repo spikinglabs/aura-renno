@@ -4,14 +4,15 @@ A calm, phone-friendly baby and child log: feeds (with a breastfeeding timer), s
 
 The plan behind this version is in [docs/official-app-plan.md](docs/official-app-plan.md).
 
-**Live app:** https://emptymalei.github.io/aura2/
+**Live app:** https://aura.allo.land/ (the old address leima.is/aura2 forwards here)
 
 ## Files
 
 - `src/app.html` is the whole app (HTML, CSS and JavaScript in one file). `sh build.sh` wraps it into `app/index.html`, which is not committed.
-- `app/` holds the rest of the installable app: `manifest.json`, `sw.js` for offline use, and `icon.svg`.
+- `app/` holds the rest of the installable app: `manifest.json`, `sw.js` for offline use, `icon.svg`, and `_headers` (response headers Cloudflare sends with every file).
+- `wrangler.jsonc` tells Cloudflare to serve `app/` as static files at `aura.allo.land`.
 - `tests/smoke.mjs` opens the built app at phone width in day and night colors and checks the main screens, timers and data migration.
-- `.github/workflows/pages.yml` runs the test on every push and pull request, and publishes `app/` to GitHub Pages on each push to `main`.
+- `.github/workflows/test.yml` runs the test on every push and pull request. Cloudflare Workers Builds publishes `app/` on each push to `main` (see Hosting below).
 
 ## Development
 
@@ -25,21 +26,31 @@ Open `app/index.html` in a browser to try it locally. Google Drive sync only wor
 
 ## Put it on your phone
 
-1. Open https://emptymalei.github.io/aura2/ on the phone, then **Add to Home Screen** (Safari: Share → Add to Home Screen; Chrome: menu → Install app).
+1. Open https://aura.allo.land/ on the phone, then **Add to Home Screen** (Safari: Share → Add to Home Screen; Chrome: menu → Install app).
 2. **More → Google Drive → Connect Google Drive**, and sign in with Google. The log is saved as `Aura/aura-log.json` in your Drive.
 3. Optional, to share with a partner: **More → Share with a partner** → their Google email → Share. On their phone: **More → Google Drive → Join a shared log**, and pick `aura-log.json`.
-4. Optional: **More → AI helper** → pick a service and paste its key to turn on "Say it" sorting and the AI handover. Choices: Anthropic (key from https://console.anthropic.com), or any OpenAI-style chat service (OpenAI, Gemini, Mistral, OpenRouter, your own endpoint) with its address and model name. For a local model in Ollama, open Aura on that same computer and start Ollama with `OLLAMA_ORIGINS=https://emptymalei.github.io` so the browser may call it.
+4. Optional: **More → AI helper** → pick a service and paste its key to turn on "Say it" sorting and the AI handover. Choices: Anthropic (key from https://console.anthropic.com), or any OpenAI-style chat service (OpenAI, Gemini, Mistral, OpenRouter, your own endpoint) with its address and model name. For a local model in Ollama, open Aura on that same computer and start Ollama with `OLLAMA_ORIGINS=https://aura.allo.land` so the browser may call it.
+
+## Hosting (one-time, for the maintainer)
+
+Aura is served by Cloudflare as a Worker with static assets only (no server code), at `https://aura.allo.land`.
+
+1. Cloudflare dashboard, in the account that holds the `allo.land` zone → **Workers & Pages → Create → Import a repository** → `spikinglabs/aura-renno`.
+2. Build command `sh build.sh`, deploy command `npx wrangler deploy`, production branch `main`. Under **Variables**, add `GOOGLE_CLIENT_ID` and `GOOGLE_PICKER_KEY` as build variables.
+3. The first deploy reads `wrangler.jsonc` and attaches the custom domain `aura.allo.land`; Cloudflare creates its DNS record and certificate. Every push to `main` deploys again, and other branches get a preview address (Google sign-in only works on `aura.allo.land`).
+
+`app/_headers` sets the response headers. The content security policy is report-only for now: open the browser console on the live app, use Drive sync, the picker and an AI call, and once nothing is reported, rename the header to `Content-Security-Policy`.
 
 ## Aura's Google project (one-time, for the maintainer)
 
 Users only tap "Connect Google Drive" because the app ships with Aura's own Google client ID and picker key. Both are public by design: Google only accepts them from this site's address. To set them up once:
 
 1. https://console.cloud.google.com → create a project named **Aura**. Enable the **Google Drive API** and the **Google Picker API**.
-2. **Google Auth Platform → Branding** (OAuth consent screen): app name Aura, a support email, home page `https://emptymalei.github.io/aura2/`, privacy policy `https://emptymalei.github.io/aura2/privacy.html`, authorized domain `emptymalei.github.io`. Audience: **External**.
+2. **Google Auth Platform → Branding** (OAuth consent screen): app name Aura, a support email, home page `https://aura.allo.land/`, privacy policy `https://aura.allo.land/privacy.html`, authorized domain `allo.land`. Audience: **External**.
 3. **Data access**: add only the scope `.../auth/drive.file`. This is a non-sensitive scope, so no security assessment is needed.
-4. **Clients → Create client → Web application**. Under **Authorized JavaScript origins** add `https://emptymalei.github.io`. Copy the client ID.
-5. **APIs & Services → Credentials → Create credentials → API key**. Restrict it to the **Google Picker API** and to websites `https://emptymalei.github.io/*`. Copy the key.
-6. On GitHub: **repo Settings → Secrets and variables → Actions → Variables**, add `GOOGLE_CLIENT_ID` and `GOOGLE_PICKER_KEY` with those values. The next deploy builds them into the app (re-run the latest "Test and deploy" run, or push any change).
+4. **Clients → Create client → Web application**. Under **Authorized JavaScript origins** add `https://aura.allo.land`. Copy the client ID.
+5. **APIs & Services → Credentials → Create credentials → API key**. Restrict it to the **Google Picker API** and to websites `https://aura.allo.land/*`. Copy the key.
+6. Add `GOOGLE_CLIENT_ID` and `GOOGLE_PICKER_KEY` with those values in two places: as **build variables** of the Cloudflare Worker (so the live app gets them), and on GitHub under **repo Settings → Secrets and variables → Actions → Variables** (so the test builds with them). The next deploy builds them into the app (retry the latest build in Cloudflare, or push any change).
 7. While the app is in **Testing**, only test users you add under **Audience** (up to 100) can sign in. To open it to everyone, click **Publish app**. With only `drive.file`, Google asks for brand verification (it checks the name, logo, home page and privacy policy, and that you own the domain via Google Search Console), which usually takes a few days.
 
 People who prefer their own Google project can still enter their own client ID and key under **More → Google Drive → Advanced**.
@@ -51,7 +62,7 @@ People who prefer their own Google project can still enter their own client ID a
 - Synced to Drive about two seconds after each change, while you're signed in. Tap the sync label at the top to sign in again after Google's one-hour sign-in expires.
 - Before the Drive file is changed, the old version is saved in `Aura/backups` (at most hourly; the last 48 kept, then one a day for 60 days), and the phone keeps a daily copy of its own (14 days). Photos, document pages and sound recordings are inside the log, so they sync to a partner and go into every backup; Drive backups keep each one only once, as its own file in `backups/media`, so hourly copies don't fill up Drive. After each write the app reads the file back to check nothing was lost to another phone saving at the same time, and it never writes over a Drive file it can't read. **More → Google Drive → Restore from a Drive backup** and **More → Your data → Restore a daily copy** add back anything missing.
 - Merge is per entry (newest edit wins), so several phones can log at once: the same Google account, or a partner you shared the file with. Each entry shows who logged it if you set your name under **Share with a partner**.
-- The `drive.file` scope means the app can only see files it created or that you picked, not the rest of your Drive. See the [privacy policy](https://emptymalei.github.io/aura2/privacy.html).
+- The `drive.file` scope means the app can only see files it created or that you picked, not the rest of your Drive. See the [privacy policy](https://aura.allo.land/privacy.html).
 - The API key stays on the device and is never synced. When an AI button is used, the text needed goes to the AI service you chose with names replaced by placeholders and age instead of birth date. Photos, sounds and links are never sent. Each AI answer has a "See exactly what was sent" link.
 
 ## Upgrading from Sick Day Log

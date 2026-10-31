@@ -1,4 +1,4 @@
-name: Test and deploy
+name: Test
 
 on:
   push:
@@ -9,8 +9,9 @@ on:
 permissions:
   contents: read
 
+# Deploys are done by Cloudflare Workers Builds on each push to main (see README).
 concurrency:
-  group: pages-${{ github.ref }}
+  group: test-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -27,21 +28,3 @@ jobs:
         env:
           GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
           GOOGLE_PICKER_KEY: ${{ vars.GOOGLE_PICKER_KEY }}
-      - uses: actions/upload-pages-artifact@v3
-        if: github.event_name != 'pull_request'
-        with:
-          path: app
-
-  deploy:
-    if: github.event_name != 'pull_request'
-    needs: test
-    runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
