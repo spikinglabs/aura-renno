@@ -661,7 +661,55 @@ function render() {
   for (const v of ['today', 'sick', 'growth', 'vax', 'checkups', 'dental', 'appts', 'docs', 'more', 'card']) $('#view-' + v).hidden = v !== tab;
   $('#fab').hidden = !['today', 'sick', 'growth'].includes(tab) || !kid();
   ({ today: renderToday, sick: renderSick, growth: renderGrowth, vax: renderVax, checkups: renderCheckups, dental: renderDental, appts: renderAppts, docs: renderDocs, more: renderMore, card: renderCard })[tab]();
+  syncHistory();
 }
+// Each screen and each open sheet is a step in the browser history, so the phone's back gesture closes the sheet or
+// goes to the screen before instead of leaving Auri, and forward comes back. The screen is also remembered on this
+// phone (`auri.view`), so Auri opens where it was left.
+const VIEWS = ['today', 'sick', 'growth', 'vax', 'checkups', 'dental', 'appts', 'docs', 'more', 'card'];
+const VIEW_KEY = 'auri.view';
+let histBusy = false;
+const viewNow = () => ({ tab, ep: viewEpId || null, card: cardKidId || null, from: cardFrom });
+const sameView = (a, b) => !!a && !!b && a.tab === b.tab && (a.ep || null) === (b.ep || null) && (a.card || null) === (b.card || null);
+function syncHistory() {
+  if (histBusy || !S) return;
+  const st = history.state, v = { auri: 1, ...viewNow(), sheet: !$('#scrim').hidden };
+  try { localStorage.setItem(VIEW_KEY, JSON.stringify(viewNow())); } catch {}
+  if (st?.auri && sameView(st, v) && !!st.sheet === v.sheet) return;
+  if (!st?.auri || (st.dup && !v.sheet)) history.replaceState(v, '');
+  // A sheet closed by the app (saved, or a button that opens a screen): its step becomes the screen now shown. When
+  // that is the screen under it, the step is marked `dup`, and going back or forward skips it.
+  else if (st.sheet && !v.sheet) history.replaceState(sameView(st, v) ? { ...v, dup: 1 } : v, '');
+  else if (st.sheet && v.sheet) history.replaceState(v, '');
+  else history.pushState(v, '');
+  histLeft = history.state;
+}
+function restoreView() {
+  let v = null; try { v = JSON.parse(localStorage.getItem(VIEW_KEY) || 'null'); } catch {}
+  if (!v || !VIEWS.includes(v.tab)) return;
+  if (v.tab === 'sick' && !S.episodes.some(e => e.id === v.ep && !e.deleted)) return;
+  if (v.tab === 'card' && !kids().some(c => c.id === v.card)) return;
+  tab = v.tab; viewEpId = v.ep || null; cardKidId = v.card || null; cardFrom = VIEWS.includes(v.from) ? v.from : 'today';
+}
+let histLeft = null;
+addEventListener('popstate', ev => {
+  const st = ev.state, left = histLeft; histLeft = st;
+  if (!st?.auri || !S) return;
+  const shown = viewNow();
+  // Skip a step that shows the same screen as the one just left (see syncHistory).
+  if (!st.sheet && $('#scrim').hidden && sameView(st, shown)) { if (left?.dup) return history.back(); if (st.dup) return history.forward(); }
+  histBusy = true;
+  try {
+    if (!$('#picker').hidden) photoPicked('no');
+    if (!$('#scrim').hidden) closeSheet();
+    if (st.sheet) history.replaceState(histLeft = { ...st, sheet: false, dup: 1 }, ''); // a sheet can't be opened again from here; show its screen
+    const moved = !sameView(st, shown);
+    tab = VIEWS.includes(st.tab) ? st.tab : 'today'; viewEpId = st.ep || null; cardKidId = st.card || null; if (st.from) cardFrom = st.from;
+    render();
+    if (moved) window.scrollTo(0, 0);
+  } finally { histBusy = false; }
+  try { localStorage.setItem(VIEW_KEY, JSON.stringify(viewNow())); } catch {}
+});
 const exampleBanner = () => S.example ? `<div class="banner"><p>This is example data so you can see how it works. Nothing here is real.</p><button class="btn primary sm" data-act="clear-example">Start with my child</button></div>` : '';
 function greeting() { const h = new Date().getHours(); return h < 5 ? 'Late night' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; }
 // The emergency card is one tap away at the top right of every main screen (and the sick view), next to the child.
@@ -1769,8 +1817,8 @@ function renderMore() {
 
 /* ---------- Sheets ---------- */
 let sheetCtx = null;
-function openSheet(html, ctx) { stopRec(true); stopDictation(); sheetCtx = ctx || null; $('#sheet').innerHTML = html; $('#scrim').hidden = false; $('#sheet').scrollTop = 0; const f = $('#sheet').querySelector('[autofocus]'); if (f) setTimeout(() => f.focus(), 30); }
-function closeSheet() { stopRec(true); stopDictation(); $('#scrim').hidden = true; $('#sheet').innerHTML = ''; sheetCtx = null; }
+function openSheet(html, ctx) { stopRec(true); stopDictation(); sheetCtx = ctx || null; $('#sheet').innerHTML = html; $('#scrim').hidden = false; $('#sheet').scrollTop = 0; const f = $('#sheet').querySelector('[autofocus]'); if (f) setTimeout(() => f.focus(), 30); syncHistory(); }
+function closeSheet() { stopRec(true); stopDictation(); $('#scrim').hidden = true; $('#sheet').innerHTML = ''; sheetCtx = null; syncHistory(); }
 const chipsHtml = (f, val) => {
   const vals = f.multi ? (val || []) : [val ?? ''], custom = f.custom && val != null && val !== '' && !f.opts.includes(String(val)) ? val : '';
   return `<div class="chips" data-k="${f.k}" ${f.multi ? 'data-multi' : ''} ${f.numeric ? 'data-numeric' : ''}>${f.opts.map(o => `<button type="button" data-v="${esc(o)}" class="${vals.map(String).includes(o) ? 'on' : ''}">${esc(o)}</button>`).join('')}${f.custom ? `<input type="number" inputmode="decimal" data-custom placeholder="other" value="${esc(custom)}" aria-label="Other amount">` : ''}</div>`;
@@ -3145,7 +3193,7 @@ load().then(() => {
   $('#fab svg').innerHTML = ICONS.say;
   // Opened from the home-screen shortcut ("Emergency card" when long-pressing the app icon).
   const opening = new URLSearchParams(location.search).get('open');
-  if (['card', 'appts'].includes(opening) && kid()) { tab = opening; history.replaceState(null, '', location.pathname); }
+  if (['card', 'appts'].includes(opening) && kid()) { tab = opening; history.replaceState(null, '', location.pathname); } else restoreView();
   render();
   if (!S.example) { keepStorage(); localSnapshot(); }
   refreshRecalls();

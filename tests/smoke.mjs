@@ -16,7 +16,8 @@ const setState = async (page, s) => { for (let i = 0; i < 50 && !(await getState
 // Waits until the app's last save has reached IndexedDB, then reloads. A readwrite transaction on the same store
 // only completes after the earlier ones, so a reload can't cut off a save that is still being written.
 const settle = page => page.evaluate(`(async () => { ${IDB} const d = await idb(); await new Promise(res => { const tx = d.transaction('kv', 'readwrite'); tx.objectStore('kv').get('state'); tx.oncomplete = res; }); d.close(); })()`);
-const reload = async page => { await settle(page); await page.reload(); };
+// Tests start each reload on Today: the screen Auri remembers on the phone is forgotten first.
+const reload = async page => { await settle(page); await page.evaluate(() => localStorage.removeItem('auri.view')); await page.reload(); };
 // Adds photos as pages of a document: the app first asks camera or photos, then the new page opens.
 const choosePhoto = async (page, sel, files, how = 'lib') => { await page.click(sel); await Promise.all([page.waitForEvent('filechooser').then(fc => fc.setFiles(files)), page.click(`[data-pick="${how}"]`)]); };
 const addPage = async (page, sel, files, how) => { await choosePhoto(page, sel, files, how); await page.waitForSelector('#pageImg'); };
@@ -1383,6 +1384,38 @@ for (const theme of ['night', 'day']) {
   await page.waitForTimeout(300); await settle(page);
   st = await getState(page);
   if (st.entries.find(e => e.id === 'e4')?.child !== 'k1') fail('merge: entry logged later for the merged profile did not follow');
+  await page.close();
+}
+
+// The back gesture closes a sheet or goes to the screen before instead of leaving; forward comes back; Auri opens
+// where it was left.
+{
+  const page = await newPage();
+  page.on('pageerror', e => fail(`history: ${e.message}`));
+  await page.goto(url); await page.waitForSelector('h1');
+  const on = () => page.evaluate(() => [...document.querySelectorAll('main > section, [id^="view-"]')].find(v => v.id.startsWith('view-') && !v.hidden)?.id);
+  const sheetOpen = () => page.evaluate(() => !document.getElementById('scrim').hidden);
+  await page.click('.tabs [data-tab="growth"]');
+  await page.click('[data-act="add-meas"]');
+  if (!(await sheetOpen())) fail('history: measurement sheet did not open');
+  await page.goBack(); await page.waitForTimeout(100);
+  if (await sheetOpen() || (await on()) !== 'view-growth') fail(`history: back did not just close the sheet (${await on()})`);
+  await page.goBack(); await page.waitForTimeout(100);
+  if ((await on()) !== 'view-today') fail(`history: back did not go to Today (${await on()})`);
+  await page.goForward(); await page.waitForTimeout(100);
+  if ((await on()) !== 'view-growth') fail(`history: forward did not come back to Growth (${await on()})`);
+  // A sheet that closes itself (saved) leaves no extra step: one back goes to the screen before
+  await page.click('.tabs [data-tab="more"]');
+  await page.click('[data-kid] >> nth=0');
+  await page.click('[data-act="save-kid"]'); await page.waitForTimeout(100);
+  await page.goBack(); await page.waitForTimeout(150);
+  if ((await on()) !== 'view-growth') fail(`history: back after saving a sheet stayed on ${await on()}`);
+  // Opening again shows the last screen
+  await openTab(page, 'vax');
+  await settle(page); await page.reload(); await page.waitForSelector('h1');
+  if ((await on()) !== 'view-vax') fail(`history: reopening did not return to Vaccinations (${await on()})`);
+  await page.goBack(); await page.waitForTimeout(100);
+  if (!page.url().startsWith('file:') || (await on()) !== 'view-vax' && (await on()) !== 'view-docs') fail('history: reopened app lost its place on back');
   await page.close();
 }
 
