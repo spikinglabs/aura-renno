@@ -64,6 +64,10 @@ People who prefer their own Google project can still enter their own client ID a
 - The `drive.file` scope means the app can only see files it created or that you picked, not the rest of your Drive. See the [privacy policy](https://aura.allo.land/privacy.html).
 - The API key stays on the device and is never synced. When an AI button is used, the text needed goes to the AI service you chose with names replaced by placeholders and age instead of birth date. Photos, sounds and links are never sent. Each AI answer has a "See exactly what was sent" link.
 
+## Moving from the old address
+
+Aura used to live at `leima.is/aura2` (and `emptymalei.github.io/aura2`). A phone keeps the log per address, so it doesn't follow to `aura.allo.land` by itself. Before the old address was switched off, the log had to be in Google Drive or saved as a backup file; on `aura.allo.land`, **More → Google Drive → Connect Google Drive** (same Google project, so the same `Aura/aura-log.json`) or **More → Your data → Restore from a backup file** brings it back. The old address now only forwards here.
+
 ## Upgrading from Sick Day Log
 
 On first open, data saved on the phone by the earlier Sick Day Log is moved over automatically. Drive now uses a new file (`Aura/aura-log.json`); to bring an old Drive log across, use More → Your data → Restore with data copied from the old app.
