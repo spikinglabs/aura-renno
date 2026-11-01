@@ -24,7 +24,7 @@ npx playwright install chromium   # once
 npm test                          # builds, then runs the smoke test
 ```
 
-Open `app/index.html` in a browser to try it locally. Google Drive sync only works from the hosted https address.
+To try it locally, serve `app/` and open it, for example `python3 -m http.server -d app 8000` and then http://localhost:8000/ (opened straight from the file, the AI helpers can't load their library). Google Drive sync only works from the hosted https address.
 
 ## Put it on your phone
 
@@ -41,7 +41,7 @@ Auri is a Cloudflare Pages project (static files only, no server code) at `https
 2. Production branch `main`, framework preset None, build command `sh build.sh`, build output directory `app`. Under **Environment variables**, add `GOOGLE_CLIENT_ID` and `GOOGLE_PICKER_KEY`. A production build without them stops with an error, so a deploy can't ship an app whose Drive sync can't start.
 3. After the first deploy: the project's **Custom domains** tab → add `auri.allo.land`. Cloudflare creates the DNS record and certificate. Every push to `main` deploys again, and other branches get a preview address on `pages.dev` (Google sign-in only works on `auri.allo.land`).
 
-Fonts (`app/fonts`, SIL Open Font License) and the Anthropic SDK (`app/vendor`, bundled from `@anthropic-ai/sdk` 0.131.0 with esbuild) are served with the app, so opening Auri asks no other site for anything. To update the SDK, bundle the new version the same way and change `SDK_URL`.
+Fonts (`app/fonts`, SIL Open Font License) and the Anthropic SDK (`app/vendor`, bundled from `@anthropic-ai/sdk` 0.131.0 with esbuild, MIT license in `app/vendor`) are served with the app, so opening Auri asks no other site for anything. To update the SDK, bundle the new version the same way and change `SDK_URL`.
 
 `app/_headers` sets the response headers. The content security policy is report-only for now: open the browser console on the live app, use Drive sync, the picker and an AI call, and once nothing is reported, rename the header to `Content-Security-Policy`. Google Fonts and the jsDelivr CDN are no longer in it.
 
