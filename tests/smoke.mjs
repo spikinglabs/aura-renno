@@ -504,7 +504,7 @@ for (const theme of ['night', 'day']) {
   await page.click('[data-act="del-appt"]');
   if ((await page.locator('[data-vxitem="menb"].booked').count()) !== 0) fail('appointments: deleted appointment still shown');
   await page.click('#sheet [data-act="close"]');
-  // Once the day has passed, Aura asks to record it, and the visit starts on that day
+  // Once the day has passed, Auri asks to record it, and the visit starts on that day
   st = await getState(page); st.appts.find(x => x.k === 'Z4').date = day(-3); await setState(page, st);
   await reload(page); await page.waitForSelector('h1');
   if ((await page.locator('.vax-line', { hasText: 'Z4 dental checkup: appointment was' }).count()) !== 1) fail('appointments: Today does not ask to record a passed appointment');
@@ -1169,7 +1169,7 @@ for (const theme of ['night', 'day']) {
   await reload(page); await page.waitForSelector('h1');
   await page.click('.tabs [data-tab="docs"]');
   const s0 = await getState(page), mmr = s0.vaccines.filter(v => v.kind === 'dose' && !v.deleted && v.childId === s0.child && v.against?.includes('mmr')).length;
-  if (!(await page.innerText('#kitaCard')).includes(mmr ? `Measles doses recorded in Aura: ${mmr}` : 'No measles dose')) fail('kita: measles doses not shown');
+  if (!(await page.innerText('#kitaCard')).includes(mmr ? `Measles doses recorded in Auri: ${mmr}` : 'No measles dose')) fail('kita: measles doses not shown');
   await page.click('#kitaCard [data-act="doc-new"]');
   if ((await page.inputValue('#doc_title')) !== 'Kita contract') fail('kita: name not filled in from the kind');
   await page.click('#sheet [data-kitakind="measles"]');
