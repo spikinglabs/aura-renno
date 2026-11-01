@@ -2368,7 +2368,7 @@ async function pdfsToDrive(tok) {
 }
 
 /* ---------- Google Drive sync ---------- */
-let gTok = null, syncTimer = null, syncing = false, syncMsg = '';
+let gTok = null, syncTimer = null, syncing = false, syncMsg = '', syncLoud = false;
 function loadGis() {
   return new Promise((res, rej) => { if (window.google?.accounts?.oauth2) return res();
     const s = document.createElement('script'); s.src = 'https://accounts.google.com/gsi/client'; s.async = true;
@@ -2558,7 +2558,9 @@ const unknownParts = d => Object.fromEntries(Object.entries(d).filter(([k]) => !
 const coveredBy = (mine, theirs) => SYNCED.every(k => { const m = new Map((theirs[k] || []).map(x => [x.id, x.updatedAt || 0])); return (mine[k] || []).every(x => m.has(x.id) && m.get(x.id) >= (x.updatedAt || 0)); });
 // Read, merge, write, then read back: if another phone wrote in between and our entries are missing, merge and write again.
 async function sync(interactive) {
-  if (syncing || S.example) return; syncing = true; syncMsg = 'Syncing…'; (interactive ? render : softRender)();
+  // Tapping sync while a background sync runs: that sync reports its result when it ends, so the tap isn't lost.
+  if (syncing) { if (interactive) syncLoud = true; return; }
+  if (S.example) return; syncing = true; syncMsg = 'Syncing…'; (interactive ? render : softRender)();
   try {
     if (tooNew(S)) throw new Error(NEWER);
     const tok = await token(interactive); if (!tok) return;
@@ -2594,10 +2596,10 @@ async function sync(interactive) {
     S.drive = { ...(S.drive || {}), fileId: id, lastSync: Date.now(), syncedAt: started, version: ver, error: '' }; S.backedUpAt = Date.now();
     if (S.drive.mine === undefined) { const m = await (await gapi(tok, `${DRIVE}/${id}?fields=ownedByMe,owners(displayName,emailAddress)`)).json(); S.drive.mine = !!m.ownedByMe; S.drive.owner = m.ownedByMe ? '' : m.owners?.[0]?.displayName || m.owners?.[0]?.emailAddress || 'someone'; }
     if (!S.drive.renamed) try { await renameOld(tok, id); S.drive.renamed = true; } catch {}
-    persist(); if (interactive) toast('Synced. Your log in Drive is up to date.');
+    persist(); if (interactive || syncLoud) toast('Synced. Your log in Drive is up to date.');
     pdfsToDrive(tok);
-  } catch (e) { S.drive = { ...(S.drive || {}), error: e.message }; persist(); if (interactive) toast(e.message); if (/same time/.test(e.message)) setTimeout(() => sync(false), 20e3); }
-  finally { syncing = false; syncMsg = ''; (interactive ? render : softRender)(); }
+  } catch (e) { S.drive = { ...(S.drive || {}), error: e.message }; persist(); if (interactive || syncLoud) toast(e.message); if (/same time/.test(e.message)) setTimeout(() => sync(false), 20e3); }
+  finally { syncing = false; syncLoud = false; syncMsg = ''; (interactive ? render : softRender)(); }
 }
 async function driveBackupsSheet() {
   let list; try { const tok = await token(true); list = await listBackups(tok, await backupsDir(tok)); } catch (e) { return toast(e.message); }

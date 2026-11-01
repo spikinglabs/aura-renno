@@ -38,7 +38,7 @@ Open `app/index.html` in a browser to try it locally. Google Drive sync only wor
 Auri is a Cloudflare Pages project (static files only, no server code) at `https://auri.allo.land`.
 
 1. Cloudflare dashboard, in the account that holds the `allo.land` zone → **Workers & Pages → Create → Pages → Connect to Git** → `spikinglabs/aura-renno`.
-2. Production branch `main`, framework preset None, build command `sh build.sh`, build output directory `app`. Under **Environment variables**, add `GOOGLE_CLIENT_ID` and `GOOGLE_PICKER_KEY`.
+2. Production branch `main`, framework preset None, build command `sh build.sh`, build output directory `app`. Under **Environment variables**, add `GOOGLE_CLIENT_ID` and `GOOGLE_PICKER_KEY`. A production build without them stops with an error, so a deploy can't ship an app whose Drive sync can't start.
 3. After the first deploy: the project's **Custom domains** tab → add `auri.allo.land`. Cloudflare creates the DNS record and certificate. Every push to `main` deploys again, and other branches get a preview address on `pages.dev` (Google sign-in only works on `auri.allo.land`).
 
 `app/_headers` sets the response headers. The content security policy is report-only for now: open the browser console on the live app, use Drive sync, the picker and an AI call, and once nothing is reported, rename the header to `Content-Security-Policy`.
