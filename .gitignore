@@ -2,3 +2,4 @@
 app/index.html
 node_modules/
 test-results/
+.wrangler/
