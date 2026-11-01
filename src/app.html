@@ -1,7 +1,10 @@
 <title>Allo Auri</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600&family=Nunito:wght@400;600;700;800&display=swap">
+<style>/* Fonts are served from this site (app/fonts, SIL Open Font License), so opening Auri sends nothing to Google and works offline. */
+@font-face{font-family:'Nunito';font-style:normal;font-display:swap;font-weight:200 1000;src:url(fonts/nunito-latin-ext-wght-normal.woff2) format('woff2-variations');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+@font-face{font-family:'Nunito';font-style:normal;font-display:swap;font-weight:200 1000;src:url(fonts/nunito-latin-wght-normal.woff2) format('woff2-variations');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:'Lora';font-style:normal;font-display:swap;font-weight:400 700;src:url(fonts/lora-latin-ext-wght-normal.woff2) format('woff2-variations');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+@font-face{font-family:'Lora';font-style:normal;font-display:swap;font-weight:400 700;src:url(fonts/lora-latin-wght-normal.woff2) format('woff2-variations');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+</style>
 <style>
 /* Night light: dark-first warm brown with amber, a matching warm-cream day mode. One soft column, Today first, sick mode as a banner. */
 :root {
@@ -300,7 +303,9 @@ tr:last-child td { border-bottom: 0 }
 <script>
 (() => {
 'use strict';
-const SDK_URL = 'https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.131.0/+esm';
+// The Anthropic SDK is served from this site (app/vendor, bundled from @anthropic-ai/sdk 0.131.0), not from a CDN: code from
+// another host would run inside the page that holds the log and the API key. Loaded only when an AI button is used.
+const SDK_URL = new URL('vendor/anthropic-sdk-0.131.0.mjs', location.href).href;
 const MODEL = 'claude-opus-5-5';
 const LS_KEY = 'aura.v2', LS_OLD = 'sickdaylog.v1', DB_NAME = 'aura';
 const DRIVE_FILE = 'allo-auri-log.json', DRIVE_FOLDER = 'Allo Auri';
@@ -1734,7 +1739,7 @@ function renderMore() {
       ${live(S.meds).map(m => `<div class="list-row medrow"><span>${esc(m.name)}</span><span class="row"><input type="number" min="0" step="0.5" value="${m.gapH ?? ''}" data-gap="${m.id}" aria-label="Hours between doses for ${esc(m.name)}"> h <button class="btn ghost danger" data-delmed="${m.id}" aria-label="Remove">✕</button></span></div>`).join('')}
       <div class="row"><input id="newMed" placeholder="Add a medicine" style="flex:1"><button class="btn sm" data-act="add-med">Add</button></div></div>
     <div class="card set"><h2>Google Drive backup and sync</h2>
-      <p class="small muted" style="margin:0">Your log is saved as <span class="num">${DRIVE_FILE}</span> in a “${DRIVE_FOLDER}” folder in your own Drive (you can move or rename it), with a backup copy saved before each change (hourly for two days, then daily for ${KEEP_DAYS} days). Photos, document pages and sound recordings are part of the log, so they sync and are backed up too; backups keep each one once, in a “media” folder next to them. Each document is also kept as a PDF of all its pages, in a “documents” folder next to the log. The app can only see files it created or that you picked. There is no other server. <a href="privacy.html" style="color:var(--accent-ink)">Privacy policy</a></p>
+      <p class="small muted" style="margin:0">Your log is saved as <span class="num">${DRIVE_FILE}</span> in a “${DRIVE_FOLDER}” folder in your own Drive (you can move or rename it), with a backup copy saved before each change (hourly for two days, then daily for ${KEEP_DAYS} days). Photos, document pages and sound recordings are part of the log, so they sync and are backed up too; backups keep each one once, in a “media” folder next to them. Each document is also kept as a PDF of all its pages, in a “documents” folder next to the log. The app can only see files it created or that you picked. There is no other server. <a href="privacy.html" style="color:var(--accent-ink)">Privacy policy</a> · <a href="impressum.html" style="color:var(--accent-ink)">Impressum</a></p>
       ${GOOGLE_CLIENT_ID ? `<details class="small"><summary class="muted">Advanced: use your own Google project</summary>${googleOwnFields(st)}</details>` : googleOwnFields(st)}
       <div class="row"><button class="btn primary sm" data-act="drive-sync" ${syncing ? 'disabled' : ''}>${syncing ? 'Syncing…' : d.fileId ? 'Sync now' : 'Connect Google Drive'}</button>${d.fileId ? '<button class="btn sm" data-act="drive-backups">Restore from a Drive backup</button><button class="btn ghost sm" data-act="drive-forget">Disconnect</button>' : '<button class="btn sm" data-act="join">Join a shared log</button>'}</div>
       <p class="small muted" style="margin:0">${d.lastSync ? 'Last synced ' + ago(d.lastSync) + '.' : 'Not connected yet.'}${d.owner ? ' Shared with you by ' + esc(d.owner) + '.' : ''}${d.error ? ' Last error: ' + esc(d.error) : ''}</p></div>
