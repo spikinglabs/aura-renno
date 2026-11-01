@@ -1342,6 +1342,19 @@ for (const theme of ['night', 'day']) {
   await page.close();
 }
 
+// Opening the app asks no other site for anything (fonts and the AI library are served with the app); only the recall list is fetched
+{
+  // The recall list's address, as the app has it
+  const RECALL = readFileSync(new URL('../src/app.html', import.meta.url), 'utf8').match(/const RECALL_URL = '([^']+)'/)[1];
+  const page = await newPage(), outside = [];
+  page.on('request', r => { const u = r.url(); if (!/^(file|data|blob):/.test(u) && u !== RECALL) outside.push(u); });
+  await page.goto(url); await page.waitForSelector('h1'); await page.evaluate(() => document.fonts.ready); await page.waitForTimeout(300);
+  if (outside.length) fail('privacy: opening the app contacted ' + outside.join(', '));
+  const fonts = await page.evaluate(() => [...document.fonts].filter(f => f.status === 'loaded').map(f => f.family.replace(/['"]/g, '')));
+  if (!fonts.includes('Nunito') || !fonts.includes('Lora')) fail('fonts: Nunito and Lora not loaded from the app: ' + fonts.join(', '));
+  await page.close();
+}
+
 await browser.close();
 if (errors.length) { console.error('Smoke test failed:\n- ' + errors.join('\n- ')); process.exit(1); }
 console.log('Smoke test passed');
