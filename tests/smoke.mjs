@@ -779,6 +779,8 @@ for (const theme of ['night', 'day']) {
   await page.route('https://www.googleapis.com/**', async route => {
     const req = route.request(), u = new URL(req.url()), m = req.method();
     const json = b => route.fulfill({ status: 200, contentType: 'application/json', body: typeof b === 'string' ? b : JSON.stringify(b) });
+    // drive.hold keeps the next version check waiting until the test answers it with a status
+    if (drive.hold && u.pathname === '/drive/v3/files/f1' && u.searchParams.get('fields') === 'version') { const h = drive.hold; drive.hold = null; drive.held = true; const status = await h; if (status !== 200) return route.fulfill({ status, body: '' }); }
     if (u.pathname.startsWith('/upload') && m === 'PATCH' && u.searchParams.get('uploadType') === 'resumable') return route.fulfill({ status: 200, headers: { Location: 'https://www.googleapis.com/upload/session/1', 'Access-Control-Expose-Headers': 'Location' }, body: '' });
     if ((u.pathname.startsWith('/upload') && m === 'PATCH') || (u.pathname === '/upload/session/1' && m === 'PUT')) {
       if (m === 'PUT') drive.resumable++;
@@ -841,6 +843,25 @@ for (const theme of ['night', 'day']) {
   setFile({ ...drive.file, entries: [...drive.file.entries, other('o3', 3000)] });
   await syncNow();
   if (!(await getState(page)).entries.some(e => e.id === 'o3')) fail('sync: change from the other phone not picked up');
+  // Tapping sync while a background sync runs: that sync shows its result when it ends, success or failure,
+  // and the next background sync with no tap stays quiet
+  const background = async () => {
+    let release; drive.hold = new Promise(r => { release = r; }); drive.held = false;
+    await page.evaluate(() => { document.getElementById('toast').hidden = true; document.dispatchEvent(new Event('visibilitychange')); });
+    for (let i = 0; i < 50 && !drive.held; i++) await page.waitForTimeout(100);
+    if (!drive.held) fail('sync: background sync did not start');
+    return release;
+  };
+  for (const status of [200, 500]) {
+    const release = await background();
+    await page.click('[data-act="sync-tap"]');
+    release(status);
+    await page.waitForSelector('#toast:not([hidden])');
+    const t = await page.locator('#toast').innerText();
+    if (status === 200 ? !t.startsWith('Synced') : !t.includes('500')) fail(`sync: tap during a background sync (${status}) showed: ${t}`);
+  }
+  { const release = await background(); release(200); await page.waitForTimeout(800);
+    if (await page.locator('#toast').isVisible()) fail('sync: a background sync nobody tapped showed a toast'); }
   // Drive backups hold each photo, page and sound once, as its own file in backups/media, and the backup points to it
   // (the app's code is private, so the test changes the saved log and reloads)
   // Reloads first, so a sync the app still has scheduled (1.5 s after a change) can't save over what the test writes.
