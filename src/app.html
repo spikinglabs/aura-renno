@@ -2428,8 +2428,10 @@ async function renameOld(tok, id) {
   if (!f.ownedByMe) return;
   const rename = (fid, name) => gapi(tok, `${DRIVE}/${fid}`, { method: 'PATCH', headers: JSON_H, body: JSON.stringify({ name }) });
   if (f.name === OLD_FILE) await rename(id, DRIVE_FILE);
-  // The folder can only be renamed when this app made it; otherwise it keeps its name.
-  try { const p = f.parents?.[0], d = p && await (await gapi(tok, `${DRIVE}/${p}?fields=name`)).json(); if (d?.name === OLD_FOLDER) await rename(p, DRIVE_FOLDER); } catch {}
+  // The folder can only be renamed when this app made it; otherwise (403 or 404) it keeps its name. Any other error is
+  // thrown, so the next sync tries again.
+  try { const p = f.parents?.[0], d = p && await (await gapi(tok, `${DRIVE}/${p}?fields=name`)).json(); if (d?.name === OLD_FOLDER) await rename(p, DRIVE_FOLDER); }
+  catch (e) { if (!/Drive error 40[34]/.test(e.message)) throw e; }
 }
 // Before the app overwrites the Drive file, it saves the file as it was to Aura/backups in this person's own Drive,
 // at most once an hour. Kept: every snapshot from the newest KEEP_RECENT, then one per day for KEEP_DAYS days.
@@ -2661,6 +2663,8 @@ async function joinPick() {
     new google.picker.PickerBuilder().addView(view).setOAuthToken(tok).setDeveloperKey(gPickerKey()).setAppId(gClient().split('-')[0])
       .setTitle(`Pick the Auri log (${DRIVE_FILE}, or ${OLD_FILE} from before)`).setCallback(d => {
         if (d.action !== google.picker.Action.PICKED || !d.docs?.[0]) return;
+        // The picker lists every JSON file, so backups can be picked too; syncing one would write over that backup.
+        if (HOURLY.test(d.docs[0].name) || BEFORE.test(d.docs[0].name)) return toast(`That is a backup, not the log. Pick ${DRIVE_FILE} (or ${OLD_FILE}), or use Restore from a Drive backup.`);
         if (S.example) { const st = S.settings; S = emptyState(); S.settings = st; }
         S.drive = { fileId: d.docs[0].id }; backupsHome = null; mediaHome = null; closeSheet(); persist(); sync(true).then(() => { if (!S.drive.error) toast('Joined. You now share this log.'); tab = 'today'; render(); });
       }).build().setVisible(true);
