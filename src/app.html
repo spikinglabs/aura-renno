@@ -1,4 +1,4 @@
-<title>Aura</title>
+<title>Allo Auri</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600&family=Nunito:wght@400;600;700;800&display=swap">
@@ -304,7 +304,7 @@ const SDK_URL = 'https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.131.0/+esm';
 const MODEL = 'claude-opus-5-5';
 const LS_KEY = 'aura.v2', LS_OLD = 'sickdaylog.v1', DB_NAME = 'aura';
 const DRIVE_FILE = 'aura-log.json', DRIVE_FOLDER = 'Aura';
-// Aura's own Google project, filled in by build.sh from the repo's GOOGLE_CLIENT_ID and GOOGLE_PICKER_KEY variables.
+// Auri's own Google project, filled in by build.sh from the repo's GOOGLE_CLIENT_ID and GOOGLE_PICKER_KEY variables.
 // Both are public by design (Google restricts them to this site's address). A user's own values under More override them.
 const built = v => /^__/.test(v) ? '' : v;
 const GOOGLE_CLIENT_ID = built('__GOOGLE_CLIENT_ID__'), GOOGLE_PICKER_KEY = built('__GOOGLE_PICKER_KEY__');
@@ -400,7 +400,7 @@ const MIGRATIONS = {
 };
 const logVersion = o => Number.isInteger(o?.v) && o.v > 0 ? o.v : 1;
 const tooNew = o => !!o && logVersion(o) > SCHEMA;
-const NEWER = 'This log was saved by a newer version of Aura. Close Aura fully and open it again to update. Nothing was changed.';
+const NEWER = 'This log was saved by a newer version of Auri. Close Auri fully and open it again to update. Nothing was changed.';
 function migrate(o) {
   if (!o || tooNew(o)) return o;
   for (let v = logVersion(o); v < SCHEMA; v++) o = { ...MIGRATIONS[v](o), v: v + 1 };
@@ -1112,7 +1112,7 @@ function atMonths(dob, m) { const d = new Date(dob + 'T12:00'); if (m % 1) retur
 // can be for several vaccines at once: `ks` and `doses` ({ k: which dose of the schedule }; none for vaccines outside it
 // or already complete). The first version kept one vaccine as `k` and `dose`; apptKs/apptDose read both. Any other
 // appointment (a specialist, the hospital, therapy) is `plan: 'other'` with a `title` and an optional linked `docId`.
-// Once the date has passed and nothing is recorded, Aura asks to record it; it never reminds by itself (calendar only).
+// Once the date has passed and nothing is recorded, Auri asks to record it; it never reminds by itself (calendar only).
 const apptsOf = c => live(S.appts || []).filter(a => a.childId === c.id);
 const apptKs = a => a.ks || [a.k];
 const apptDose = (a, k) => a.doses ? a.doses[k] : a.dose;
@@ -1146,13 +1146,13 @@ function apptSheet(id, plan, k, dose, docId) {
     <div class="sheet-actions">${id ? '<button class="btn ghost danger" data-act="del-appt">Delete</button>' : '<span></span>'}<button class="btn primary" data-act="save-appt">Save</button></div>`, { appt: id || null, plan: a.plan, k: a.k, dose: a.dose, childId: c.id });
 }
 const apptFields = () => ({ time: $('#a_time').value || '', place: $('#a_place').value.trim(), note: $('#a_note').value.trim() });
-// After saving a coming appointment, Aura offers to put it in the parent's calendar right away.
+// After saving a coming appointment, Auri offers to put it in the parent's calendar right away.
 function apptSaved(a, back) {
   const c = S.children.find(x => x.id === a.childId), e = upcoming(a) && apptEventOf(c, a);
   closeSheet(); commit(); if (e) return calSheet([e], true); back?.(); toast('Appointment saved');
 }
 const apptEventOf = (c, a) => a.plan === 'u' ? uEvent(c, U_PLAN.find(u => u.k === a.k)) : a.plan === 'z' ? zEvent(c, Z_PLAN.find(z => z.k === a.k)) : apptEvent(c, a);
-// Calendar entries link back to the appointments in Aura.
+// Calendar entries link back to the appointments in Auri.
 const appLink = () => location.href.split(/[?#]/)[0] + '?open=appts';
 const itemSheet = (plan, k) => plan === 'u' ? uItemSheet(k) : plan === 'z' ? zItemSheet(k) : vaxItemSheet(k);
 function saveAppt() {
@@ -1259,7 +1259,7 @@ function renderAppts() {
     <div class="row"><button class="btn primary" data-act="appt-new">Add an appointment</button>${evs ? '<button class="btn" data-act="cal-appts">Add to my calendar</button>' : ''}</div>
     <div class="card set"><h2>Coming up</h2>
       ${rows.length ? `<div>${rows.map(apptRow).join('')}</div>` : '<p class="small muted" style="margin:0">Nothing booked. Add an appointment once it is booked: a checkup, a vaccination, the dentist or anything else.</p>'}
-      <p class="small muted" style="margin:0">Aura doesn't remind you by itself. Add the appointments to your calendar for a reminder.</p></div>
+      <p class="small muted" style="margin:0">Auri doesn't remind you by itself. Add the appointments to your calendar for a reminder.</p></div>
     ${past.length ? `<div class="card set"><details><summary class="small muted">Past (${past.length})</summary><div>${past.map(a => `<button class="vx-dose" data-act="appt" data-appt="${a.id}"><span><b>${esc(a.title)}</b> <span class="muted small num">${esc(apptWhen(a))}</span></span>${linkedDoc(a) ? `<small>${esc(docTitle(linkedDoc(a)))}</small>` : ''}${a.note ? `<small>${esc(a.note)}</small>` : ''}</button>`).join('')}</div></details></div>` : ''}`;
 }
 const apptsSummary = c => { const r = apptList(c)[0]; return r ? `Next: ${r.title}, ${r.s.st === 'went' ? 'was ' : ''}${apptWhen(r.s.appt)}` : 'None booked'; };
@@ -1267,9 +1267,9 @@ const apptsSummary = c => { const r = apptList(c)[0]; return r ? `Next: ${r.titl
 const apptDay = (c, plan, k, dose) => { const a = c && k && apptFor(c, plan, k, dose); return a && startOfDay(apptT(a)) <= Date.now() ? Math.min(apptT(a), Date.now()) : null; };
 // Calendar event for a booked appointment: at its time (or all day), with the note.
 // A calendar entry for a booked appointment: an icon and the child in the title, then where, the note, what to bring,
-// what the appointment is, and a link back to Aura. Plain text, so every calendar shows it the same way.
+// what the appointment is, and a link back to Auri. Plain text, so every calendar shows it the same way.
 const eventText = (head, a, o) => [head, [a.place && `📍 ${a.place}`, a.note && `📝 ${a.note}`].filter(Boolean).join('\n'),
-  o.bring?.length ? 'Bring:\n' + o.bring.map(x => `• ${x}`).join('\n') : '', o.about, `Open in Aura: ${appLink()}`].filter(Boolean).join('\n\n');
+  o.bring?.length ? 'Bring:\n' + o.bring.map(x => `• ${x}`).join('\n') : '', o.about, `Open in Auri: ${appLink()}`].filter(Boolean).join('\n\n');
 const bookedEvent = (s, uid, what, c, o) => ({ uid, t: apptT(s.appt), time: s.appt.time || '', booked: true, location: s.appt.place || '',
   title: `${o.emoji} ${o.title || what[0].toUpperCase() + what.slice(1)} · ${c.name}`, details: eventText(`${c.name}'s ${what} appointment`, s.appt, o) });
 // Where a child stands with one vaccine of the schedule: done, due, not recorded past the usual age, later, or over.
@@ -1312,7 +1312,7 @@ function renderVax() {
       <p class="small muted" style="margin:0">The usual ages from the STIKO recommendations (as of 2026), as a reminder only. Your pediatrician decides what your child gets and when. Plans differ for babies born early, for health conditions and for catch-up doses.</p></div>` : ''}
     <div class="card set"><div class="row between"><h2>Recorded</h2>${doses.length ? '<button class="btn sm" data-act="copy-vax">Copy list</button>' : ''}</div>
       ${doses.length ? `<div>${doses.map(d => `<button class="vx-dose" data-vxdose="${d.id}"><span><b>${esc(vaxNames(d))}</b> <span class="muted small num">${fmtDate(d.t)}${c.dob ? ' · ' + ageText(c, d.t) : ''}</span></span>${d.name || d.batch || d.by ? `<small>${esc([d.name, d.batch && 'batch ' + d.batch, d.by].filter(Boolean).join(' · '))}</small>` : ''}${d.note ? `<small>${esc(d.note)}</small>` : ''}</button>`).join('')}</div>`
-        : '<p class="muted small" style="margin:0">Nothing recorded yet. Add the pages of the vaccination book (with AI reading on, Aura reads the vaccinations from them), or add each line by hand.</p>'}</div>
+        : '<p class="muted small" style="margin:0">Nothing recorded yet. Add the pages of the vaccination book (with AI reading on, Auri reads the vaccinations from them), or add each line by hand.</p>'}</div>
     ${docCard(c, 'vax')}
     <div class="card set"><h2>Schedule to show</h2>
       <div class="chips">${[['de', 'Germany (STIKO)'], ['none', 'None, just my records']].map(([k, l]) => `<button data-vaxplan="${k}" class="${(S.settings.vaxPlan || 'de') === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>`;
@@ -1468,14 +1468,14 @@ function uEvent(c, u) {
     about: `The ${u.k} checkup is usually ${u.ages}${s.ws && u.k !== 'U1' ? `; it can be done until ${fmtDate(lastDay(s.we))}` : ''}.` });
   if (!['due', 'soon', 'later'].includes(s.st)) return null;
   return { uid: `${c.id}-${u.k}`, t: Math.max(s.as, startOfDay(Date.now())), title: `${u.k} checkup · ${c.name}`,
-    details: `${u.k} checkup (U-Heft), usually ${u.k === 'U1' ? u.ages : u.ages + ': ' + s.best}. It can be done from ${fmtDate(s.ws)} until ${fmtDate(lastDay(s.we))}. Book it with your pediatrician and bring the U-Heft and the vaccination book. From Aura.` };
+    details: `${u.k} checkup (U-Heft), usually ${u.k === 'U1' ? u.ages : u.ages + ': ' + s.best}. It can be done from ${fmtDate(s.ws)} until ${fmtDate(lastDay(s.we))}. Book it with your pediatrician and bring the U-Heft and the vaccination book. From Auri.` };
 }
 function vaxEvent(c, v) {
   const s = vaxStatus(c, v);
   if (s.st === 'booked') return vaxApptEvent(c, s.appt);
   if (!c.dob || !['due', 'late', 'later'].includes(s.st)) return null;
   return { uid: `${c.id}-vax-${v.k}-${s.n + 1}`, t: Math.max(startOfDay(atMonths(c.dob, v.at[s.n])), startOfDay(Date.now())), title: `${v.s} vaccination · ${c.name}`,
-    details: `${v.l}${s.of > 1 ? `, dose ${s.n + 1} of ${s.of}` : ''}: usually ${v.ages[s.n]}, as in the STIKO schedule. Your pediatrician decides what your child gets and when. Bring the vaccination book. From Aura.` };
+    details: `${v.l}${s.of > 1 ? `, dose ${s.n + 1} of ${s.of}` : ''}: usually ${v.ages[s.n]}, as in the STIKO schedule. Your pediatrician decides what your child gets and when. Bring the vaccination book. From Auri.` };
 }
 const nextEvents = c => [...(uPlanOn() ? U_PLAN.map(u => uEvent(c, u)) : []), ...(zPlanOn() ? Z_PLAN.map(z => zEvent(c, z)) : []), ...(planOn() ? VAX_PLAN.filter(v => !(c.vaxSkip || []).includes(v.k)).map(v => vaxEvent(c, v)) : []),
   ...vaxApptOpen(c).filter(a => apptState(a).st === 'booked').map(a => vaxApptEvent(c, a)), ...otherAppts(c).filter(upcoming).map(a => otherEvent(c, a))]
@@ -1498,7 +1498,7 @@ function renderCheckups() {
       <p class="small muted" style="margin:0">Ages from the German child checkup rules (Kinder-Richtlinie). The first dates are the usual time; a checkup can still be done until the last day shown. Daycare and school often ask to see the U-Heft.</p></div>` : ''}
     <div class="card set"><h2>Recorded</h2>
       ${exams.length ? `<div>${exams.map(e => `<button class="vx-dose" data-uexam="${e.id}"><span><b>${esc(uName(e.u))}</b> <span class="muted small num">${fmtDate(e.t)}${c.dob ? ' · ' + ageText(c, e.t) : ''}</span></span>${e.by ? `<small>${esc(e.by)}</small>` : ''}${e.note ? `<small>${esc(e.note)}</small>` : ''}</button>`).join('')}</div>`
-        : '<p class="muted small" style="margin:0">Nothing recorded yet. Add the pages of the U-Heft (with AI reading on, Aura reads the checkups from them), or add each checkup by hand with what the doctor said, in your own words.</p>'}</div>
+        : '<p class="muted small" style="margin:0">Nothing recorded yet. Add the pages of the U-Heft (with AI reading on, Auri reads the checkups from them), or add each checkup by hand with what the doctor said, in your own words.</p>'}</div>
     ${docCard(c, 'u')}
     <div class="card set"><h2>Schedule to show</h2>
       <div class="chips">${[['de', 'Germany (U-Heft)'], ['none', 'None, just my records']].map(([k, l]) => `<button data-uplan="${k}" class="${(S.settings.uPlan || 'de') === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>`;
@@ -1558,7 +1558,7 @@ function zEvent(c, z) {
     about: `The ${z.k} dental checkup is in ${z.ages} of life${s.we ? `; it can be done until ${fmtDate(lastDay(s.we))}` : ''}.` });
   if (!['due', 'soon', 'later'].includes(s.st)) return null;
   return { uid: `${c.id}-${z.k}`, t: Math.max(s.ws, startOfDay(Date.now())), title: `${z.k} dental checkup · ${c.name}`,
-    details: `${z.k} dental checkup, ${z.ages}: from ${fmtDate(s.ws)} until ${fmtDate(lastDay(s.we))}. Book it with a dentist for children and bring the dental pass or the U-Heft. From Aura.` };
+    details: `${z.k} dental checkup, ${z.ages}: from ${fmtDate(s.ws)} until ${fmtDate(lastDay(s.we))}. Book it with a dentist for children and bring the dental pass or the U-Heft. From Auri.` };
 }
 const teethIn = c => growthOf(c).filter(g => g.kind === 'tooth');
 function renderDental() {
@@ -1578,7 +1578,7 @@ function renderDental() {
     ${teethHtml(c, true)}
     <div class="card set"><h2>Recorded</h2>
       ${exams.length ? `<div>${exams.map(e => `<button class="vx-dose" data-zexam="${e.id}"><span><b>${esc(zName(e.z))}</b> <span class="muted small num">${fmtDate(e.t)}${c.dob ? ' · ' + ageText(c, e.t) : ''}</span></span>${e.by || e.teeth || e.fluoride ? `<small>${esc([e.by, e.teeth ? e.teeth + (e.teeth === 1 ? ' tooth' : ' teeth') : '', e.fluoride ? 'fluoride varnish' : ''].filter(Boolean).join(' · '))}</small>` : ''}${e.note ? `<small>${esc(e.note)}</small>` : ''}</button>`).join('')}</div>${fl ? `<p class="small muted" style="margin:0">Fluoride varnish last put on ${fmtDate(fl.t)}.</p>` : ''}`
-        : '<p class="muted small" style="margin:0">Nothing recorded yet. Add the pages of the dental pass (with AI reading on, Aura reads the checkups from them), or add each visit by hand with what the dentist said, in your own words.</p>'}</div>
+        : '<p class="muted small" style="margin:0">Nothing recorded yet. Add the pages of the dental pass (with AI reading on, Auri reads the checkups from them), or add each visit by hand with what the dentist said, in your own words.</p>'}</div>
     ${docCard(c, 'z')}
     <div class="card set"><h2>Schedule to show</h2>
       <div class="chips">${[['de', 'Germany (Z1 to Z6)'], ['none', 'None, just my records']].map(([k, l]) => `<button data-zplan="${k}" class="${(S.settings.zPlan || 'de') === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>`;
@@ -1620,7 +1620,7 @@ function saveZ() {
 }
 
 /* ---------- Calendar ---------- */
-// Dates Aura already knows (checkups, vaccinations) go into the parent's own calendar without signing in to it:
+// Dates Auri already knows (checkups, vaccinations) go into the parent's own calendar without signing in to it:
 // Google Calendar gets a prefilled event, other calendars (Apple, Outlook) a calendar file. All-day events, so a
 // date never shifts with the time zone; the calendar app reminds at 9:00. A booked appointment with a time is a one-hour
 // event in local time (no time zone), reminded an hour before.
@@ -1640,7 +1640,7 @@ function icsFold(l) {
 }
 function icsText(evs) {
   const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
-  return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Aura//Baby log//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+  return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Auri//Baby log//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
     ...evs.flatMap(e => ['BEGIN:VEVENT', `UID:${e.uid}@aura`, `DTSTAMP:${stamp}`, ...(([a, b], v) => [`DTSTART${v}:${a}`, `DTEND${v}:${b}`])(calSpan(e), e.time ? '' : ';VALUE=DATE'),
       `SUMMARY:${icsEsc(e.title)}`, `DESCRIPTION:${icsEsc(e.details)}`, ...(e.location ? [`LOCATION:${icsEsc(e.location)}`] : []), ...(e.booked ? [`URL:${appLink()}`] : []),
       e.booked && e.time ? 'TRANSP:OPAQUE' : 'TRANSP:TRANSPARENT', ...(e.time ? [...icsAlarm(e, '-P1D'), ...icsAlarm(e, '-PT1H')] : icsAlarm(e, 'PT9H')), 'END:VEVENT']),
@@ -1663,7 +1663,7 @@ function calSheet(evs, saved) {
     ${one ? `<a class="pick" data-gcal href="${esc(googleCalUrl(one))}" target="_blank" rel="noopener noreferrer"><b>Google Calendar</b><br><span class="small muted">Opens the event, ready to save.</span></a>` : ''}
     <button class="pick" data-act="cal-ics"><b>${one ? 'Apple Calendar, Outlook or other' : `All ${evs.length} dates as a calendar file`}</b><br><span class="small muted">${one ? 'Downloads a calendar file; open it to add the event.' : 'Open it on your phone or computer to add them all. Google Calendar imports it on the website, under Settings, Import.'}</span></button>
     ${canShareIcs(evs) ? `<button class="pick" data-act="cal-share"><b>Share to another app</b><br><span class="small muted">Send the calendar file to a calendar app, or to your partner.</span></button>` : ''}
-    <p class="small muted" style="margin:0">Aura doesn't sign in to your calendar. ${evs.every(e => e.booked) ? 'Appointments go in at their day and time, with the place, your note and a link back to Aura. If you change one later, add it again: calendar files replace the old event, a Google link adds a new one.' : 'Without an appointment the event lands on the first day of the usual time. Once it is booked, add the appointment in Aura and add it to your calendar again.'}</p>
+    <p class="small muted" style="margin:0">Auri doesn't sign in to your calendar. ${evs.every(e => e.booked) ? 'Appointments go in at their day and time, with the place, your note and a link back to Auri. If you change one later, add it again: calendar files replace the old event, a Google link adds a new one.' : 'Without an appointment the event lands on the first day of the usual time. Once it is booked, add the appointment in Auri and add it to your calendar again.'}</p>
     ${saved ? '<div class="sheet-actions"><span></span><button class="btn" data-act="close">Not now</button></div>' : ''}`, { cal: evs });
 }
 
@@ -1681,7 +1681,7 @@ const kitaDocs = c => docsOf(c).filter(d => d.type === 'other' && d.kita).sort((
 function measlesLine(c) {
   const doses = vaxDoses(c).filter(v => (v.against || []).includes('mmr')).reverse();
   return `<p class="small muted" style="margin:0">Kitas ask for proof of measles vaccination (Masernschutzgesetz), usually the vaccination book.
-    ${doses.length ? `Measles doses recorded in Aura: ${doses.length}, on ${doses.map(v => fmtDate(v.t)).join(' and ')}.` : 'No measles dose is recorded in Aura yet.'}
+    ${doses.length ? `Measles doses recorded in Auri: ${doses.length}, on ${doses.map(v => fmtDate(v.t)).join(' and ')}.` : 'No measles dose is recorded in Auri yet.'}
     <button class="linkish small" data-tab="vax">Vaccinations</button></p>`;
 }
 function kitaCard(c) {
@@ -1744,7 +1744,7 @@ function renderMore() {
     <div class="card set"><h2>AI helper</h2>
       <p class="small muted" style="margin:0" id="aiStatus">Checking…</p>
       <div class="field"><span>Which AI service</span><div class="chips">${[['anthropic', 'Anthropic (Claude)'], ['openai', 'Another service or your own']].map(([k, l]) => `<button data-aikind="${k}" class="${st.aiKind === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>
-      ${st.aiKind === 'openai' ? `<p class="small muted" style="margin:0">Any service that speaks the common OpenAI-style chat API: OpenAI, Google Gemini, Mistral, OpenRouter, or a model running with Ollama or LM Studio on the computer you are using Aura on (then nothing leaves that computer).</p>
+      ${st.aiKind === 'openai' ? `<p class="small muted" style="margin:0">Any service that speaks the common OpenAI-style chat API: OpenAI, Google Gemini, Mistral, OpenRouter, or a model running with Ollama or LM Studio on the computer you are using Auri on (then nothing leaves that computer).</p>
       <div class="chips">${AI_PRESETS.map(([l, u]) => `<button data-aibase="${esc(u)}" class="${st.aiBase === u ? 'on' : ''}">${l}</button>`).join('')}</div>
       <label class="field"><span>Address (base URL)</span><input id="aiBase" value="${esc(st.aiBase)}" placeholder="https://api.example.com/v1" autocomplete="off" inputmode="url"></label>
       <label class="field"><span>Model name, as the service spells it</span><input id="aiModel" value="${esc(st.aiModel)}" placeholder="e.g. the model id from your service's docs" autocomplete="off"></label>` : `<label class="field"><span>Model (optional)</span><input id="aiModel" value="${esc(st.aiModel)}" placeholder="${MODEL}" autocomplete="off"></label>`}
@@ -1754,7 +1754,7 @@ function renderMore() {
       <p class="small muted" style="margin:0" id="storeInfo">Saved on this phone.</p>
       <div class="row"><button class="btn sm" data-act="download">Save a backup file</button><button class="btn sm" data-act="restore-file">Restore from a backup file</button><button class="btn sm" data-act="local-snaps">Restore a daily copy on this phone</button><input id="restoreFile" type="file" accept="application/json,.json" hidden></div>
       <div class="row"><button class="btn ghost sm" data-act="export">Copy all data</button><button class="btn ghost sm" data-act="import">Restore from copied data</button></div>
-      <textarea id="importBox" hidden placeholder="Paste data copied from Aura" style="min-height:90px"></textarea>
+      <textarea id="importBox" hidden placeholder="Paste data copied from Auri" style="min-height:90px"></textarea>
       <div><button class="btn ghost danger sm" data-act="wipe">Delete everything on this phone</button></div><div id="wipeConfirm"></div></div>`;
   storageInfo(); if (d.fileId && d.mine !== false) peopleList();
   aiProvider().then(p => { const el = $('#aiStatus'); if (el) el.textContent = p === 'sample' ? 'AI is ready here using your Claude account. No key needed in this preview.' : p === 'key' ? `AI is ready: ${aiName()}.` : 'AI is off. Choose a service and add its key to turn it on. Everything else works without it.'; });
@@ -2017,8 +2017,8 @@ async function aiSummary() {
 // pages are `pages` ({ id, docId, childId, order, img, note, t }), so each page syncs on its own. The vaccination book and
 // the U-Heft have one document per child with a fixed id (`vax-<child>`, `u-<child>`), so two phones never make two.
 // Those two types also have a reader: when a page is added or replaced, the parent's own AI service (optional, and it has
-// to understand pictures) reads the entries on it, and Aura proposes the ones not recorded yet. Nothing is saved until the
-// parent checks them. A page photo is the one thing in Aura that goes to the AI as a picture, so the first reading asks once,
+// to understand pictures) reads the entries on it, and Auri proposes the ones not recorded yet. Nothing is saved until the
+// parent checks them. A page photo is the one thing in Auri that goes to the AI as a picture, so the first reading asks once,
 // and the sheet says that names printed on a page can't be replaced by placeholders. The reading only copies what is
 // written: no advice, no judging of findings.
 let scanned = null;
@@ -2069,7 +2069,7 @@ function docCard(c, type) {
   return `<div class="card set"><div class="row between"><h2>Pages of the ${what}</h2><span class="muted small">${pages.length ? pages.length + (pages.length > 1 ? ' pages' : ' page') : ''}</span></div>
     ${pagesGrid(pages)}
     ${d?.note ? `<p class="small doc-note">${esc(d.note)}</p>` : ''}
-    <p class="small muted" style="margin:0">Keep the ${what} here page by page: add a page when a new one is filled in, and replace a page when more is written on it.${readOn() ? ' Aura then reads the new entries on that page and asks you to check them.' : aiKeySet() ? ' Reading the entries with AI is off.' : ' To have Aura read the entries for you, set up an AI service that understands pictures under More.'} Pages sync with your partner and go into Drive backups.</p>
+    <p class="small muted" style="margin:0">Keep the ${what} here page by page: add a page when a new one is filled in, and replace a page when more is written on it.${readOn() ? ' Auri then reads the new entries on that page and asks you to check them.' : aiKeySet() ? ' Reading the entries with AI is off.' : ' To have Auri read the entries for you, set up an AI service that understands pictures under More.'} Pages sync with your partner and go into Drive backups.</p>
     <div class="row"><button class="btn sm" data-act="doc-add" data-type="${type}">Add a page</button><button class="btn ghost sm" data-act="doc-note" data-type="${type}">${d?.note ? 'Edit note' : 'Add a note'}</button>${pages.length ? `<button class="btn ghost sm" data-act="doc-pdf" data-doc="${d.id}">Save as PDF</button>` : ''}</div></div>`;
 }
 let addTo = null; // where the photos chosen next go: { type } or { doc }
@@ -2109,7 +2109,7 @@ function pageSheet(id, fresh) {
   if (reader && fresh && readOn() && S.settings.scanOk) readPages(fresh);
 }
 function readerHtml(d) {
-  if (!aiKeySet()) return `<p class="small muted" style="margin:0">To have Aura read the entries on this page, set up an AI service that understands pictures (for example Claude, GPT-4o or Gemini).</p><div><button class="btn ghost sm" data-act="doc-setup">Set up AI</button></div>`;
+  if (!aiKeySet()) return `<p class="small muted" style="margin:0">To have Auri read the entries on this page, set up an AI service that understands pictures (for example Claude, GPT-4o or Gemini).</p><div><button class="btn ghost sm" data-act="doc-setup">Set up AI</button></div>`;
   return `<div class="set reader"><label class="scan-ok small"><input type="checkbox" id="scanRead" ${S.settings.scanRead !== false ? 'checked' : ''}><span><b>Read new and replaced pages with AI</b>, so you don't have to type the ${d.type === 'vax' ? 'vaccinations' : 'checkups'}. Nothing is saved until you check it.</span></label>
     ${S.settings.scanOk ? `<p class="small muted" style="margin:0">Page photos go to ${esc(aiName())}. Names printed on a page can't be hidden in a picture.</p>`
       : `<label class="scan-ok small"><input type="checkbox" id="scanOk"><span>The photo goes from this phone straight to ${esc(aiName())}, the AI service you chose. Names, addresses and stamps printed on the page can't be hidden in a picture, so that service sees them. Nothing else from your log is sent.</span></label>`}
@@ -2314,7 +2314,7 @@ async function docPdf(d) {
   const W = 595.28, kids = imgs.map((_, i) => 4 + i * 3);
   obj(1, '<< /Type /Catalog /Pages 2 0 R >>');
   obj(2, `<< /Type /Pages /Kids [${kids.map(k => k + ' 0 R').join(' ')}] /Count ${imgs.length} >>`);
-  obj(3, `<< /Title ${pdfText(docTitle(d))} /Producer (Aura) >>`);
+  obj(3, `<< /Title ${pdfText(docTitle(d))} /Producer (Auri) >>`);
   imgs.forEach((im, i) => {
     const n = kids[i], H = +(W * im.h / im.w).toFixed(2), draw = te.encode(`q ${W} 0 0 ${H} 0 0 cm /P Do Q`);
     obj(n, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /XObject << /P ${n + 2} 0 R >> >> /Contents ${n + 1} 0 R >>`);
@@ -2326,7 +2326,7 @@ async function docPdf(d) {
   put(`trailer\n<< /Size ${size} /Root 1 0 R /Info 3 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
   return new Blob(parts, { type: 'application/pdf' });
 }
-const pdfName = d => `${docTitle(d)} - ${S.children.find(k => k.id === d.childId)?.name || 'Aura'}.pdf`.replace(/[\\/:*?"<>|]+/g, ' ');
+const pdfName = d => `${docTitle(d)} - ${S.children.find(k => k.id === d.childId)?.name || 'Auri'}.pdf`.replace(/[\\/:*?"<>|]+/g, ' ');
 async function savePdf(d) {
   if (!docPages(d).length) return toast('Add a page first.');
   let blob; try { blob = await docPdf(d); } catch (e) { return toast(e.message || 'The PDF could not be made.'); }
@@ -2520,8 +2520,8 @@ async function localSnapshot() {
 function mergeList(a = [], b = []) { const m = new Map(a.map(x => [x.id, x])); for (const x of b) { const y = m.get(x.id); if (!y || (x.updatedAt || 0) > (y.updatedAt || 0)) m.set(x.id, x); } return [...m.values()]; }
 // Adds a backup or another phone's data to this log, item by item; newer edits and deletions win.
 function mergeIn(d) {
-  if (!d || (d.app !== 'aura' && d.app !== 'sick-day-log')) throw new Error("That doesn't look like Aura data.");
-  if (tooNew(d)) throw new Error('That copy was saved by a newer version of Aura. Close Aura fully and open it again to update, then restore it.');
+  if (!d || (d.app !== 'aura' && d.app !== 'sick-day-log')) throw new Error("That doesn't look like Auri data.");
+  if (tooNew(d)) throw new Error('That copy was saved by a newer version of Auri. Close Auri fully and open it again to update, then restore it.');
   d = migrate(d);
   if (S.example) { const st = S.settings; S = emptyState(); S.settings = st; }
   for (const k of SYNCED) S[k] = mergeList(S[k], d[k]); S.child = S.child || kids()[0]?.id || null;
@@ -2541,8 +2541,8 @@ async function sync(interactive) {
     const id = S.drive?.fileId || await findOrCreateFile(tok);
     let extra = {}, older = false;
     const read = async () => { const d = await (await gapi(tok, `${DRIVE}/${id}?alt=media`)).json().catch(() => null);
-      if (tooNew(d)) throw new Error('Your log in Drive was saved by a newer version of Aura. Close Aura fully and open it again to update. Nothing was overwritten.');
-      if (!isAura(d)) throw new Error("The Drive file doesn't look like an Aura log, so nothing was overwritten. Your data on this phone is safe.");
+      if (tooNew(d)) throw new Error('Your log in Drive was saved by a newer version of Auri. Close Auri fully and open it again to update. Nothing was overwritten.');
+      if (!isAura(d)) throw new Error("The Drive file doesn't look like an Auri log, so nothing was overwritten. Your data on this phone is safe.");
       older = logVersion(d) < SCHEMA;
       if (older) await keepBeforeDrive(tok, id, d); else extra = unknownParts(d);
       return migrate(d); };
@@ -2606,7 +2606,7 @@ async function peopleList() {
 async function share() {
   const email = $('#shareEmail').value.trim(); if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast("Enter your partner's Google email address.");
   try {
-    const tok = await token(true), msg = `I'm sharing our Aura log with you. Open Aura on your phone, go to More → Google Drive, and tap “Join a shared log”.`;
+    const tok = await token(true), msg = `I'm sharing our Auri log with you. Open Auri on your phone, go to More → Google Drive, and tap “Join a shared log”.`;
     await gapi(tok, `${DRIVE}/${S.drive.fileId}/permissions?sendNotificationEmail=true&emailMessage=${enc(msg)}`, { method: 'POST', headers: JSON_H, body: JSON.stringify({ type: 'user', role: 'writer', emailAddress: email }) });
     $('#shareEmail').value = ''; toast(`Shared with ${email}. Google has emailed them.`); peopleList();
   } catch (e) { toast(e.message); }
@@ -2614,11 +2614,11 @@ async function share() {
 async function unshare(pid) {
   try { const tok = await token(true); await gapi(tok, `${DRIVE}/${S.drive.fileId}/permissions/${enc(pid)}`, { method: 'DELETE' }); toast('Access removed'); peopleList(); } catch (e) { toast(e.message); }
 }
-const googleOwnFields = st => `<label class="field"><span>Google OAuth client ID${GOOGLE_CLIENT_ID ? ' (leave empty to use Aura’s)' : ' (one-time setup, see README)'}</span><input id="clientId" value="${esc(st.clientId)}" placeholder="1234-abc.apps.googleusercontent.com" autocomplete="off"></label>
+const googleOwnFields = st => `<label class="field"><span>Google OAuth client ID${GOOGLE_CLIENT_ID ? ' (leave empty to use Auri’s)' : ' (one-time setup, see README)'}</span><input id="clientId" value="${esc(st.clientId)}" placeholder="1234-abc.apps.googleusercontent.com" autocomplete="off"></label>
   <label class="field"><span>Google API key for the file picker (only for joining a shared log)</span><input id="pickerKey" value="${esc(st.pickerKey)}" autocomplete="off"></label>`;
 function joinSheet() {
   openSheet(`<div class="hd"><h2>Join a shared log</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
-    <p class="small muted" style="margin:0">If your partner shared their Aura log with your Google account, you can pick it here. Anything already on this phone is added to the shared log.</p>
+    <p class="small muted" style="margin:0">If your partner shared their Auri log with your Google account, you can pick it here. Anything already on this phone is added to the shared log.</p>
     ${gClient() && gPickerKey() ? '' : `<label class="field"><span>Google OAuth client ID (the same one your partner uses)</span><input id="j_client" value="${esc(S.settings.clientId)}" autocomplete="off"></label>
     <label class="field"><span>Google API key for the file picker (see README)</span><input id="j_key" value="${esc(S.settings.pickerKey)}" autocomplete="off"></label>`}
     <div class="sheet-actions"><span></span><button class="btn primary" data-act="join-pick">Choose the shared file</button></div>`);
@@ -2636,7 +2636,7 @@ async function joinPick() {
     const tok = await token(true); await loadPicker();
     const view = new google.picker.DocsView(google.picker.ViewId.DOCS).setMimeTypes('application/json').setQuery(DRIVE_FILE).setMode(google.picker.DocsViewMode.LIST);
     new google.picker.PickerBuilder().addView(view).setOAuthToken(tok).setDeveloperKey(gPickerKey()).setAppId(gClient().split('-')[0])
-      .setTitle('Pick the shared Aura log').setCallback(d => {
+      .setTitle('Pick the shared Auri log').setCallback(d => {
         if (d.action !== google.picker.Action.PICKED || !d.docs?.[0]) return;
         if (S.example) { const st = S.settings; S = emptyState(); S.settings = st; }
         S.drive = { fileId: d.docs[0].id }; backupsHome = null; mediaHome = null; closeSheet(); persist(); sync(true).then(() => { if (!S.drive.error) toast('Joined. You now share this log.'); tab = 'today'; render(); });
@@ -2665,7 +2665,7 @@ function backupDue() {
 const backupBanner = () => { const m = backupDue(); return m ? `<div class="banner backup-due"><p><b>Back up your log.</b> ${m}</p><button class="btn primary sm" data-act="backup-now">Back up now</button><button class="btn ghost sm" data-act="backup-snooze">Tomorrow</button></div>` : ''; };
 /* ---------- Product recalls ---------- */
 // Recalls come from L's Recall Tracker (github.com/spikinglabs/recall-tracker, tracker.babybaras.com), which publishes
-// one public JSON file of baby and children's product recalls each day. Aura only downloads that public list; the
+// one public JSON file of baby and children's product recalls each day. Auri only downloads that public list; the
 // products a family uses are matched on the phone and never sent anywhere. The list is kept on the phone, not synced.
 const RECALL_URL = 'https://pub-f36c3831e82845e4af2d54940ea6c32d.r2.dev/baby/scraped_date%3Dlatest/processed.json';
 const RECALL_SITE = 'https://tracker.babybaras.com/';
@@ -2735,7 +2735,7 @@ function recallCard() {
   const old = R.scraped && Date.now() - R.scraped > 14 * DAY ? ` The list itself was last updated ${fmtDay(R.scraped)}, so newer recalls may be missing.` : '';
   const status = recallLoading ? 'Checking for recalls…' : R.at ? `Checked ${ago(R.at)}.${old}${R.error ? ' Last check failed: ' + esc(R.error) + '.' : ''}` : R.error ? `Could not load recalls: ${esc(R.error)}.` : 'Not checked yet.';
   return `<div class="card set" id="recalls"><h2>Product recalls</h2>
-      <p class="small muted" style="margin:0">Aura checks the public list from the <a href="${RECALL_SITE}" target="_blank" rel="noopener" style="color:var(--accent-ink)">Recall Tracker</a> (baby and children's products, from Lebensmittelwarnung.de, the US FDA and the US CPSC). Add the brands and products you use, and Today shows a warning when a recall names one of them. Your list syncs with your partner and is never sent anywhere else.</p>
+      <p class="small muted" style="margin:0">Auri checks the public list from the <a href="${RECALL_SITE}" target="_blank" rel="noopener" style="color:var(--accent-ink)">Recall Tracker</a> (baby and children's products, from Lebensmittelwarnung.de, the US FDA and the US CPSC). Add the brands and products you use, and Today shows a warning when a recall names one of them. Your list syncs with your partner and is never sent anywhere else.</p>
       <div class="field"><span>Things we use</span>
       ${prods.map(p => `<div class="list-row"><span>${esc(p.name)}</span><button class="btn ghost danger" data-delprod="${p.id}" aria-label="Remove ${esc(p.name)}">✕</button></div>`).join('') || '<p class="small muted" style="margin:0">Nothing listed yet.</p>'}
       <div class="row"><input id="newProd" placeholder="Brand or product, e.g. Hipp" style="flex:1" autocomplete="off"><button class="btn sm" data-act="add-prod">Add</button></div></div>
@@ -2748,14 +2748,14 @@ function backupSheet(first) {
   openSheet(`<div class="hd"><h2>${first ? 'Keep this log safe' : 'Back up your log'}</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
     <p class="small muted" style="margin:0">The log is saved on this phone. A lost, broken or reset phone would take it with it, so keep a copy somewhere else.</p>
     <button class="pick" data-act="backup-drive"><b>Google Drive, automatic (recommended)</b><br><span class="small muted">Every change is saved to your own Drive, with older versions kept. Sign in with Google once.</span></button>
-    <button class="pick" data-act="backup-file"><b>Save a backup file</b><br><span class="small muted">Send it to iCloud Files, Dropbox, email or any place you choose. Aura reminds you every ${BACKUP_DAYS} days when there are new entries.</span></button>
+    <button class="pick" data-act="backup-file"><b>Save a backup file</b><br><span class="small muted">Send it to iCloud Files, Dropbox, email or any place you choose. Auri reminds you every ${BACKUP_DAYS} days when there are new entries.</span></button>
     ${first ? '<div class="sheet-actions"><span></span><button class="btn ghost" data-act="close">Later</button></div>' : ''}`);
 }
 async function saveBackupFile() {
   const name = `aura-backup-${toLocalInput(Date.now()).slice(0, 10)}.json`, blob = new Blob([JSON.stringify(shareable())], { type: 'application/json' });
   const file = new File([blob], name, { type: 'application/json' });
   if (navigator.canShare?.({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: 'Aura backup' }); backedUp(); render(); return toast('Backup saved'); }
+    try { await navigator.share({ files: [file], title: 'Auri backup' }); backedUp(); render(); return toast('Backup saved'); }
     catch (e) { if (e?.name === 'AbortError') return; }
   }
   const a = document.createElement('a'), url = URL.createObjectURL(blob);
@@ -2999,7 +2999,7 @@ document.addEventListener('click', async ev => {
     case 'export': return copyText(JSON.stringify(shareable()));
     case 'import': { const box = $('#importBox'); if (box.hidden) { box.hidden = false; box.focus(); return toast('Paste your data, then tap Restore again.'); }
       try { mergeIn(JSON.parse(box.value)); commit(); toast('Data restored'); }
-      catch { toast("That doesn't look like Aura data."); } return; }
+      catch { toast("That doesn't look like Auri data."); } return; }
     case 'wipe': $('#wipeConfirm').innerHTML = `<div class="banner"><p>This deletes everything on this phone, including its daily copies. A copy in Google Drive is not deleted. Download a backup file first if you might want it back.</p><button class="btn danger sm" data-act="wipe-yes">Delete everything</button></div>`; return;
     case 'wipe-yes': allowShrink = true; try { localStorage.removeItem(LS_KEY); localStorage.removeItem(LS_OLD); } catch {} S = emptyState(); narrative = ''; tab = 'today'; commit(); if (db) dbKeys().then(ks => { const st = db.transaction('kv', 'readwrite').objectStore('kv'); ks.filter(k => String(k).startsWith('snap-')).forEach(k => st.delete(k)); }).catch(() => {}); return toast('Deleted from this device');
     case 'drive-sync': if ($('#clientId')) { S.settings.clientId = $('#clientId').value.trim(); persist(); } return sync(true);
@@ -3029,7 +3029,7 @@ document.addEventListener('change', ev => {
   if (t.id === 'doc_note' && sheetCtx?.docEdit && sheetCtx.docEdit !== 'new') { const d = S.docs.find(x => x.id === sheetCtx.docEdit); if (d) { d.note = t.value.trim(); touch(d); commit(); } }
   if (t.id === 'pg_note' && sheetCtx?.page) { const p = S.pages.find(x => x.id === sheetCtx.page); p.note = t.value.trim(); touch(p); commit(); }
   if (t.id === 'pageFile' && t.files[0]) { replacePage(t.files[0]); t.value = ''; }
-  if (t.id === 'restoreFile' && t.files[0]) t.files[0].text().then(x => { mergeIn(JSON.parse(x)); commit(); toast('Backup restored'); }).catch(e => toast(e instanceof SyntaxError ? "That file isn't an Aura backup." : e.message));
+  if (t.id === 'restoreFile' && t.files[0]) t.files[0].text().then(x => { mergeIn(JSON.parse(x)); commit(); toast('Backup restored'); }).catch(e => toast(e instanceof SyntaxError ? "That file isn't an Auri backup." : e.message));
 });
 function markTags() { const t = $('#f_symtext')?.value; document.querySelectorAll('#symTags [data-tag]').forEach(x => x.classList.toggle('on', hasTag(t, x.dataset.tag))); }
 document.addEventListener('input', ev => { if (ev.target.id === 'f_symtext') markTags(); });
