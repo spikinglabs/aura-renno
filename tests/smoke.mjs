@@ -16,7 +16,8 @@ const setState = async (page, s) => { for (let i = 0; i < 50 && !(await getState
 // Waits until the app's last save has reached IndexedDB, then reloads. A readwrite transaction on the same store
 // only completes after the earlier ones, so a reload can't cut off a save that is still being written.
 const settle = page => page.evaluate(`(async () => { ${IDB} const d = await idb(); await new Promise(res => { const tx = d.transaction('kv', 'readwrite'); tx.objectStore('kv').get('state'); tx.oncomplete = res; }); d.close(); })()`);
-const reload = async page => { await settle(page); await page.reload(); };
+// Tests start each reload on Today: the screen Auri remembers on the phone is forgotten first.
+const reload = async page => { await settle(page); await page.evaluate(() => localStorage.removeItem('auri.view')); await page.reload(); };
 // Adds photos as pages of a document: the app first asks camera or photos, then the new page opens.
 const choosePhoto = async (page, sel, files, how = 'lib') => { await page.click(sel); await Promise.all([page.waitForEvent('filechooser').then(fc => fc.setFiles(files)), page.click(`[data-pick="${how}"]`)]); };
 const addPage = async (page, sel, files, how) => { await choosePhoto(page, sel, files, how); await page.waitForSelector('#pageImg'); };
@@ -1339,6 +1340,89 @@ for (const theme of ['night', 'day']) {
   await page.click('[data-mic="f_note"]');
   await say([[' slept', true], [' after lunch', false]]);
   if ((await page.inputValue('#f_note')) !== 'Fed well. slept after lunch') fail(`dictation: desktop results wrong: ${await page.inputValue('#f_note')}`);
+  await page.close();
+}
+
+// Merging two profiles of the same child: everything moves to the kept one, exact duplicates are dropped, book pages
+// follow the kept child's own, and what a partner logs for the merged profile later follows after a sync.
+{
+  const page = await newPage();
+  page.on('pageerror', e => fail(`merge: ${e.message}`));
+  await page.goto(url); await page.waitForSelector('h1');
+  const now = Date.now();
+  { const st = await getState(page); st.example = false;
+    st.children = [{ id: 'k1', name: 'Mia', dob: '2025-03-01', sex: 'f', updatedAt: 1 }, { id: 'k2', name: 'Mia (old)', dob: '2025-03-01', updatedAt: 1 }]; st.child = 'k2';
+    st.entries = [{ id: 'e1', child: 'k1', type: 'note', t: now - 3600e3, note: 'Same', updatedAt: 1 }, { id: 'e2', child: 'k2', type: 'note', t: now - 3600e3, note: 'Same', updatedAt: 1 }, { id: 'e3', child: 'k2', type: 'note', t: now - 7200e3, note: 'Only old', updatedAt: 1 }];
+    st.docs = [{ id: 'vax-k1', childId: 'k1', type: 'vax', title: '', note: '', updatedAt: 1 }, { id: 'vax-k2', childId: 'k2', type: 'vax', title: '', note: 'Blue book', updatedAt: 1 }, { id: 'd-other', childId: 'k2', type: 'other', title: 'Kita contract', note: '', updatedAt: 1 }];
+    st.pages = [{ id: 'p1', docId: 'vax-k1', childId: 'k1', order: 2, img: 'data:image/jpeg;base64,/9j/AA', note: '', t: 1, updatedAt: 1 }, { id: 'p2', docId: 'vax-k2', childId: 'k2', order: 0, img: 'data:image/jpeg;base64,/9j/AA', note: '', t: 1, updatedAt: 1 }, { id: 'p3', docId: 'vax-k2', childId: 'k2', order: 1, img: 'data:image/jpeg;base64,/9j/BB', note: '', t: 2, updatedAt: 1 }];
+    st.vaccines = [{ id: 'v1', childId: 'k2', kind: 'dose', t: now - 90 * 864e5, against: ['Measles'], name: 'Priorix', note: '', updatedAt: 1 }];
+    st.measurements = [{ id: 'm1', childId: 'k1', t: now - 30 * 864e5, weightKg: 8, note: 'U5', updatedAt: 1 }, { id: 'm2', childId: 'k2', t: now - 30 * 864e5, weightKg: 8, note: 'U5', updatedAt: 1 }];
+    st.checkups = [{ id: 'c2', childId: 'k2', kind: 'exam', u: 'U5', t: now - 30 * 864e5, by: 'Dr. Weber', note: 'All fine', measId: 'm2', updatedAt: 1 }];
+    st.appts = [{ id: 'a1', childId: 'k2', plan: 'other', title: 'Show the book', date: '2030-01-02', time: '', note: '', docId: 'vax-k2', updatedAt: 1 }];
+    await setState(page, st); }
+  await reload(page); await page.waitForSelector('h1');
+  await page.click('.tabs [data-tab="more"]');
+  await page.click('[data-kid="k2"]');
+  await page.click('[data-act="merge-kid"]');
+  await page.click('[data-mergeto="k1"]');
+  const msg = await page.textContent('#sheet');
+  if (!msg.includes('2 log entries') || !msg.includes('2 documents') || !msg.includes('4 other records')) fail('merge: summary does not count what moves: ' + msg);
+  await page.click('[data-act="merge-kid-go"]');
+  await settle(page);
+  let st = await getState(page);
+  const k2 = st.children.find(c => c.id === 'k2');
+  if (!k2.deleted || k2.mergedInto !== 'k1') fail('merge: old profile not removed');
+  if (st.child !== 'k1') fail('merge: kept profile not selected');
+  const liveOf = (k, f) => st[k].filter(x => !x.deleted && f(x));
+  if (liveOf('entries', e => e.child === 'k1').length !== 2 || !st.entries.find(e => e.id === 'e2').deleted) fail('merge: entries not moved or duplicate kept');
+  if (st.vaccines[0].childId !== 'k1') fail('merge: vaccination not moved');
+  if (!st.docs.find(d => d.id === 'vax-k2').deleted || st.docs.find(d => d.id === 'vax-k1').note !== 'Blue book') fail('merge: vaccination book not joined');
+  const book = liveOf('pages', p => p.docId === 'vax-k1').sort((a, b) => a.order - b.order).map(p => p.id).join();
+  if (book !== 'p1,p3') fail('merge: book pages wrong: ' + book);
+  if (st.docs.find(d => d.id === 'd-other').childId !== 'k1' || st.pages.find(p => p.id === 'p2').deleted !== true) fail('merge: other document not moved');
+  if (!st.measurements.find(m => m.id === 'm2').deleted || st.checkups[0].measId !== 'm1' || st.checkups[0].childId !== 'k1') fail('merge: checkup not linked to the measurement that stays');
+  if (st.appts[0].docId !== 'vax-k1') fail('merge: appointment still linked to the old book');
+  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail('merge: page scrolls sideways');
+  // A partner's phone still logged for the old profile: after a restore (same merge as a sync) it follows
+  await page.click('.tabs [data-tab="more"]');
+  await page.setInputFiles('#restoreFile', { name: 'partner.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ app: 'aura', v: 3, entries: [{ id: 'e4', child: 'k2', type: 'note', t: now - 600e3, note: 'Late', updatedAt: now }], pages: [{ id: 'p9', docId: 'vax-k2', childId: 'k2', order: 5, img: 'data:image/jpeg;base64,/9j/CC', note: '', t: now, updatedAt: now }] })) });
+  await page.waitForTimeout(300); await settle(page);
+  st = await getState(page);
+  if (st.entries.find(e => e.id === 'e4')?.child !== 'k1') fail('merge: entry logged later for the merged profile did not follow');
+  const late = st.pages.filter(p => !p.deleted && p.docId === 'vax-k1').sort((a, b) => a.order - b.order).map(p => p.id).join();
+  if (late !== 'p1,p3,p9') fail('merge: page added later to the old book did not follow: ' + late);
+  await page.close();
+}
+
+// The back gesture closes a sheet or goes to the screen before instead of leaving; forward comes back; Auri opens
+// where it was left.
+{
+  const page = await newPage();
+  page.on('pageerror', e => fail(`history: ${e.message}`));
+  await page.goto(url); await page.waitForSelector('h1');
+  const on = () => page.evaluate(() => [...document.querySelectorAll('main > section, [id^="view-"]')].find(v => v.id.startsWith('view-') && !v.hidden)?.id);
+  const sheetOpen = () => page.evaluate(() => !document.getElementById('scrim').hidden);
+  await page.click('.tabs [data-tab="growth"]');
+  await page.click('[data-act="add-meas"]');
+  if (!(await sheetOpen())) fail('history: measurement sheet did not open');
+  await page.goBack(); await page.waitForTimeout(100);
+  if (await sheetOpen() || (await on()) !== 'view-growth') fail(`history: back did not just close the sheet (${await on()})`);
+  await page.goBack(); await page.waitForTimeout(100);
+  if ((await on()) !== 'view-today') fail(`history: back did not go to Today (${await on()})`);
+  await page.goForward(); await page.waitForTimeout(100);
+  if ((await on()) !== 'view-growth') fail(`history: forward did not come back to Growth (${await on()})`);
+  // A sheet that closes itself (saved) leaves no extra step: one back goes to the screen before
+  await page.click('.tabs [data-tab="more"]');
+  await page.click('[data-kid] >> nth=0');
+  await page.click('[data-act="save-kid"]'); await page.waitForTimeout(100);
+  await page.goBack(); await page.waitForTimeout(150);
+  if ((await on()) !== 'view-growth') fail(`history: back after saving a sheet stayed on ${await on()}`);
+  // Opening again shows the last screen
+  await openTab(page, 'vax');
+  await settle(page); await page.reload(); await page.waitForSelector('h1');
+  if ((await on()) !== 'view-vax') fail(`history: reopening did not return to Vaccinations (${await on()})`);
+  await page.goBack(); await page.waitForTimeout(100);
+  if (!page.url().startsWith('file:') || (await on()) !== 'view-vax' && (await on()) !== 'view-docs') fail('history: reopened app lost its place on back');
   await page.close();
 }
 
