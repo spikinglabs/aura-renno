@@ -690,6 +690,12 @@ function restoreView() {
   if (v.tab === 'sick' && !S.episodes.some(e => e.id === v.ep && !e.deleted)) return;
   if (v.tab === 'card' && !kids().some(c => c.id === v.card)) return;
   tab = v.tab; viewEpId = v.ep || null; cardKidId = v.card || null; cardFrom = VIEWS.includes(v.from) ? v.from : 'today';
+  followEpChild();
+}
+// The illness screen logs for the illness's child, so going back to it (or opening on it) makes that child the current one.
+function followEpChild() {
+  const e = tab === 'sick' && S.episodes.find(x => x.id === viewEpId && !x.deleted);
+  if (e && S.child !== e.childId && kids().some(c => c.id === e.childId)) { S.child = e.childId; persist(); }
 }
 let histLeft = null;
 addEventListener('popstate', ev => {
@@ -704,7 +710,9 @@ addEventListener('popstate', ev => {
     if (!$('#scrim').hidden) closeSheet();
     if (st.sheet) history.replaceState(histLeft = { ...st, sheet: false, dup: 1 }, ''); // a sheet can't be opened again from here; show its screen
     const moved = !sameView(st, shown);
+    if ((st.ep || null) !== (viewEpId || null)) { narrative = ''; sickTab = 'overview'; }
     tab = VIEWS.includes(st.tab) ? st.tab : 'today'; viewEpId = st.ep || null; cardKidId = st.card || null; if (st.from) cardFrom = st.from;
+    followEpChild();
     render();
     if (moved) window.scrollTo(0, 0);
   } finally { histBusy = false; }
@@ -1939,31 +1947,47 @@ function kidSheet(id) {
 // whatever a partner's phone still logs for it follows after the next sync (`followMerges`).
 const CHILD_KEYS = ['episodes', 'measurements', 'growth', 'vaccines', 'checkups', 'dental', 'appts', 'emergency', 'docs', 'pages'];
 const SAME_SKIP = new Set(['id', 'updatedAt', 'child', 'childId', 'docId', 'order', 'measId']);
-const sameItem = (a, b) => { const ka = Object.keys(a).filter(k => !SAME_SKIP.has(k) && a[k] != null && a[k] !== ''), kb = Object.keys(b).filter(k => !SAME_SKIP.has(k) && b[k] != null && b[k] !== '');
-  return ka.length === kb.length && ka.every(k => JSON.stringify(a[k]) === JSON.stringify(b[k])); };
+// Links compare by what they point to: a checkup by its measurement's values, an item by its document (a book of
+// the merged child counts as the kept child's book).
+const linkKey = (x, fromId, toId) => JSON.stringify([x.docId ? String(x.docId).replace(new RegExp(`-${fromId}$`), `-${toId}`) : null,
+  x.measId ? (m => m ? MEAS.map(([k]) => m[k] ?? null) : x.measId)(S.measurements.find(m => m.id === x.measId && !m.deleted)) : null]);
+const sameItem = (a, b, fromId, toId) => { const ka = Object.keys(a).filter(k => !SAME_SKIP.has(k) && a[k] != null && a[k] !== ''), kb = Object.keys(b).filter(k => !SAME_SKIP.has(k) && b[k] != null && b[k] !== '');
+  return ka.length === kb.length && ka.every(k => JSON.stringify(a[k]) === JSON.stringify(b[k])) && linkKey(a, fromId, toId) === linkKey(b, fromId, toId); };
 function mergeCounts(fromId) {
   return { entries: live(S.entries).filter(e => e.child === fromId).length, docs: live(S.docs || []).filter(d => d.childId === fromId).length,
+    pages: live(S.pages || []).filter(p => p.childId === fromId).length,
     other: CHILD_KEYS.filter(k => k !== 'docs' && k !== 'pages').reduce((n, k) => n + live(S[k] || []).filter(x => x.childId === fromId).length, 0) };
 }
 function moveChild(fromId, toId) {
-  const to = S.children.find(k => k.id === toId); if (!to) return 0;
-  let moved = 0;
+  const to = S.children.find(k => k.id === toId); if (!to) return;
   const drop = x => { x.deleted = true; touch(x); };
-  const move = (list, key, x, extra = {}) => { if (live(list).some(y => y !== x && y[key] === toId && sameItem(x, y))) drop(x); else { Object.assign(x, { [key]: toId }, extra); touch(x); moved++; } };
+  const kept = new Map(); // id of a dropped duplicate → id of the item that stays
+  const move = (list, key, x) => { const y = live(list).find(y => y !== x && y[key] === toId && sameItem(x, y, fromId, toId)); if (y) { kept.set(x.id, y.id); drop(x); } else { x[key] = toId; touch(x); } };
   live(S.entries).filter(e => e.child === fromId).forEach(e => move(S.entries, 'child', e));
-  for (const k of CHILD_KEYS) if (k !== 'docs' && k !== 'pages') live(S[k] || []).filter(x => x.childId === fromId).forEach(x => move(S[k], 'childId', x));
+  for (const k of CHILD_KEYS) if (k !== 'docs' && k !== 'pages') {
+    live(S[k] || []).filter(x => x.childId === fromId).forEach(x => move(S[k], 'childId', x));
+    // A checkup whose measurement was a duplicate now points to the one that stays.
+    if (k === 'measurements') live(S.checkups || []).filter(x => kept.has(x.measId)).forEach(x => { x.measId = kept.get(x.measId); touch(x); });
+  }
   // Documents: the vaccination book, U-Heft and dental pass are one per child (id `type-child`), so their pages join
   // the kept child's book after its own pages; any other document moves as it is.
-  for (const d of live(S.docs || []).filter(x => x.childId === fromId)) {
-    const pages = docPages(d);
-    if (d.type === 'other') { d.childId = toId; touch(d); pages.forEach(p => { p.childId = toId; touch(p); }); moved++; continue; }
-    const t = typedDoc(to, d.type, true), have = docPages(t);
+  const books = new Map();
+  for (const d of (S.docs || []).filter(x => x.childId === fromId)) {
+    if (d.type === 'other') { if (!d.deleted) { d.childId = toId; touch(d); } continue; }
+    if (d.deleted && !live(S.pages || []).some(p => p.docId === d.id)) continue;
+    const t = typedDoc(to, d.type, true); books.set(d.id, t.id);
     if (!t.note && d.note) { t.note = d.note; touch(t); }
-    let n = have.length;
-    for (const p of pages) { if (have.some(q => q.img === p.img)) drop(p); else { Object.assign(p, { docId: t.id, childId: toId, order: n++ }); touch(p); moved++; } }
-    drop(d);
+    if (!d.deleted) drop(d);
   }
-  return moved;
+  // Pages go by their own child, so a page a partner added to the old book after the merge still finds the kept one.
+  for (const p of live(S.pages || []).filter(p => p.childId === fromId).sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity) || a.t - b.t)) {
+    const docId = books.get(p.docId) || p.docId, t = S.docs.find(d => d.id === docId);
+    if (!books.has(p.docId)) { p.childId = toId; touch(p); continue; }
+    const have = docPages(t); setOrder(have);
+    if (have.some(q => q.img === p.img)) drop(p); else { Object.assign(p, { docId, childId: toId, order: have.length }); touch(p); }
+  }
+  // Appointments linked to a book that joined the kept child's follow it.
+  live(S.appts || []).filter(a => books.has(a.docId)).forEach(a => { a.docId = books.get(a.docId); touch(a); });
 }
 function mergeKids(fromId, toId) {
   const from = S.children.find(k => k.id === fromId), to = S.children.find(k => k.id === toId);
@@ -1979,7 +2003,7 @@ function followMerges() {
     let to = c.mergedInto; const seen = new Set([c.id]);
     while (!seen.has(to)) { seen.add(to); const n = S.children.find(k => k.id === to); if (n?.deleted && n.mergedInto) to = n.mergedInto; else break; }
     const n = mergeCounts(c.id);
-    if (kids().some(k => k.id === to) && n.entries + n.docs + n.other) moveChild(c.id, to);
+    if (kids().some(k => k.id === to) && n.entries + n.docs + n.pages + n.other) moveChild(c.id, to);
   }
 }
 function mergeKidSheet(fromId, toId) {
@@ -1993,7 +2017,7 @@ function mergeKidSheet(fromId, toId) {
   openSheet(`<div class="hd"><h2>Merge into ${esc(to.name)}?</h2><button class="btn ghost" data-act="close" aria-label="Close">✕</button></div>
     <p style="margin:0">${what.length ? `${what.join(', ')} move from ${esc(from.name)} to ${esc(to.name)}.` : `${esc(from.name)} has nothing logged yet.`} Anything exactly like what ${esc(to.name)} already has is left out, and the pages of the vaccination book, U-Heft and dental pass go after ${esc(to.name)}'s own. Then ${esc(from.name)} is removed.</p>
     ${diff.length ? `<p class="small muted" style="margin:0">${esc(to.name)}'s ${diff.map(k => k === 'dob' ? 'birth date' : 'sex').join(' and ')} stay${diff.length > 1 ? '' : 's'} as ${diff.length > 1 ? 'they are' : 'it is'}.</p>` : ''}
-    <p class="small muted" style="margin:0">A partner's phone follows after its next sync. If you change your mind, restore a backup from before the merge.</p>
+    <p class="small muted" style="margin:0">A partner's phone follows after its next sync. A merge can't be undone, and restoring an older backup doesn't bring the removed profile back.</p>
     <div class="sheet-actions"><button class="btn ghost" data-act="close">Cancel</button><button class="btn primary" data-act="merge-kid-go">Merge</button></div>`, { mergeFrom: fromId, mergeTo: toId });
 }
 function episodeSheet(ep) {

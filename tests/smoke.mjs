@@ -1354,8 +1354,11 @@ for (const theme of ['night', 'day']) {
     st.children = [{ id: 'k1', name: 'Mia', dob: '2025-03-01', sex: 'f', updatedAt: 1 }, { id: 'k2', name: 'Mia (old)', dob: '2025-03-01', updatedAt: 1 }]; st.child = 'k2';
     st.entries = [{ id: 'e1', child: 'k1', type: 'note', t: now - 3600e3, note: 'Same', updatedAt: 1 }, { id: 'e2', child: 'k2', type: 'note', t: now - 3600e3, note: 'Same', updatedAt: 1 }, { id: 'e3', child: 'k2', type: 'note', t: now - 7200e3, note: 'Only old', updatedAt: 1 }];
     st.docs = [{ id: 'vax-k1', childId: 'k1', type: 'vax', title: '', note: '', updatedAt: 1 }, { id: 'vax-k2', childId: 'k2', type: 'vax', title: '', note: 'Blue book', updatedAt: 1 }, { id: 'd-other', childId: 'k2', type: 'other', title: 'Kita contract', note: '', updatedAt: 1 }];
-    st.pages = [{ id: 'p1', docId: 'vax-k1', childId: 'k1', order: 0, img: 'data:image/jpeg;base64,/9j/AA', note: '', t: 1, updatedAt: 1 }, { id: 'p2', docId: 'vax-k2', childId: 'k2', order: 0, img: 'data:image/jpeg;base64,/9j/AA', note: '', t: 1, updatedAt: 1 }, { id: 'p3', docId: 'vax-k2', childId: 'k2', order: 1, img: 'data:image/jpeg;base64,/9j/BB', note: '', t: 2, updatedAt: 1 }];
+    st.pages = [{ id: 'p1', docId: 'vax-k1', childId: 'k1', order: 2, img: 'data:image/jpeg;base64,/9j/AA', note: '', t: 1, updatedAt: 1 }, { id: 'p2', docId: 'vax-k2', childId: 'k2', order: 0, img: 'data:image/jpeg;base64,/9j/AA', note: '', t: 1, updatedAt: 1 }, { id: 'p3', docId: 'vax-k2', childId: 'k2', order: 1, img: 'data:image/jpeg;base64,/9j/BB', note: '', t: 2, updatedAt: 1 }];
     st.vaccines = [{ id: 'v1', childId: 'k2', kind: 'dose', t: now - 90 * 864e5, against: ['Measles'], name: 'Priorix', note: '', updatedAt: 1 }];
+    st.measurements = [{ id: 'm1', childId: 'k1', t: now - 30 * 864e5, weightKg: 8, note: 'U5', updatedAt: 1 }, { id: 'm2', childId: 'k2', t: now - 30 * 864e5, weightKg: 8, note: 'U5', updatedAt: 1 }];
+    st.checkups = [{ id: 'c2', childId: 'k2', kind: 'exam', u: 'U5', t: now - 30 * 864e5, by: 'Dr. Weber', note: 'All fine', measId: 'm2', updatedAt: 1 }];
+    st.appts = [{ id: 'a1', childId: 'k2', plan: 'other', title: 'Show the book', date: '2030-01-02', time: '', note: '', docId: 'vax-k2', updatedAt: 1 }];
     await setState(page, st); }
   await reload(page); await page.waitForSelector('h1');
   await page.click('.tabs [data-tab="more"]');
@@ -1363,7 +1366,7 @@ for (const theme of ['night', 'day']) {
   await page.click('[data-act="merge-kid"]');
   await page.click('[data-mergeto="k1"]');
   const msg = await page.textContent('#sheet');
-  if (!msg.includes('2 log entries') || !msg.includes('2 documents') || !msg.includes('1 other record')) fail('merge: summary does not count what moves: ' + msg);
+  if (!msg.includes('2 log entries') || !msg.includes('2 documents') || !msg.includes('4 other records')) fail('merge: summary does not count what moves: ' + msg);
   await page.click('[data-act="merge-kid-go"]');
   await settle(page);
   let st = await getState(page);
@@ -1377,13 +1380,17 @@ for (const theme of ['night', 'day']) {
   const book = liveOf('pages', p => p.docId === 'vax-k1').sort((a, b) => a.order - b.order).map(p => p.id).join();
   if (book !== 'p1,p3') fail('merge: book pages wrong: ' + book);
   if (st.docs.find(d => d.id === 'd-other').childId !== 'k1' || st.pages.find(p => p.id === 'p2').deleted !== true) fail('merge: other document not moved');
+  if (!st.measurements.find(m => m.id === 'm2').deleted || st.checkups[0].measId !== 'm1' || st.checkups[0].childId !== 'k1') fail('merge: checkup not linked to the measurement that stays');
+  if (st.appts[0].docId !== 'vax-k1') fail('merge: appointment still linked to the old book');
   if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) fail('merge: page scrolls sideways');
   // A partner's phone still logged for the old profile: after a restore (same merge as a sync) it follows
   await page.click('.tabs [data-tab="more"]');
-  await page.setInputFiles('#restoreFile', { name: 'partner.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ app: 'aura', v: 3, entries: [{ id: 'e4', child: 'k2', type: 'note', t: now - 600e3, note: 'Late', updatedAt: now }] })) });
+  await page.setInputFiles('#restoreFile', { name: 'partner.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ app: 'aura', v: 3, entries: [{ id: 'e4', child: 'k2', type: 'note', t: now - 600e3, note: 'Late', updatedAt: now }], pages: [{ id: 'p9', docId: 'vax-k2', childId: 'k2', order: 5, img: 'data:image/jpeg;base64,/9j/CC', note: '', t: now, updatedAt: now }] })) });
   await page.waitForTimeout(300); await settle(page);
   st = await getState(page);
   if (st.entries.find(e => e.id === 'e4')?.child !== 'k1') fail('merge: entry logged later for the merged profile did not follow');
+  const late = st.pages.filter(p => !p.deleted && p.docId === 'vax-k1').sort((a, b) => a.order - b.order).map(p => p.id).join();
+  if (late !== 'p1,p3,p9') fail('merge: page added later to the old book did not follow: ' + late);
   await page.close();
 }
 
