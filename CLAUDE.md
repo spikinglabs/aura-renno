@@ -1,6 +1,6 @@
 # Allo Auri
 
-The app was called Aura until November 2026. Visible text says Auri; internal names stay as they were so existing logs keep working: IndexedDB `aura`, Drive folder `Aura` and file `aura-log.json`, backup and media prefixes `aura-`, `app: 'aura'` in the log.
+The app was called Aura until November 2026. Visible text says Auri. In Drive the log is `Allo Auri/allo-auri-log.json` with backups named `allo-auri-backup-…` and `allo-auri-log-before-vN.json`; a log, folder or backup with the old Aura names (`OLD_FILE`, `OLD_FOLDER`, `aura-` prefixes) is still found and read, and the owner's first sync renames the log and its folder in place (`renameOld`). Internal names that no one sees stay as they were so existing logs keep working: IndexedDB `aura`, media references `aura-media:`, `app: 'aura'` in the log.
 
 
 Serverless baby and child log (PWA). Everything is in `src/app.html`; `sh build.sh` wraps it into `app/index.html` (not committed).
