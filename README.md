@@ -10,9 +10,8 @@ The plan behind this version is in [docs/official-app-plan.md](docs/official-app
 
 - `src/app.html` is the whole app (HTML, CSS and JavaScript in one file). `sh build.sh` wraps it into `app/index.html`, which is not committed.
 - `app/` holds the rest of the installable app: `manifest.json`, `sw.js` for offline use, `icon.svg`, and `_headers` (response headers Cloudflare sends with every file).
-- `wrangler.jsonc` tells Cloudflare to serve `app/` as static files at `aura.allo.land`.
 - `tests/smoke.mjs` opens the built app at phone width in day and night colors and checks the main screens, timers and data migration.
-- `.github/workflows/test.yml` runs the test on every push and pull request. Cloudflare Workers Builds publishes `app/` on each push to `main` (see Hosting below).
+- `.github/workflows/test.yml` runs the test on every push and pull request. Cloudflare Pages publishes `app/` on each push to `main` (see Hosting below).
 
 ## Development
 
@@ -33,11 +32,11 @@ Open `app/index.html` in a browser to try it locally. Google Drive sync only wor
 
 ## Hosting (one-time, for the maintainer)
 
-Aura is served by Cloudflare as a Worker with static assets only (no server code), at `https://aura.allo.land`.
+Aura is a Cloudflare Pages project (static files only, no server code) at `https://aura.allo.land`.
 
-1. Cloudflare dashboard, in the account that holds the `allo.land` zone → **Workers & Pages → Create → Import a repository** → `spikinglabs/aura-renno`.
-2. Build command `sh build.sh`, deploy command `npx wrangler deploy`, production branch `main`. Under **Variables**, add `GOOGLE_CLIENT_ID` and `GOOGLE_PICKER_KEY` as build variables.
-3. The first deploy reads `wrangler.jsonc` and attaches the custom domain `aura.allo.land`; Cloudflare creates its DNS record and certificate. Every push to `main` deploys again, and other branches get a preview address (Google sign-in only works on `aura.allo.land`).
+1. Cloudflare dashboard, in the account that holds the `allo.land` zone → **Workers & Pages → Create → Pages → Connect to Git** → `spikinglabs/aura-renno`.
+2. Production branch `main`, framework preset None, build command `sh build.sh`, build output directory `app`. Under **Environment variables**, add `GOOGLE_CLIENT_ID` and `GOOGLE_PICKER_KEY`.
+3. After the first deploy: the project's **Custom domains** tab → add `aura.allo.land`. Cloudflare creates the DNS record and certificate. Every push to `main` deploys again, and other branches get a preview address on `pages.dev` (Google sign-in only works on `aura.allo.land`).
 
 `app/_headers` sets the response headers. The content security policy is report-only for now: open the browser console on the live app, use Drive sync, the picker and an AI call, and once nothing is reported, rename the header to `Content-Security-Policy`.
 
@@ -50,7 +49,7 @@ Users only tap "Connect Google Drive" because the app ships with Aura's own Goog
 3. **Data access**: add only the scope `.../auth/drive.file`. This is a non-sensitive scope, so no security assessment is needed.
 4. **Clients → Create client → Web application**. Under **Authorized JavaScript origins** add `https://aura.allo.land`. Copy the client ID.
 5. **APIs & Services → Credentials → Create credentials → API key**. Restrict it to the **Google Picker API** and to websites `https://aura.allo.land/*`. Copy the key.
-6. Add `GOOGLE_CLIENT_ID` and `GOOGLE_PICKER_KEY` with those values in two places: as **build variables** of the Cloudflare Worker (so the live app gets them), and on GitHub under **repo Settings → Secrets and variables → Actions → Variables** (so the test builds with them). The next deploy builds them into the app (retry the latest build in Cloudflare, or push any change).
+6. Add `GOOGLE_CLIENT_ID` and `GOOGLE_PICKER_KEY` with those values in two places: as **environment variables** of the Cloudflare Pages project (so the live app gets them), and on GitHub under **repo Settings → Secrets and variables → Actions → Variables** (so the test builds with them). The next deploy builds them into the app (retry the latest deployment in Cloudflare, or push any change).
 7. While the app is in **Testing**, only test users you add under **Audience** (up to 100) can sign in. To open it to everyone, click **Publish app**. With only `drive.file`, Google asks for brand verification (it checks the name, logo, home page and privacy policy, and that you own the domain via Google Search Console), which usually takes a few days.
 
 People who prefer their own Google project can still enter their own client ID and key under **More → Google Drive → Advanced**.

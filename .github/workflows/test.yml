@@ -9,7 +9,7 @@ on:
 permissions:
   contents: read
 
-# Deploys are done by Cloudflare Workers Builds on each push to main (see README).
+# Deploys are done by Cloudflare Pages on each push to main (see README).
 concurrency:
   group: test-${{ github.ref }}
   cancel-in-progress: true
