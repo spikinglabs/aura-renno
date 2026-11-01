@@ -774,7 +774,7 @@ for (const theme of ['night', 'day']) {
   await page.addInitScript(() => { window.google = { accounts: { oauth2: { initTokenClient: o => ({ requestAccessToken: () => o.callback({ access_token: 't', expires_in: 3600 }) }) } } }; });
   const other = (id, t) => ({ id, child: 'kid-ex', type: 'note', t, note: 'From the other phone', updatedAt: t });
   // "future" stands for a part added by a later version of the app without a format change; it must be kept.
-  const drive = { file: { app: 'aura', v: 3, children: [], episodes: [], entries: [other('o1', 1000)], meds: [], measurements: [], growth: [], future: ['kept'] }, patches: 0, race: true, uploads: [], queries: [], version: 1, downloads: 0, media: [], saved: {}, resumable: 0 };
+  const drive = { file: { app: 'aura', v: 3, children: [], episodes: [], entries: [other('o1', 1000)], meds: [], measurements: [], growth: [], future: ['kept'] }, patches: 0, race: true, uploads: [], queries: [], version: 1, downloads: 0, media: [], saved: {}, resumable: 0, names: { f1: 'aura-log.json', logdir: 'Aura' }, renames: [] };
   const setFile = f => { drive.file = f; drive.version++; }; // a change by someone else bumps Drive's version number
   await page.route('https://www.googleapis.com/**', async route => {
     const req = route.request(), u = new URL(req.url()), m = req.method();
@@ -798,7 +798,10 @@ for (const theme of ['night', 'day']) {
     const mf = drive.media.find(f => u.pathname === '/drive/v3/files/' + f.id); if (mf) return route.fulfill({ status: 200, contentType: 'application/octet-stream', body: mf.body });
     if (drive.saved[u.pathname.split('/').pop()]) return json(drive.saved[u.pathname.split('/').pop()]);
     if (u.pathname === '/drive/v3/files/f1' && u.searchParams.get('alt') === 'media') { drive.downloads++; return json(drive.file); }
-    if (u.pathname === '/drive/v3/files/f1') return json({ ownedByMe: true, parents: ['logdir'], version: String(drive.version) });
+    // A log made while the app was called Aura is renamed in place, with its folder
+    if (m === 'PATCH' && u.pathname.startsWith('/drive/v3/files/')) { const id = u.pathname.split('/').pop(), b = JSON.parse(req.postData() || '{}'); if (b.name) { drive.renames.push([id, b.name]); drive.names[id] = b.name; } return json({}); }
+    if (u.pathname === '/drive/v3/files/logdir') return json({ name: drive.names.logdir });
+    if (u.pathname === '/drive/v3/files/f1') return json({ name: drive.names.f1, ownedByMe: true, parents: ['logdir'], version: String(drive.version) });
     if (u.pathname === '/drive/v3/files') drive.queries.push(u.searchParams.get('q') || '');
     if (u.pathname === '/drive/v3/files' && (u.searchParams.get('q') || '').startsWith("'backups' in parents")) return json({ files: drive.saved.bkx ? [{ id: 'bkx', name: 'aura-backup-2026-10-08-09.json' }] : [] });
     if (u.pathname === '/drive/v3/files' && (u.searchParams.get('q') || '').startsWith("'media' in parents")) return json({ files: drive.media.map(({ id, name }) => ({ id, name })) });
@@ -818,7 +821,8 @@ for (const theme of ['night', 'day']) {
   if (!['o1', 'o2'].every(id => mine.some(e => e.id === id))) fail('sync: entry from the other phone not merged');
   if (!mine.every(e => drive.file.entries.some(x => x.id === e.id))) fail('sync: our entries lost after the other phone wrote');
   if (drive.patches !== 2) fail(`sync: expected a second write after the clash, got ${drive.patches}`);
-  if (!drive.uploads.some(b => b.includes('aura-backup-'))) fail('sync: no backup saved before overwriting');
+  if (!drive.uploads.some(b => b.includes('allo-auri-backup-'))) fail('sync: no backup saved before overwriting');
+  if (drive.names.f1 !== 'allo-auri-log.json' || drive.names.logdir !== 'Allo Auri') fail('sync: old Aura log and folder not renamed: ' + JSON.stringify(drive.names));
   if (!drive.queries.some(q => q.includes("name='backups'") && q.includes("'logdir' in parents"))) fail('sync: backups not kept next to the log (so a moved or renamed folder would lose them)');
   if (!drive.file.vaccines?.some(v => v.kind === 'dose')) fail('sync: vaccinations not written to Drive');
   if (!drive.file.emergency?.some(x => x.childId === 'kid-ex' && x.allergies)) fail('sync: emergency card not written to Drive');
@@ -832,13 +836,15 @@ for (const theme of ['night', 'day']) {
   await syncNow();
   if (!(await page.locator('#toast').innerText()).startsWith('Synced')) fail('sync: no feedback after tapping sync');
   if (drive.downloads !== downloads || drive.patches !== patches) fail('sync: an idle sync downloaded or wrote the file');
+  if (drive.renames.length !== 2) fail('sync: renamed again after the first sync: ' + JSON.stringify(drive.renames));
   // A change by the other phone is picked up
   setFile({ ...drive.file, entries: [...drive.file.entries, other('o3', 3000)] });
   await syncNow();
   if (!(await getState(page)).entries.some(e => e.id === 'o3')) fail('sync: change from the other phone not picked up');
   // Drive backups hold each photo, page and sound once, as its own file in backups/media, and the backup points to it
   // (the app's code is private, so the test changes the saved log and reloads)
-  const edit = async f => { const x = await getState(page); f(x); x.changedAt = Date.now(); await setState(page, x); await reload(page); await page.waitForSelector('h1'); };
+  // Reloads first, so a sync the app still has scheduled (1.5 s after a change) can't save over what the test writes.
+  const edit = async f => { await reload(page); await page.waitForSelector('h1'); const x = await getState(page); f(x); x.changedAt = Date.now(); await setState(page, x); await reload(page); await page.waitForSelector('h1'); };
   const backupNow = () => edit(x => { x.drive.backupHour = null; x.entries[0].updatedAt = Date.now(); }); // a change, so the Drive log is written and backed up first
   await backupNow(); await syncNow();
   const bkId = Object.keys(drive.saved).filter(k => drive.saved[k].includes('"vp1"')).pop(), bk = bkId && JSON.parse(drive.saved[bkId]);
@@ -868,11 +874,11 @@ for (const theme of ['night', 'day']) {
   await page.click('[data-act="sync-tap"]');
   await page.waitForSelector('.sync.err');
   if (drive.patches !== before || drive.file.v !== 99) fail('sync: a newer log in Drive was overwritten');
-  // An older log in Drive is upgraded, after a copy of it as it was is kept as aura-log-before-v3.json
+  // An older log in Drive is upgraded, after a copy of it as it was is kept as allo-auri-log-before-v3.json
   setFile({ app: 'sick-day-log', v: 1, children: [], episodes: [], entries: [other('old1', 500)], meds: [], measurements: [] }); before = drive.uploads.length;
   await page.click('[data-act="sync-tap"]');
   await page.waitForSelector('.sync.ok');
-  if (!drive.uploads.slice(before).some(b => b.includes('aura-log-before-v3.json') && b.includes('sick-day-log'))) fail('sync: no copy kept before upgrading the Drive log');
+  if (!drive.uploads.slice(before).some(b => b.includes('allo-auri-log-before-v3.json') && b.includes('sick-day-log'))) fail('sync: no copy kept before upgrading the Drive log');
   if (drive.file.v !== 3 || !drive.file.entries.some(e => e.id === 'old1')) fail('sync: older Drive log not upgraded');
   // A v2 Drive log (written by a phone that is not updated yet) has its book photos moved into pages too
   setFile({ ...drive.file, v: 2, vaccines: [...drive.file.vaccines, { id: 'old-pg', childId: 'kid-ex', kind: 'page', t: 1, img: 'data:image/jpeg;base64,/9j/OLD', note: 'p. 4', updatedAt: 7 }] });
@@ -1245,7 +1251,7 @@ for (const theme of ['night', 'day']) {
   // Drive: one PDF per document, in a documents folder next to the log
   const syncNow = async () => { await page.evaluate(() => { document.getElementById('toast').hidden = true; }); await page.click('[data-act="sync-tap"]:visible'); await page.waitForSelector('#toast:not([hidden])'); };
   const settled = () => page.waitForTimeout(1000); // PDFs go up after the sync has finished
-  const edit = async f => { const x = await getState(page); f(x); x.changedAt = Date.now(); await setState(page, x); await reload(page); await page.waitForSelector('h1'); };
+  const edit = async f => { await reload(page); await page.waitForSelector('h1'); const x = await getState(page); f(x); x.changedAt = Date.now(); await setState(page, x); await reload(page); await page.waitForSelector('h1'); };
   await syncNow(); await settled();
   const up = drive.pdfs.filter(f => f.name.startsWith('Kita contract'));
   if (up.length !== 1 || up[0].parents[0] !== 'documents' || !up[0].body.includes('/Count 2')) fail('pdf: document not kept as a PDF in Drive');

@@ -29,9 +29,9 @@ Open `app/index.html` in a browser to try it locally. Google Drive sync only wor
 ## Put it on your phone
 
 1. Open https://auri.allo.land/ on the phone, then **Add to Home Screen** (Safari: Share → Add to Home Screen; Chrome: menu → Install app).
-2. **More → Google Drive → Connect Google Drive**, and sign in with Google. The log is saved as `Aura/aura-log.json` in your Drive.
-3. Optional, to share with a partner: **More → Share with a partner** → their Google email → Share. On their phone: **More → Google Drive → Join a shared log**, and pick `aura-log.json`.
-4. Optional: **More → AI helper** → pick a service and paste its key to turn on "Say it" sorting and the AI handover. Choices: Anthropic (key from https://console.anthropic.com), or any OpenAI-style chat service (OpenAI, Gemini, Mistral, OpenRouter, your own endpoint) with its address and model name. For a local model in Ollama, open Aura on that same computer and start Ollama with `OLLAMA_ORIGINS=https://auri.allo.land` so the browser may call it.
+2. **More → Google Drive → Connect Google Drive**, and sign in with Google. The log is saved as `Allo Auri/allo-auri-log.json` in your Drive.
+3. Optional, to share with a partner: **More → Share with a partner** → their Google email → Share. On their phone: **More → Google Drive → Join a shared log**, and pick `allo-auri-log.json`.
+4. Optional: **More → AI helper** → pick a service and paste its key to turn on "Say it" sorting and the AI handover. Choices: Anthropic (key from https://console.anthropic.com), or any OpenAI-style chat service (OpenAI, Gemini, Mistral, OpenRouter, your own endpoint) with its address and model name. For a local model in Ollama, open Auri on that same computer and start Ollama with `OLLAMA_ORIGINS=https://auri.allo.land` so the browser may call it.
 
 ## Hosting (one-time, for the maintainer)
 
@@ -62,18 +62,18 @@ People who prefer their own Google project can still enter their own client ID a
 - The whole log is one JSON document: on the phone it's a single record in the browser's IndexedDB (works offline), in Drive and backups it's one `.json` file. The app asks the browser to keep it permanently; installing the app to the home screen helps.
 - **Backups are required.** After the first child is added, Auri asks for Google Drive or a backup file, and Today shows a reminder while there's no copy off the phone or the last one is over 2 days old with newer entries. **More → Your data → Save a backup file** opens the share sheet (iCloud Files, Dropbox, email…).
 - Synced to Drive about two seconds after each change, while you're signed in. Tap the sync label at the top to sign in again after Google's one-hour sign-in expires.
-- Before the Drive file is changed, the old version is saved in `Aura/backups` (at most hourly; the last 48 kept, then one a day for 60 days), and the phone keeps a daily copy of its own (14 days). Photos, document pages and sound recordings are inside the log, so they sync to a partner and go into every backup; Drive backups keep each one only once, as its own file in `backups/media`, so hourly copies don't fill up Drive. After each write the app reads the file back to check nothing was lost to another phone saving at the same time, and it never writes over a Drive file it can't read. **More → Google Drive → Restore from a Drive backup** and **More → Your data → Restore a daily copy** add back anything missing.
+- Before the Drive file is changed, the old version is saved in `Allo Auri/backups` (at most hourly; the last 48 kept, then one a day for 60 days), and the phone keeps a daily copy of its own (14 days). Photos, document pages and sound recordings are inside the log, so they sync to a partner and go into every backup; Drive backups keep each one only once, as its own file in `backups/media`, so hourly copies don't fill up Drive. After each write the app reads the file back to check nothing was lost to another phone saving at the same time, and it never writes over a Drive file it can't read. **More → Google Drive → Restore from a Drive backup** and **More → Your data → Restore a daily copy** add back anything missing.
 - Merge is per entry (newest edit wins), so several phones can log at once: the same Google account, or a partner you shared the file with. Each entry shows who logged it if you set your name under **Share with a partner**.
 - The `drive.file` scope means the app can only see files it created or that you picked, not the rest of your Drive. See the [privacy policy](https://auri.allo.land/privacy.html).
 - The API key stays on the device and is never synced. When an AI button is used, the text needed goes to the AI service you chose with names replaced by placeholders and age instead of birth date. Photos, sounds and links are never sent. Each AI answer has a "See exactly what was sent" link.
 
 ## Moving from the old address
 
-Auri used to be called Aura and lived at `aura.allo.land`, before that at `leima.is/aura2` (and `emptymalei.github.io/aura2`). A phone keeps the log per address, so it doesn't follow to `auri.allo.land` by itself. Before the old address was switched off, the log had to be in Google Drive or saved as a backup file; on `auri.allo.land`, **More → Google Drive → Connect Google Drive** (same Google project, so the same `Aura/aura-log.json`) or **More → Your data → Restore from a backup file** brings it back. The old addresses now only forward here. Drive keeps the folder name `Aura` and the file `aura-log.json`, so an existing log is found as it is.
+Auri used to be called Aura and lived at `aura.allo.land`, before that at `leima.is/aura2` (and `emptymalei.github.io/aura2`). A phone keeps the log per address, so it doesn't follow to `auri.allo.land` by itself. Before the old address was switched off, the log had to be in Google Drive or saved as a backup file; on `auri.allo.land`, **More → Google Drive → Connect Google Drive** (same Google project, so the same log) or **More → Your data → Restore from a backup file** brings it back. The old addresses now only forward here. A log saved as `Aura/aura-log.json` is still found, and the first sync renames it to `Allo Auri/allo-auri-log.json` in place (a partner's phone keeps syncing the same file). If Auri can't see the old file (it was made with a different Google client ID), pick it once with **More → Google Drive → Join a shared log**.
 
 ## Upgrading from Sick Day Log
 
-On first open, data saved on the phone by the earlier Sick Day Log is moved over automatically. Drive now uses a new file (`Aura/aura-log.json`); to bring an old Drive log across, use More → Your data → Restore with data copied from the old app.
+On first open, data saved on the phone by the earlier Sick Day Log is moved over automatically. Drive now uses a new file (`Allo Auri/allo-auri-log.json`); to bring an old Drive log across, use More → Your data → Restore with data copied from the old app.
 
 ## Known limits of this prototype
 

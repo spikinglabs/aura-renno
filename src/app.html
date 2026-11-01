@@ -303,7 +303,9 @@ tr:last-child td { border-bottom: 0 }
 const SDK_URL = 'https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.131.0/+esm';
 const MODEL = 'claude-opus-5-5';
 const LS_KEY = 'aura.v2', LS_OLD = 'sickdaylog.v1', DB_NAME = 'aura';
-const DRIVE_FILE = 'aura-log.json', DRIVE_FOLDER = 'Aura';
+const DRIVE_FILE = 'allo-auri-log.json', DRIVE_FOLDER = 'Allo Auri';
+// Names from when the app was called Aura. A log with them is still found, and the owner's first sync renames it (renameOld).
+const OLD_FILE = 'aura-log.json', OLD_FOLDER = 'Aura';
 // Auri's own Google project, filled in by build.sh from the repo's GOOGLE_CLIENT_ID and GOOGLE_PICKER_KEY variables.
 // Both are public by design (Google restricts them to this site's address). A user's own values under More override them.
 const built = v => /^__/.test(v) ? '' : v;
@@ -1732,7 +1734,7 @@ function renderMore() {
       ${live(S.meds).map(m => `<div class="list-row medrow"><span>${esc(m.name)}</span><span class="row"><input type="number" min="0" step="0.5" value="${m.gapH ?? ''}" data-gap="${m.id}" aria-label="Hours between doses for ${esc(m.name)}"> h <button class="btn ghost danger" data-delmed="${m.id}" aria-label="Remove">✕</button></span></div>`).join('')}
       <div class="row"><input id="newMed" placeholder="Add a medicine" style="flex:1"><button class="btn sm" data-act="add-med">Add</button></div></div>
     <div class="card set"><h2>Google Drive backup and sync</h2>
-      <p class="small muted" style="margin:0">Your log is saved as <span class="num">${DRIVE_FILE}</span> in an “${DRIVE_FOLDER}” folder in your own Drive (you can move or rename it), with a backup copy saved before each change (hourly for two days, then daily for ${KEEP_DAYS} days). Photos, document pages and sound recordings are part of the log, so they sync and are backed up too; backups keep each one once, in a “media” folder next to them. Each document is also kept as a PDF of all its pages, in a “documents” folder next to the log. The app can only see files it created or that you picked. There is no other server. <a href="privacy.html" style="color:var(--accent-ink)">Privacy policy</a></p>
+      <p class="small muted" style="margin:0">Your log is saved as <span class="num">${DRIVE_FILE}</span> in a “${DRIVE_FOLDER}” folder in your own Drive (you can move or rename it), with a backup copy saved before each change (hourly for two days, then daily for ${KEEP_DAYS} days). Photos, document pages and sound recordings are part of the log, so they sync and are backed up too; backups keep each one once, in a “media” folder next to them. Each document is also kept as a PDF of all its pages, in a “documents” folder next to the log. The app can only see files it created or that you picked. There is no other server. <a href="privacy.html" style="color:var(--accent-ink)">Privacy policy</a></p>
       ${GOOGLE_CLIENT_ID ? `<details class="small"><summary class="muted">Advanced: use your own Google project</summary>${googleOwnFields(st)}</details>` : googleOwnFields(st)}
       <div class="row"><button class="btn primary sm" data-act="drive-sync" ${syncing ? 'disabled' : ''}>${syncing ? 'Syncing…' : d.fileId ? 'Sync now' : 'Connect Google Drive'}</button>${d.fileId ? '<button class="btn sm" data-act="drive-backups">Restore from a Drive backup</button><button class="btn ghost sm" data-act="drive-forget">Disconnect</button>' : '<button class="btn sm" data-act="join">Join a shared log</button>'}</div>
       <p class="small muted" style="margin:0">${d.lastSync ? 'Last synced ' + ago(d.lastSync) + '.' : 'Not connected yet.'}${d.owner ? ' Shared with you by ' + esc(d.owner) + '.' : ''}${d.error ? ' Last error: ' + esc(d.error) : ''}</p></div>
@@ -2408,9 +2410,28 @@ async function writeFile(tok, id, text) {
 }
 // A new Drive log starts empty; the first sync then writes this phone's log into it like any other change.
 async function findOrCreateFile(tok) {
-  const r = await (await gapi(tok, `${DRIVE}?q=${enc(`name='${DRIVE_FILE}' and trashed=false and 'me' in owners`)}&fields=files(id)`)).json();
-  if (r.files?.length) return r.files[0].id;
-  return uploadNew(tok, DRIVE_FILE, await folderId(tok, DRIVE_FOLDER), { ...shareable(), ...Object.fromEntries(SYNCED.map(k => [k, []])) });
+  const r = await (await gapi(tok, `${DRIVE}?q=${enc(`(name='${DRIVE_FILE}' or name='${OLD_FILE}') and trashed=false and 'me' in owners`)}&fields=files(id,name)`)).json();
+  const f = r.files?.find(f => f.name === DRIVE_FILE) || r.files?.[0];
+  if (f) return f.id;
+  return uploadNew(tok, DRIVE_FILE, await homeFolder(tok), { ...shareable(), ...Object.fromEntries(SYNCED.map(k => [k, []])) });
+}
+// The app's own folder: "Auri", or "Aura" from before the rename, made when there is neither.
+async function homeFolder(tok) {
+  const r = await (await gapi(tok, `${DRIVE}?q=${enc(`(name='${DRIVE_FOLDER}' or name='${OLD_FOLDER}') and mimeType='${FOLDER_T}' and trashed=false`)}&fields=files(id,name)`)).json();
+  const f = r.files?.find(f => f.name === DRIVE_FOLDER) || r.files?.[0];
+  return f ? f.id : folderId(tok, DRIVE_FOLDER);
+}
+// The owner's first sync after the rename gives an old log and its folder the new names, in place, so nothing is copied
+// and a partner's phone keeps the same file. Names the parent chose themselves are left alone.
+async function renameOld(tok, id) {
+  const f = await (await gapi(tok, `${DRIVE}/${id}?fields=name,parents,ownedByMe`)).json();
+  if (!f.ownedByMe) return;
+  const rename = (fid, name) => gapi(tok, `${DRIVE}/${fid}`, { method: 'PATCH', headers: JSON_H, body: JSON.stringify({ name }) });
+  if (f.name === OLD_FILE) await rename(id, DRIVE_FILE);
+  // The folder can only be renamed when this app made it; otherwise (403 or 404) it keeps its name. Any other error is
+  // thrown, so the next sync tries again.
+  try { const p = f.parents?.[0], d = p && await (await gapi(tok, `${DRIVE}/${p}?fields=name`)).json(); if (d?.name === OLD_FOLDER) await rename(p, DRIVE_FOLDER); }
+  catch (e) { if (!/Drive error 40[34]/.test(e.message)) throw e; }
 }
 // Before the app overwrites the Drive file, it saves the file as it was to Aura/backups in this person's own Drive,
 // at most once an hour. Kept: every snapshot from the newest KEEP_RECENT, then one per day for KEEP_DAYS days.
@@ -2422,31 +2443,34 @@ async function auraDir(tok, fileId = S.drive?.fileId) {
   if (auraHome) return auraHome;
   let home = null;
   if (fileId) try { const f = await (await gapi(tok, `${DRIVE}/${fileId}?fields=parents,ownedByMe`)).json(); if (f.ownedByMe) home = f.parents?.[0] || null; } catch {}
-  return auraHome = home || await folderId(tok, DRIVE_FOLDER);
+  return auraHome = home || await homeFolder(tok);
 }
 async function backupsDir(tok, fileId = S.drive?.fileId) {
   return backupsHome || (backupsHome = await folderId(tok, 'backups', await auraDir(tok, fileId)));
 }
-// Before a format upgrade, the Drive file as it was is saved once as backups/aura-log-before-vN.json and never pruned.
+// Before a format upgrade, the Drive file as it was is saved once as backups/allo-auri-log-before-vN.json and never pruned.
 async function keepBeforeDrive(tok, fileId, raw) {
   if (S.drive.beforeV === SCHEMA) return;
-  const dir = await backupsDir(tok, fileId), name = `aura-log-before-v${SCHEMA}.json`;
-  if (!(await listBackups(tok, dir)).some(f => f.name === name)) await uploadNew(tok, name, dir, await packMedia(tok, raw));
+  const dir = await backupsDir(tok, fileId), name = `allo-auri-log-before-v${SCHEMA}.json`;
+  if (!(await listBackups(tok, dir)).some(f => f.name.match(BEFORE)?.[1] === String(SCHEMA))) await uploadNew(tok, name, dir, await packMedia(tok, raw));
   S.drive.beforeV = SCHEMA;
 }
 async function listBackups(tok, dir) {
   const r = await (await gapi(tok, `${DRIVE}?q=${enc(`'${dir}' in parents and trashed=false`)}&orderBy=name desc&pageSize=500&fields=files(id,name)`)).json();
-  return (r.files || []).filter(f => HOURLY.test(f.name) || BEFORE.test(f.name));
+  // Sorted here by the date in the name, newest first, because old (aura-) and new (allo-auri-) names don't sort together.
+  return (r.files || []).filter(f => HOURLY.test(f.name) || BEFORE.test(f.name)).sort((a, b) => (stamp(a.name) < stamp(b.name)) - (stamp(a.name) > stamp(b.name)));
 }
-const HOURLY = /^aura-backup-\d{4}-\d\d-\d\d(-\d\d)?\.json$/, BEFORE = /^aura-log-before-v(\d+)\.json$/;
-const backupLabel = n => BEFORE.test(n) ? `Before the update to version ${n.match(BEFORE)[1]}` : `<b>${esc(n.slice(12, 22))}</b>${n.length > 27 ? ' ' + esc(n.slice(23, 25)) + ':00' : ''}`;
+// Backups made while the app was called Aura start with aura- and are listed, restored and pruned like the new ones.
+const HOURLY = /^(?:aura|allo-auri)-backup-(\d{4}-\d\d-\d\d)(?:-(\d\d))?\.json$/, BEFORE = /^(?:aura|allo-auri)-log-before-v(\d+)\.json$/;
+const stamp = n => { const m = n.match(HOURLY); return m ? m[1] + (m[2] || '') : ''; };
+const backupLabel = n => { if (BEFORE.test(n)) return `Before the update to version ${n.match(BEFORE)[1]}`; const m = n.match(HOURLY); return `<b>${esc(m[1])}</b>${m[2] ? ' ' + esc(m[2]) + ':00' : ''}`; };
 function prunable(files) { // files sorted newest first
   const days = new Set();
-  return files.filter((f, i) => { if (i < KEEP_RECENT) return false; const d = f.name.slice(12, 22); if (days.has(d) || days.size >= KEEP_DAYS) return true; days.add(d); return false; });
+  return files.filter((f, i) => { if (i < KEEP_RECENT) return false; const d = f.name.match(HOURLY)?.[1]; if (days.has(d) || days.size >= KEEP_DAYS) return true; days.add(d); return false; });
 }
 async function snapshot(tok, fileId, data) {
   const hour = toLocalInput(Date.now()).slice(0, 13).replace('T', '-'); if (S.drive.backupHour === hour) return;
-  const dir = await backupsDir(tok, fileId), name = `aura-backup-${hour}.json`, old = (await listBackups(tok, dir)).filter(f => HOURLY.test(f.name));
+  const dir = await backupsDir(tok, fileId), name = `allo-auri-backup-${hour}.json`, old = (await listBackups(tok, dir)).filter(f => HOURLY.test(f.name));
   if (!old.some(f => f.name === name)) await uploadNew(tok, name, dir, await packMedia(tok, data));
   for (const f of prunable(old.filter(f => f.name !== name))) await gapi(tok, `${DRIVE}/${f.id}`, { method: 'DELETE' });
   S.drive.backupHour = hour; persist();
@@ -2569,6 +2593,7 @@ async function sync(interactive) {
     if (!ok) throw new Error('Another phone was saving at the same time. Will try again shortly.');
     S.drive = { ...(S.drive || {}), fileId: id, lastSync: Date.now(), syncedAt: started, version: ver, error: '' }; S.backedUpAt = Date.now();
     if (S.drive.mine === undefined) { const m = await (await gapi(tok, `${DRIVE}/${id}?fields=ownedByMe,owners(displayName,emailAddress)`)).json(); S.drive.mine = !!m.ownedByMe; S.drive.owner = m.ownedByMe ? '' : m.owners?.[0]?.displayName || m.owners?.[0]?.emailAddress || 'someone'; }
+    if (!S.drive.renamed) try { await renameOld(tok, id); S.drive.renamed = true; } catch {}
     persist(); if (interactive) toast('Synced. Your log in Drive is up to date.');
     pdfsToDrive(tok);
   } catch (e) { S.drive = { ...(S.drive || {}), error: e.message }; persist(); if (interactive) toast(e.message); if (/same time/.test(e.message)) setTimeout(() => sync(false), 20e3); }
@@ -2634,10 +2659,12 @@ async function joinPick() {
   if (!gPickerKey()) return toast('Add the API key first.');
   try {
     const tok = await token(true); await loadPicker();
-    const view = new google.picker.DocsView(google.picker.ViewId.DOCS).setMimeTypes('application/json').setQuery(DRIVE_FILE).setMode(google.picker.DocsViewMode.LIST);
+    const view = new google.picker.DocsView(google.picker.ViewId.DOCS).setMimeTypes('application/json').setMode(google.picker.DocsViewMode.LIST);
     new google.picker.PickerBuilder().addView(view).setOAuthToken(tok).setDeveloperKey(gPickerKey()).setAppId(gClient().split('-')[0])
-      .setTitle('Pick the shared Auri log').setCallback(d => {
+      .setTitle(`Pick the Auri log (${DRIVE_FILE}, or ${OLD_FILE} from before)`).setCallback(d => {
         if (d.action !== google.picker.Action.PICKED || !d.docs?.[0]) return;
+        // The picker lists every JSON file, so backups can be picked too; syncing one would write over that backup.
+        if (HOURLY.test(d.docs[0].name) || BEFORE.test(d.docs[0].name)) return toast(`That is a backup, not the log. Pick ${DRIVE_FILE} (or ${OLD_FILE}), or use Restore from a Drive backup.`);
         if (S.example) { const st = S.settings; S = emptyState(); S.settings = st; }
         S.drive = { fileId: d.docs[0].id }; backupsHome = null; mediaHome = null; closeSheet(); persist(); sync(true).then(() => { if (!S.drive.error) toast('Joined. You now share this log.'); tab = 'today'; render(); });
       }).build().setVisible(true);
@@ -2752,7 +2779,7 @@ function backupSheet(first) {
     ${first ? '<div class="sheet-actions"><span></span><button class="btn ghost" data-act="close">Later</button></div>' : ''}`);
 }
 async function saveBackupFile() {
-  const name = `aura-backup-${toLocalInput(Date.now()).slice(0, 10)}.json`, blob = new Blob([JSON.stringify(shareable())], { type: 'application/json' });
+  const name = `allo-auri-backup-${toLocalInput(Date.now()).slice(0, 10)}.json`, blob = new Blob([JSON.stringify(shareable())], { type: 'application/json' });
   const file = new File([blob], name, { type: 'application/json' });
   if (navigator.canShare?.({ files: [file] })) {
     try { await navigator.share({ files: [file], title: 'Auri backup' }); backedUp(); render(); return toast('Backup saved'); }
