@@ -1778,6 +1778,12 @@ function renderDocs() {
 }
 
 /* ---------- More ---------- */
+// The other Allo sites, listed at the end of More (each of them links back to Auri).
+const ALLO_SITES = [
+  ['Allo Recalls', 'https://recalls.allo.land/', "Recalls of baby and kids' products, from official sources"],
+  ['Allo Outings', 'https://outings.allo.land/en/', 'Family outings and kid-friendly places in Germany'],
+  ['Alloland', 'https://allo.land/', 'Settle into life in Germany'],
+];
 function renderMore() {
   const st = S.settings, d = S.drive || {}, eps = live(S.episodes).sort((a, b) => b.start - a.start);
   $('#view-more').innerHTML = header('More', 'Children, illnesses and settings') + `
@@ -1818,7 +1824,9 @@ function renderMore() {
       <div class="row"><button class="btn sm" data-act="download">Save a backup file</button><button class="btn sm" data-act="restore-file">Restore from a backup file</button><button class="btn sm" data-act="local-snaps">Restore a daily copy on this phone</button><input id="restoreFile" type="file" accept="application/json,.json" hidden></div>
       <div class="row"><button class="btn ghost sm" data-act="export">Copy all data</button><button class="btn ghost sm" data-act="import">Restore from copied data</button></div>
       <textarea id="importBox" hidden placeholder="Paste data copied from Auri" style="min-height:90px"></textarea>
-      <div><button class="btn ghost danger sm" data-act="wipe">Delete everything on this phone</button></div><div id="wipeConfirm"></div></div>`;
+      <div><button class="btn ghost danger sm" data-act="wipe">Delete everything on this phone</button></div><div id="wipeConfirm"></div></div>
+    <div class="card set"><h2>More from Allo</h2>
+      ${ALLO_SITES.map(([name, url, blurb]) => `<div class="list-row"><span><a href="${url}" target="_blank" rel="noopener" style="color:var(--accent-ink)"><b>${name}</b></a><br><span class="muted small">${blurb}</span></span></div>`).join('')}</div>`;
   storageInfo(); if (d.fileId && d.mine !== false) peopleList();
   aiProvider().then(p => { const el = $('#aiStatus'); if (el) el.textContent = p === 'sample' ? 'AI is ready here using your Claude account. No key needed in this preview.' : p === 'key' ? `AI is ready: ${aiName()}.` : 'AI is off. Choose a service and add its key to turn it on. Everything else works without it.'; });
 }
