@@ -2833,11 +2833,11 @@ function backupDue() {
 }
 const backupBanner = () => { const m = backupDue(); return m ? `<div class="banner backup-due"><p><b>Back up your log.</b> ${m}</p><button class="btn primary sm" data-act="backup-now">Back up now</button><button class="btn ghost sm" data-act="backup-snooze">Tomorrow</button></div>` : ''; };
 /* ---------- Product recalls ---------- */
-// Recalls come from L's Recall Tracker (github.com/spikinglabs/recall-tracker, tracker.babybaras.com), which publishes
+// Recalls come from L's Recall Tracker (github.com/spikinglabs/recall-tracker, recalls.allo.land), which publishes
 // one public JSON file of baby and children's product recalls each day. Auri only downloads that public list; the
 // products a family uses are matched on the phone and never sent anywhere. The list is kept on the phone, not synced.
 const RECALL_URL = 'https://pub-f36c3831e82845e4af2d54940ea6c32d.r2.dev/baby/scraped_date%3Dlatest/processed.json';
-const RECALL_SITE = 'https://tracker.babybaras.com/';
+const RECALL_SITE = 'https://recalls.allo.land/';
 const RECALL_COUNTRIES = [['DE', 'Germany'], ['US', 'USA']]; // always offered; other countries appear when the list has them
 let recallLoading = false, recallsShown = 5;
 const fold = s => String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/ß/g, 'ss');
