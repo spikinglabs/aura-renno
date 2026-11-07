@@ -11,7 +11,7 @@ h1, h2 { font-family: "Lora", Georgia, serif; font-weight: 600 } h2 { font-size:
 a { color: var(--accent) } .muted { color: var(--muted) }
 </style></head><body><main>
 <h1>Allo Auri privacy policy</h1>
-<p class="muted">Last updated 1 November 2026</p>
+<p class="muted">Last updated 7 November 2026</p>
 <p>Auri is a baby and child log that runs in your browser. It has no server of its own and no accounts. We, the makers of Auri, never receive, see or store your data.</p>
 
 <h2>Who is responsible</h2>
@@ -21,7 +21,11 @@ a { color: var(--accent) } .muted { color: var(--muted) }
 <p>Everything you log (children, feeds, sleep, temperatures, medicines, notes, photos and sound recordings) is stored in your browser on your device. Deleting the app's data or using "Delete everything on this phone" removes it.</p>
 
 <h2>Opening the app</h2>
-<p>Auri's files, including its fonts and the code for the AI helpers, are served from auri.allo.land through Cloudflare, which processes your IP address to deliver them. Auri loads nothing from other sites when it opens, and it has no analytics or tracking.</p>
+<p>Auri's files, including its fonts and the code for the AI helpers, are served from auri.allo.land through Cloudflare, which processes your IP address to deliver them. Cloudflare also adds its Web Analytics script, which counts page views, referring sites, countries and device types without cookies and without recognising returning visitors.</p>
+
+<h2 id="counts">Anonymous usage counts</h2>
+<p>To see which parts of Auri are used, the app tells our usage counter at count.allo.land (a Cloudflare Worker run by us) the name of a screen when you open it and the name of a button when you tap it, for example "view_growth" or "log_feed". The counter keeps only the day, the app, that name and your country, as a total. It never receives anything you log, and it stores no IP address, no ID and no cookie, so the totals cannot be linked to you. Nothing is stored on your device for this. Legal basis: Art. 6 (1) (f) GDPR, our interest in knowing which parts of Auri are used.</p>
+<p>You can turn this off under More › Anonymous usage counts. It is also off when your browser sends Do Not Track or Global Privacy Control.</p>
 <p>To warn you about recalled baby products, your device downloads a public list from the Recall Tracker (a file on Cloudflare R2) at most every 12 hours. Your list of products is matched on your device and never sent.</p>
 
 <h2>Google Drive</h2>
