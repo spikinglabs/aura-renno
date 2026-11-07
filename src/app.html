@@ -375,7 +375,7 @@ const icon = k => `<span class="ic t-${k}"><svg viewBox="0 0 24 24" aria-hidden=
 function emptyState() {
   return { app: 'aura', v: SCHEMA, example: false, children: [], episodes: [], entries: [], measurements: [], growth: [], products: [], vaccines: [], checkups: [], dental: [], appts: [], emergency: [], docs: [], pages: [],
     meds: [{ id: 'm1', name: 'Paracetamol (acetaminophen)', gapH: 4, updatedAt: 0 }, { id: 'm2', name: 'Ibuprofen', gapH: 6, updatedAt: 0 }],
-    settings: { unit: 'C', clientId: '', pickerKey: '', apiKey: '', aiKind: 'anthropic', aiBase: '', aiModel: '', theme: 'auto', me: '', recallCountries: null, docLang: 'en', vaxPlan: 'de', uPlan: 'de', zPlan: 'de' }, child: null, drive: {}, recalls: {}, docTr: {} };
+    settings: { unit: 'C', clientId: '', pickerKey: '', apiKey: '', aiKind: 'anthropic', aiBase: '', aiModel: '', theme: 'auto', me: '', recallCountries: null, docLang: 'en', vaxPlan: 'de', uPlan: 'de', zPlan: 'de', countUse: true }, child: null, drive: {}, recalls: {}, docTr: {} };
 }
 function readLS(k) { try { const r = localStorage.getItem(k); return r ? JSON.parse(r) : null; } catch { return null; } }
 // The log's format version. To change the format, raise SCHEMA and add the step MIGRATIONS[old version], which turns a
@@ -655,8 +655,21 @@ function applyTheme() {
 // Screens without a tab of their own light up the tab they belong to.
 const tabOf = t => ({ sick: 'today', vax: 'docs', checkups: 'docs', dental: 'docs', appts: 'docs' })[t] || t;
 let tab = 'today', sickTab = 'overview', aiParsed = null, narrative = '', showDays = 3;
+// Anonymous usage counts (the Allo usage counter, spikinglabs/alloland-rebirth workers/count): only the name of a
+// screen or button, never anything logged. The counter keeps day, site, feature and country, no IP, ID or cookie.
+// Off with the switch under More › Your data (per phone), with Do Not Track / Global Privacy Control, and anywhere
+// but auri.allo.land (tests, previews, a copy run by someone else).
+function track(f) {
+  try {
+    if (S?.settings?.countUse === false || navigator.doNotTrack === '1' || navigator.globalPrivacyControl) return;
+    if (location.hostname !== 'auri.allo.land' || window.claude) return;
+    navigator.sendBeacon?.('https://count.allo.land/e?f=' + encodeURIComponent(f));
+  } catch {}
+}
+let trackedTab = null;
 function render() {
   applyTheme();
+  if (tab !== trackedTab) { trackedTab = tab; track('view_' + tab); }
   document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === tabOf(tab === 'card' ? cardFrom : tab))));
   for (const v of ['today', 'sick', 'growth', 'vax', 'checkups', 'dental', 'appts', 'docs', 'more', 'card']) $('#view-' + v).hidden = v !== tab;
   $('#fab').hidden = !['today', 'sick', 'growth'].includes(tab) || !kid();
@@ -1825,6 +1838,9 @@ function renderMore() {
       <div class="row"><button class="btn ghost sm" data-act="export">Copy all data</button><button class="btn ghost sm" data-act="import">Restore from copied data</button></div>
       <textarea id="importBox" hidden placeholder="Paste data copied from Auri" style="min-height:90px"></textarea>
       <div><button class="btn ghost danger sm" data-act="wipe">Delete everything on this phone</button></div><div id="wipeConfirm"></div></div>
+    <div class="card set"><h2>Anonymous usage counts</h2>
+      <p class="small muted" style="margin:0">To see which parts of Auri are used, the app counts which screens are opened and which buttons are tapped, as daily totals per country. Nothing you log is ever sent: no names, entries, notes or photos, and no ID, so nobody can tell it was you. <a href="privacy.html#counts" style="color:var(--accent-ink)">More</a></p>
+      <div class="chips">${[['on', 'Count'], ['off', 'Don’t count']].map(([k, l]) => `<button data-countuse="${k}" class="${(st.countUse !== false) === (k === 'on') ? 'on' : ''}">${l}</button>`).join('')}</div></div>
     <div class="card set"><h2>More from Allo</h2>
       ${ALLO_SITES.map(([name, url, blurb]) => `<div class="list-row"><span><a href="${url}" target="_blank" rel="noopener" style="color:var(--accent-ink)"><b>${name}</b></a><br><span class="muted small">${blurb}</span></span></div>`).join('')}</div>`;
   storageInfo(); if (d.fileId && d.mine !== false) peopleList();
@@ -1912,7 +1928,7 @@ async function saveEntry(timer) {
   Object.assign(e, draft);
   if (draft.end === undefined) delete e.end;
   if (timer) { e.end = null; if (type === 'feed') { e.kind = BREAST; e.minutes = null; } }
-  touch(e); if (!id) S.entries.push(e);
+  touch(e); if (!id) { S.entries.push(e); track('log_' + type); }
   closeSheet(); commit(); toast(timer ? 'Timer started' : `${TYPES[type].long || TYPES[type].label} saved`);
 }
 function stopTimer(id) {
@@ -2963,6 +2979,7 @@ document.addEventListener('click', async ev => {
     const box = b.closest('.chips');
     if (box.id === 'whenChips') { box.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); $('#f_when').value = toLocalInput(Date.now() - (+b.dataset.ago) * 60000); return; }
     if (b.dataset.unit) { S.settings.unit = b.dataset.unit; return commit(); }
+    if (b.dataset.countuse) { S.settings.countUse = b.dataset.countuse === 'on'; return commit(); }
     if (b.dataset.aikind) { S.settings.aiKind = b.dataset.aikind; S.settings.aiModel = ''; persist(); return renderMore(); }
     if (b.dataset.aibase) { S.settings.aiBase = b.dataset.aibase; persist(); return renderMore(); }
     if (b.dataset.rcountry) { toggleRecallCountry(b.dataset.rcountry); recallsShown = 5; persist(); return renderMore(); }
@@ -3015,6 +3032,7 @@ document.addEventListener('click', async ev => {
   if (b.dataset.seen) { S.recalls.seen = [...new Set([...(S.recalls.seen || []), b.dataset.seen])]; persist(); return render(); }
   if (b.dataset.delprod) { const p = S.products.find(x => x.id === b.dataset.delprod); p.deleted = true; touch(p); return commit(); }
   if (b.dataset.delmed) { const m = S.meds.find(x => x.id === b.dataset.delmed); m.deleted = true; touch(m); return commit(); }
+  if (b.dataset.act && b.dataset.act !== 'close') track('act_' + b.dataset.act);
   switch (b.dataset.act) {
     case 'close': return closeSheet();
     case 'track-sheet': return trackSheet(b.dataset.for || kid()?.id);
@@ -3226,6 +3244,7 @@ load().then(() => {
   // Opened from the home-screen shortcut ("Emergency card" when long-pressing the app icon).
   const opening = new URLSearchParams(location.search).get('open');
   if (['card', 'appts'].includes(opening) && kid()) { tab = opening; history.replaceState(null, '', location.pathname); } else restoreView();
+  track('open');
   render();
   if (!S.example) { keepStorage(); localSnapshot(); }
   refreshRecalls();
