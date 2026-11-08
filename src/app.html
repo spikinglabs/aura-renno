@@ -663,7 +663,7 @@ function track(f) {
   try {
     if (S?.settings?.countUse === false || navigator.doNotTrack === '1' || navigator.globalPrivacyControl) return;
     if (location.hostname !== 'auri.allo.land' || window.claude) return;
-    navigator.sendBeacon?.('https://count.allo.land/e?f=' + encodeURIComponent(f));
+    navigator.sendBeacon?.('https://monitoring.admin.allo.land/e?f=' + encodeURIComponent(f));
   } catch {}
 }
 let trackedTab = null;
