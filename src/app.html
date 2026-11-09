@@ -666,6 +666,22 @@ function track(f) {
     navigator.sendBeacon?.('https://monitoring.admin.allo.land/e?f=' + encodeURIComponent(f));
   } catch {}
 }
+// Runs fn once a person is plausibly there: after the page has been visible for 3 seconds,
+// or at the first tap, click, key or scroll. Scripts that load the page and leave aren't counted.
+function whenPresent(fn) {
+  const events = ['pointerdown', 'keydown', 'scroll', 'touchstart'];
+  let timer;
+  const onVisibility = () => { clearTimeout(timer); if (document.visibilityState === 'visible') timer = setTimeout(go, 3000); };
+  function go() {
+    clearTimeout(timer);
+    for (const e of events) removeEventListener(e, go, true);
+    document.removeEventListener('visibilitychange', onVisibility);
+    fn();
+  }
+  for (const e of events) addEventListener(e, go, { capture: true, passive: true });
+  document.addEventListener('visibilitychange', onVisibility);
+  onVisibility();
+}
 let trackedTab = null;
 function render() {
   applyTheme();
@@ -3244,7 +3260,7 @@ load().then(() => {
   // Opened from the home-screen shortcut ("Emergency card" when long-pressing the app icon).
   const opening = new URLSearchParams(location.search).get('open');
   if (['card', 'appts'].includes(opening) && kid()) { tab = opening; history.replaceState(null, '', location.pathname); } else restoreView();
-  track('open');
+  whenPresent(() => track('open'));
   render();
   if (!S.example) { keepStorage(); localSnapshot(); }
   refreshRecalls();
